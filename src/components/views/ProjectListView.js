@@ -1,12 +1,12 @@
 import React, { useState, useMemo, memo } from 'react';
-import { Plus, Filter, AlignJustify, CalendarDays, Clock, User, HardDrive, Monitor, Cpu, Edit, ListTodo, Trash, Download, Link as LinkIcon } from 'lucide-react';
+import { Plus, Filter, AlignJustify, CalendarDays, Clock, User, HardDrive, Monitor, Cpu, Edit, ListTodo, Trash, Download, Link as LinkIcon, History } from 'lucide-react';
 import { PROJECT_PHASES } from '../../constants';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
 import ProjectIssueBadge from '../common/ProjectIssueBadge';
 import { downloadICS, openGoogleCalendar } from '../../utils/calendar';
 import { exportToCSV } from '../../utils/export';
 
-const ProjectListView = memo(function ProjectListView({ projects, issues, getStatusColor, onAddClick, onManageTasks, onEditVersion, onDeleteProject, onUpdatePhase, onIssueClick, calcExp, calcAct, currentUser, t }) {
+const ProjectListView = memo(function ProjectListView({ projects, issues, getStatusColor, onAddClick, onManageTasks, onEditVersion, onChangeManager, onDeleteProject, onUpdatePhase, onIssueClick, calcExp, calcAct, currentUser, t }) {
   const [viewMode, setViewMode] = useState('list');
   const [filterManager, setFilterManager] = useState('all');
   const [openIssueDropdownId, setOpenIssueDropdownId] = useState(null);
@@ -104,7 +104,15 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, getSta
                     <ProjectPipelineStepper currentPhase={prj.phaseIndex || 0} onUpdatePhase={onUpdatePhase} projectId={prj.id} role={currentUser.role} />
                   </td>
                   <td className="px-6 py-5 whitespace-nowrap"><div className="text-sm text-slate-900">{prj.customer}</div><div className="text-xs text-slate-500">{prj.site}</div></td>
-                  <td className="px-6 py-5 whitespace-nowrap"><div className="text-sm text-slate-700 flex items-center"><User size={14} className="mr-1.5 text-slate-400" />{prj.manager || t('미지정', 'Unassigned')}</div></td>
+                  <td className="px-6 py-5 whitespace-nowrap">
+                    <div className="text-sm text-slate-700 flex items-center"><User size={14} className="mr-1.5 text-slate-400" />{prj.manager || t('미지정', 'Unassigned')}</div>
+                    {(currentUser.role === 'ADMIN' || currentUser.role === 'PM') && (
+                      <button onClick={() => onChangeManager(prj)} className="mt-1 flex items-center text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-500 hover:text-blue-600 px-2 py-1 rounded transition-all opacity-0 group-hover:opacity-100"><Edit size={10} className="mr-1" /> {t('담당자 변경', 'Change')}</button>
+                    )}
+                    {prj.managerHistory?.length > 0 && (
+                      <div className="mt-1 flex items-center text-[10px] text-slate-400"><History size={10} className="mr-1" />{t('변경', 'Changed')} {prj.managerHistory.length}{t('회', 'x')}</div>
+                    )}
+                  </td>
                   <td className="px-6 py-5 whitespace-nowrap">
                     <div className="flex flex-col space-y-1.5 text-xs text-slate-700">
                       <div className="flex items-center"><HardDrive size={14} className="mr-1.5 text-amber-500" /> <span className="font-medium">HW:</span> <span className="ml-1 bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">{prj.hwVersion || '-'}</span></div>
