@@ -10,10 +10,11 @@
 | 구분 | 기술 |
 |------|------|
 | Framework | React 19 (Create React App) |
-| UI/스타일링 | Tailwind CSS (CDN), Lucide React Icons |
+| UI/스타일링 | Tailwind CSS 3 (빌드 타임), Lucide React Icons |
 | 백엔드/DB | Google Apps Script (GAS) Web App → Google Sheets |
 | 알림 | Google Apps Script Webhook |
-| 배포 | 정적 빌드 (SPA), standalone HTML도 지원 |
+| 성능 최적화 | React.memo, React.lazy, Suspense, useCallback |
+| 배포 | 정적 빌드 (SPA) - 내부망/외부 서버 모두 가능 |
 | 언어 지원 | 한국어 / English 실시간 전환 |
 
 ---
@@ -22,20 +23,101 @@
 
 ```
 eq-pms-app/
-├── public/                  # 프로덕션 빌드 결과물
-│   ├── index.html           # 빌드된 HTML
-│   └── static/              # 빌드된 CSS/JS 번들
+├── build/                         # 프로덕션 빌드 결과물 (배포 대상)
 ├── src/
-│   ├── App.js               # ★ 전체 애플리케이션 로직 (싱글 파일, ~2,300줄)
-│   ├── App.css              # 커스텀 스타일
-│   ├── index.js             # React 엔트리포인트
-│   ├── index.html           # standalone 버전 (빌드 없이 브라우저 직접 실행 가능)
-│   └── index.css            # 글로벌 스타일
+│   ├── constants/
+│   │   └── index.js               # 전역 상수, 초기 데이터, 도메인별 태스크/체크리스트
+│   ├── utils/
+│   │   ├── api.js                 # saveToGoogleDB, notifyWebhook
+│   │   ├── calc.js                # calcExp(기대진행률), calcAct(실제진행률)
+│   │   ├── calendar.js            # downloadICS, openGoogleCalendar
+│   │   ├── export.js              # generatePDF, exportToCSV
+│   │   └── status.js              # getStatusColor (상태별 색상)
+│   ├── components/
+│   │   ├── common/                # 공통 재��용 UI (8개)
+│   │   │   ├── NavItem.js         # 사이드바 네비게이션 버튼
+│   │   │   ├── StatCard.js        # ���시보드 통계 카드
+│   │   │   ├── SimpleDonutChart.js
+│   │   │   ├── SimpleBarChart.js
+│   │   │   ├── ProjectPipelineStepper.js  # 7단계 파이프라인
+│   │   │   ├── ProjectIssueBadge.js       # 이슈 ���지 + 드롭다운
+│   │   │   ├── SignaturePad.js            # 고객 전자서명
+│   │   │   └── ModalWrapper.js            # 공통 모달 프레임
+│   │   ├── modals/                # 모달 컴포넌트 (13개)
+│   │   │   ├── ProjectModal.js
+│   │   │   ├── IssueModal.js / MobileIssueModal.js
+│   │   │   ├── PartModal.js / MobilePartModal.js
+│   │   │   ├── SiteModal.js
+│   │   │   ├── TaskModal.js       # 셋업 태스크 + 체크리스트 + 서명
+│   │   │   ├── IssueDetailModal.js
+│   │   │   ├── VersionModal.js / ReleaseModal.js
+│   │   │   ├── EngineerModal.js / DailyReportModal.js
+│   │   │   └── DeleteConfirmModal.js
+│   │   └── views/                 # 페이지 뷰 컴포넌트 (8개)
+│   │       ├── DashboardView.js
+│   │       ├── ProjectListView.js # 리스트 + 간트 차트
+│   │       ├── IssueListView.js
+│   │       ├── PartsListView.js
+│   │       ├── SiteListView.js
+│   │       ├── ResourceListView.js
+│   │       ├── VersionHistoryView.js
+│   │       └── LoginScreen.js
+│   ├── App.js                     # 메인 앱 (~300줄, 상태관리 + 라우팅)
+│   ├── App.css
+│   ├── index.js                   # React ���트리포인트
+│   └── index.css                  # Tailwind 지시문 + 글로벌 스타일
+├── tailwind.config.js
 ├── package.json
 └── README.md
 ```
 
-> `App.js` 하나에 상수, 유틸리티, UI 컴포넌트, 모달, 페이지 뷰, 메인 App이 모두 포함된 **싱글 파일 구조**
+```mermaid
+graph TD
+    App["App.js<br/>(메인 ~300줄)"]
+    
+    subgraph Constants["constants/"]
+        C1["index.js<br/>상수 + ��기데이터"]
+    end
+    
+    subgraph Utils["utils/"]
+        U1[api.js]
+        U2[calc.js]
+        U3[calendar.js]
+        U4[export.js]
+        U5[status.js]
+    end
+    
+    subgraph Common["components/common/ (8개)"]
+        CC1[NavItem]
+        CC2[StatCard]
+        CC3[Charts]
+        CC4[PipelineStepper]
+        CC5[SignaturePad]
+        CC6[ModalWrapper]
+    end
+    
+    subgraph Modals["components/modals/ (13개)"]
+        M1[ProjectModal]
+        M2[IssueModal]
+        M3[TaskModal]
+        M4[기타 10개]
+    end
+    
+    subgraph Views["components/views/ (8개)"]
+        V1[DashboardView]
+        V2[ProjectListView]
+        V3[IssueListView]
+        V4[기타 5개]
+    end
+    
+    App --> Constants
+    App --> Utils
+    App -->|lazy load| Views
+    App -->|lazy load| Modals
+    Views --> Common
+    Modals --> Common
+    Views --> Utils
+```
 
 ---
 
@@ -49,7 +131,7 @@ eq-pms-app/
     └── 모바일 현장 모드 (하단탭 + 카메라/갤러리 직접 연동)
          │
          ▼
-[React SPA (App.js)]
+[React SPA - build/ 폴더 배포]
     │
     ├── useState로 로컬 상태 관리 (프로젝트/이슈/자재/인력 등)
     │
@@ -60,7 +142,7 @@ eq-pms-app/
 
 ```mermaid
 graph LR
-    Browser[사용자 브라우저] -->|React SPA| App[App.js]
+    Browser[사용자 브라우저] -->|React SPA| App[build/ 정적 파일]
     App -->|CRUD| GAS[Google Apps Script]
     App -->|알림| Webhook[GAS Webhook]
     GAS -->|Read/Write| GSheet[(Google Sheets)]
@@ -79,7 +161,7 @@ graph LR
 | **ENGINEER** | `eng` / `1234` | 셋업 엔지니어 | 전체 메뉴 (업무 확인/이슈 등록 중심) |
 | **CUSTOMER** | `client` / `1234` | 고객사 담당자 (A전자) | 대시보드/프로젝트/이슈 열람 + Buy-off 서명만 가능 |
 
-- CUSTOMER 역할은 자재/사이트/인력/릴리즈 메뉴가 숨겨짐
+- CUSTOMER 역할은 자재/사이트/인력/릴리즈 메뉴��� 숨겨짐
 - CUSTOMER는 파이프라인 단계 변경 불가 (읽기 전용)
 
 ---
@@ -95,13 +177,13 @@ graph LR
 ### 5-2. 프로젝트 관리 (Projects)
 - 프로젝트 생성/조회/삭제 (CRUD)
 - **7단계 파이프라인 스테퍼**: 영업/수주 → 설계 → 구매/자재 → 제조/조립 → 출하 → 현장 셋업 → 완료
-- 도메인 선택 시 해당 도메인의 기본 셋업 태스크 & 체크리스트 자동 로드
+- 도메인 선��� 시 해당 도메인의 기본 셋업 태스크 & 체크리스트 자동 로드
 - **기대 진행률 vs 실제 진행률** 비교 (일정 기반 vs 태스크 완료 기반)
 - 리스트 뷰 / 간트 차트 뷰 전환
 - HW / SW / FW 버전 관리
-- ICS 캘린더 파일 다운로드 / 구글 캘린더 일정 추가
+- ICS 캘린더 파일 다운로��� / 구글 캘린더 일정 추가
 - Notion 링크 연동
-- 프로젝트별 미해결 이슈 뱃지 표시 → 클릭하면 이슈 목록 드롭다운
+- 프로젝트별 미해결 이슈 뱃지 표시 → 클릭하면 이슈 ���록 드롭다운
 
 ### 5-3. 이슈/펀치 관리 (Issues)
 - 이슈 등록 (심각도: High / Medium / Low)
@@ -203,7 +285,7 @@ graph LR
     │  모든 항목 확인 후 고객 서명 (SignaturePad)
     ▼
 [완료]
-    │  Buy-off Report PDF 자동 생성 및 인쇄
+    │  Buy-off Report PDF 자동 생성 ��� 인쇄
     │  프로젝트 상태 "완료"로 전환
     └  CSV 데이터 내보내기 가능
 ```
@@ -242,22 +324,140 @@ flowchart TD
 
 ---
 
-## 9. App.js 내부 코드 구성 (6개 섹션)
+## 9. 리팩토링 상세 (v2.0)
 
-| 섹션 | 라인 범위 | 내용 |
-|------|----------|------|
-| **1. 전역 상수/데이터** | 1~101 | PROJECT_PHASES, MOCK_USERS, DOMAIN_TASKS (도메인별 셋업 태스크), DOMAIN_CHECKLIST (도메인별 검수표) |
-| **2. 유틸리티 함수** | 104~230 | getStatusColor, calcExp(기대진행률), calcAct(실제진행률), downloadICS, openGoogleCalendar, generatePDF, exportToCSV |
-| **3. 공통 UI 컴포넌트** | 232~418 | NavItem, StatCard, SimpleDonutChart, SimpleBarChart, ProjectPipelineStepper, ProjectIssueBadge, SignaturePad |
-| **4. 모달 래퍼** | 419~455 | ModalWrapper (공통 모달 프레임) |
-| **5. 개별 모달** | 456~806 | ProjectModal, SiteModal, IssueModal, PartModal, DailyReportModal, VersionModal, ReleaseModal, EngineerModal |
-| **6. 페이지 뷰 + 메인** | 807~2319 | DashboardView, ProjectListView(리스트+간트), IssueListView, PartsListView, SiteListView, ResourceListView, VersionHistoryView, LoginScreen, MobileIssueModal, MobilePartModal, DeleteConfirmModal, **App (export default)** |
+### Before → After
+
+| 항목 | Before (v1) | After (v2) |
+|------|-------------|------------|
+| **App.js** | 2,300줄 싱글 파일 | ~300줄 (상태관리 + 라우팅만) |
+| **파일 수** | 1개 (App.js) | **30개+** (역할별 분리) |
+| **Tailwind** | CDN 런타임 로드 + tailwindReady 체크 | 빌드 타임 (tree-shaking 적용) |
+| **컴포넌트 렌더링** | 매번 전체 리렌더링 | React.memo로 불필요한 렌더링 차단 |
+| **코드 로딩** | 한 번에 전�� 로드 | React.lazy + Suspense (지연 로딩) |
+| **State 업데이트** | 직접 참조 `setX(data)` | 함수형 `setX(prev => ...)` |
+
+### 최적화 기법 요약
+
+```mermaid
+graph TB
+    subgraph Structure["코드 구조 최적화"]
+        S1["싱글 파일 2,300줄<br/>→ 30개+ 파일 분리"]
+        S2["constants/ : 전역 상수"]
+        S3["utils/ : 유틸리티 함수"]
+        S4["components/common/ : 재사용 UI"]
+        S5["components/modals/ : 모달 13개"]
+        S6["components/views/ : 페이지 뷰 8개"]
+    end
+
+    subgraph Performance["렌더링 성능 최적화"]
+        P1["React.memo<br/>모든 컴포넌트에 적용"]
+        P2["React.lazy + Suspense<br/>뷰/모달 지연 로딩"]
+        P3["useCallback<br/>핸들러 함수 안정화"]
+        P4["함수형 state 업데이트<br/>prev => ...prev"]
+    end
+
+    subgraph Deploy["배포 최적화"]
+        D1["Tailwind CDN 제거<br/>→ 빌드 타임 CSS"]
+        D2["tailwindReady 체크 제거"]
+        D3["tree-shaking 적용<br/>미사용 CSS 자동 제거"]
+        D4["코드 스플리팅<br/>chunk 파일 자동 분할"]
+    end
+```
 
 ---
 
-## 10. Google Apps Script 연동
+## 10. 내부망 배포 가이드
 
-`App.js`의 `GAS_URL`에 웹앱 URL을 설정하면 모든 CRUD가 Google Sheets에 자동 동기화됨.
+이 앱은 **정적 SPA(Single Page Application)**이므로, 빌드 결과물(`build/` 폴더)을 웹서버에 올리기만 하면 됩니다.
+
+### 방법 1: 가장 간단 - build 폴더 직접 공유
+
+```bash
+# 1. 빌드
+npm run build
+
+# 2. build/ 폴더를 내부 공유 드라이브나 서��에 복사
+# 3. build/index.html을 브라우저로 열면 바로 실행됨
+```
+
+- `build/index.html` 파일을 더블클릭하면 로컬에서 바로 실행 가능
+- `package.json`의 `"homepage": "."` 설정 덕분에 상대 경로로 동작
+
+### 방법 2: 내부 웹서버 (Nginx / Apache / IIS)
+
+**Nginx 예시:**
+```nginx
+server {
+    listen 80;
+    server_name eq-pms.internal.company.com;
+    root /var/www/eq-pms/build;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+```
+
+**IIS (Windows 서버) 예시:**
+1. IIS에 새 사이트 추가
+2. 실제 경로를 `build/` 폴더로 지정
+3. `web.config` 파일을 `build/` 폴더에 추가:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <system.webServer>
+    <rewrite>
+      <rules>
+        <rule name="SPA" stopProcessing="true">
+          <match url=".*" />
+          <conditions logicalGrouping="MatchAll">
+            <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />
+            <add input="{REQUEST_FILENAME}" matchType="IsDirectory" negate="true" />
+          </conditions>
+          <action type="Rewrite" url="/index.html" />
+        </rule>
+      </rules>
+    </rewrite>
+  </system.webServer>
+</configuration>
+```
+
+### 방법 3: Node.js serve (간이 서버)
+
+```bash
+# serve 패키지로 간이 배포
+npx serve -s build -l 3000
+
+# 내부망 PC에서 접속
+# http://서버IP:3000
+```
+
+### 방법 4: Docker
+
+```dockerfile
+FROM nginx:alpine
+COPY build/ /usr/share/nginx/html/
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+```
+
+### 배포 체크리스트
+
+| 확인 항목 | 설명 |
+|----------|------|
+| `npm run build` 성공 | `build/` 폴더 생성 확인 |
+| Google Apps Script URL | `src/constants/index.js`의 GAS_URL이 올바른지 확인 |
+| HTTPS 여부 | 카메라 기능(모바일 이슈 등록)은 HTTPS 환경에서만 동작 |
+| 브라우저 호환 | Chrome / Edge 최신 버전 권장 |
+
+---
+
+## 11. Google Apps Script 연동
+
+`src/constants/index.js`의 `GAS_URL`에 웹앱 URL을 설정하면 모든 CRUD가 Google Sheets에 자동 동기화됨.
 
 ### 동작 방식
 1. 사용자가 UI에서 데이터 변경 (생성/수정/삭제)
@@ -283,7 +483,7 @@ flowchart TD
 
 ---
 
-## 11. 실행 방법
+## 12. 실행 방법
 
 ```bash
 # 의존성 설치
@@ -294,6 +494,7 @@ npm start
 
 # 프로덕션 빌드
 npm run build
-```
 
-`src/index.html`을 브라우저에서 직접 열면 빌드 없이도 standalone으로 실행 가능 (Babel 인라인 트랜스파일 방식).
+# 간이 배포 서��� (내부망)
+npx serve -s build -l 3000
+```
