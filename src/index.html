@@ -1,0 +1,1564 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EQ-PMS 통합 관리 시스템</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        /* 모바일 모드 애니메이션 */
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        .expand-down { animation: expandDown 0.2s ease-out forwards; transform-origin: top; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes expandDown { from { opacity: 0; transform: scaleY(0.95); } to { opacity: 1; transform: scaleY(1); } }
+        /* 모바일 스크롤 부드럽게 */
+        .scroll-smooth { -webkit-overflow-scrolling: touch; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useEffect, useRef } = React;
+
+        const PROJECT_PHASES = ['영업/수주', '설계', '구매/자재', '제조/조립', '출하', '현장 셋업', '완료'];
+        const ISSUE_PHASES = ['이슈 확인', '조치 진행 중', '조치 완료'];
+
+        function App() {
+            const [activeTab, setActiveTab] = useState('dashboard');
+            const [isMobileMode, setIsMobileMode] = useState(false);
+            
+            const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
+            const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
+            const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+            const [selectedProjectId, setSelectedProjectId] = useState(null);
+            const [isIssueDetailModalOpen, setIsIssueDetailModalOpen] = useState(false);
+            const [selectedIssue, setSelectedIssue] = useState(null);
+            
+            const [isVersionModalOpen, setIsVersionModalOpen] = useState(false);
+            const [versionEditProject, setVersionEditProject] = useState(null);
+
+            const [isReleaseModalOpen, setIsReleaseModalOpen] = useState(false);
+            const [isDailyReportOpen, setIsDailyReportOpen] = useState(false);
+
+            const [projectToDelete, setProjectToDelete] = useState(null);
+            const [issueToDelete, setIssueToDelete] = useState(null);
+            const [releaseToDelete, setReleaseToDelete] = useState(null);
+
+            // --- [추가] 모바일 프로젝트 카드 아코디언 상태 ---
+            const [expandedMobileProjectId, setExpandedMobileProjectId] = useState(null);
+
+            // ❗ 구글 스크립트 웹앱 URL 입력
+            const GAS_URL = "여기에_스크립트_웹앱_URL을_입력하세요"; 
+            const [isLoading, setIsLoading] = useState(false);
+            const [syncError, setSyncError] = useState('');
+            const [toastMessage, setToastMessage] = useState('');
+
+            const isGasConfigured = GAS_URL.startsWith("http");
+            const TODAY = new Date('2026-04-03');
+
+            const DEFAULT_TASKS = [
+                { id: 1, name: '장비 입고 및 자리 배치', isCompleted: false },
+                { id: 2, name: '유틸리티 (PCW, Power, Gas) 훅업', isCompleted: false },
+                { id: 3, name: '전원 인가 (Power Turn-on) 및 I/O 체크', isCompleted: false },
+                { id: 4, name: '소프트웨어 셋업 및 통신 (SECS/GEM) 테스트', isCompleted: false },
+                { id: 5, name: '공정(Process) 테스트 및 최적화', isCompleted: false },
+                { id: 6, name: '최종 검수 (Buy-off) 및 인수인계', isCompleted: false },
+            ];
+
+            const [projects, setProjects] = useState([
+                { id: 'PRJ-2026-001', name: 'A사 텍사스 Fab 신규 셋업', customer: 'A전자', site: 'US-Texas Fab2', startDate: '2026-03-01', dueDate: '2026-06-30', status: '진행중', manager: '김철수 PM', hwVersion: 'Rev.A', swVersion: 'v2.1.0', fwVersion: '1.05.00', phaseIndex: 5, tasks: [{ id: 1, name: '장비 입고 및 자리 배치', isCompleted: true }, { id: 2, name: '유틸리티 (PCW, Power, Gas) 훅업', isCompleted: true }, { id: 3, name: '전원 인가 (Power Turn-on) 및 I/O 체크', isCompleted: true }, { id: 4, name: '소프트웨어 셋업 및 통신 (SECS/GEM) 테스트', isCompleted: false }, { id: 5, name: '공정(Process) 테스트 및 최적화', isCompleted: false }, { id: 6, name: '최종 검수 (Buy-off) 및 인수인계', isCompleted: false }]},
+                { id: 'PRJ-2026-002', name: 'B사 평택 라인 장비 개조', customer: 'B반도체', site: 'KR-Pyeongtaek P3', startDate: '2026-01-15', dueDate: '2026-04-15', status: '마감임박', manager: '이영희 책임', hwVersion: 'Rev.B (Mod)', swVersion: 'v1.8.4', fwVersion: '1.04.12', phaseIndex: 5, tasks: [{ id: 1, name: '장비 입고 및 자리 배치', isCompleted: true }, { id: 2, name: '유틸리티 (PCW, Power, Gas) 훅업', isCompleted: true }, { id: 3, name: '전원 인가 (Power Turn-on) 및 I/O 체크', isCompleted: true }, { id: 4, name: '소프트웨어 셋업 및 통신 (SECS/GEM) 테스트', isCompleted: true }, { id: 5, name: '공정(Process) 테스트 및 최적화', isCompleted: true }, { id: 6, name: '최종 검수 (Buy-off) 및 인수인계', isCompleted: false }]}
+            ]);
+
+            const [issues, setIssues] = useState([
+                { id: 'ISS-001', projectId: 'PRJ-2026-001', projectName: 'A사 텍사스 Fab 신규 셋업', title: '파워 케이블 스펙 변경 필요', severity: 'Medium', status: '조치 진행 중', date: '2026-04-02', author: '이셋업 선임', comments: [{ id: 1, author: '박구매 책임', text: '대체 케이블 스펙 확인하여 현지 발주 넣었습니다.', date: '2026-04-03 09:30' }], photo: null },
+                { id: 'ISS-002', projectId: 'PRJ-2026-002', projectName: 'B사 평택 라인 장비 개조', title: '소프트웨어 통신 에러 (SECS/GEM)', severity: 'High', status: '조치 완료', date: '2026-03-28', author: '박제어 책임', comments: [] },
+            ]);
+
+            const [releases, setReleases] = useState([
+                { id: 'REL-001', type: 'SW', version: 'v2.1.0', date: '2026-04-01', author: '최개발 선임', description: 'SECS/GEM 통신 에러 수정' },
+            ]);
+
+            useEffect(() => {
+                if (isGasConfigured) fetchDataFromGoogle();
+            }, [isGasConfigured]);
+
+            const fetchDataFromGoogle = async () => {
+                if (!isGasConfigured) return;
+                setIsLoading(true);
+                try {
+                    const response = await fetch(`${GAS_URL}?timestamp=${new Date().getTime()}`);
+                    const data = await response.json();
+                    if (data.projects && data.projects.length > 0) setProjects(data.projects);
+                    if (data.issues && data.issues.length > 0) setIssues(data.issues);
+                    if (data.releases && data.releases.length > 0) setReleases(data.releases);
+                } catch (error) {
+                    console.error("데이터 로드 실패:", error);
+                    setSyncError('구글 서버에서 데이터를 불러오지 못했습니다.');
+                    setTimeout(() => setSyncError(''), 5000);
+                } finally { setIsLoading(false); }
+            };
+
+            const syncToGoogle = async (action, payload) => {
+                if (!isGasConfigured) return;
+                try {
+                    await fetch(GAS_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: action, data: payload }) });
+                } catch (error) {
+                    console.error("서버 동기화 실패:", error);
+                    setSyncError('데이터 저장에 실패했습니다.');
+                    setTimeout(() => setSyncError(''), 5000);
+                }
+            };
+
+            const generateUniqueId = (prefix) => {
+                const randomNum = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+                return `${prefix}-${Date.now().toString().slice(-6)}-${randomNum}`;
+            };
+
+            const handleAddRelease = async (newRelease) => {
+                const releaseWithId = { ...newRelease, id: generateUniqueId('REL'), date: TODAY.toISOString().split('T')[0] };
+                const newData = [releaseWithId, ...releases];
+                setReleases(newData); setIsReleaseModalOpen(false); setIsLoading(true);
+                await syncToGoogle('UPDATE_RELEASES', newData); setIsLoading(false);
+            };
+
+            const handleAddProject = async (newProject) => {
+                const projectWithId = { ...newProject, id: generateUniqueId('PRJ'), tasks: [...DEFAULT_TASKS] };
+                const newData = [projectWithId, ...projects];
+                setProjects(newData); setIsProjectModalOpen(false); setIsLoading(true);
+                await syncToGoogle('UPDATE_PROJECTS', newData); setIsLoading(false);
+            };
+
+            const handleUpdatePhase = async (projectId, newPhaseIndex) => {
+                const newData = projects.map(p => p.id === projectId ? { ...p, phaseIndex: newPhaseIndex, status: newPhaseIndex === 6 ? '완료' : (p.status === '완료' ? '진행중' : p.status) } : p);
+                setProjects(newData); syncToGoogle('UPDATE_PROJECTS', newData);
+            };
+
+            const handleDeleteProject = async () => {
+                if (!projectToDelete) return;
+                const newProjects = projects.filter(p => p.id !== projectToDelete.id);
+                setProjects(newProjects);
+                const newIssues = issues.filter(i => i.projectId !== projectToDelete.id);
+                setIssues(newIssues);
+                setProjectToDelete(null); setIsLoading(true);
+                await syncToGoogle('UPDATE_PROJECTS', newProjects); await syncToGoogle('UPDATE_ISSUES', newIssues); setIsLoading(false);
+            };
+
+            const handleAddIssue = async (newIssue) => {
+                const selectedProject = projects.find(p => p.id === newIssue.projectId);
+                const issueWithDetails = {
+                    ...newIssue,
+                    id: generateUniqueId('ISS'),
+                    projectName: selectedProject ? selectedProject.name : '알 수 없는 프로젝트',
+                    date: TODAY.toISOString().split('T')[0],
+                    status: '이슈 확인',
+                    comments: []
+                };
+                const newData = [issueWithDetails, ...issues];
+                setIssues(newData); setIsIssueModalOpen(false); syncToGoogle('UPDATE_ISSUES', newData);
+                
+                if (isMobileMode) {
+                    setToastMessage('현장 이슈가 성공적으로 등록되었습니다.');
+                    setTimeout(() => setToastMessage(''), 3000);
+                }
+            };
+            
+            const handleDeleteIssue = async () => {
+                if (!issueToDelete) return;
+                const newIssues = issues.filter(i => i.id !== issueToDelete.id);
+                setIssues(newIssues); setIssueToDelete(null); setIsLoading(true);
+                await syncToGoogle('UPDATE_ISSUES', newIssues); setIsLoading(false);
+            };
+
+            const handleAddComment = async (issueId, text) => {
+                const newData = issues.map(issue => {
+                    if (issue.id === issueId) {
+                        return { ...issue, comments: [...(issue.comments || []), { id: Date.now(), author: '김철수 PM (본사)', text: text, date: new Date().toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }] };
+                    } return issue;
+                });
+                setIssues(newData); syncToGoogle('UPDATE_ISSUES', newData);
+            };
+
+            const handleUpdateIssueStatus = async (issueId, newStatus) => {
+                const newData = issues.map(i => i.id === issueId ? { ...i, status: newStatus } : i);
+                setIssues(newData); syncToGoogle('UPDATE_ISSUES', newData);
+            };
+
+            const handleAddDailyReport = async (reportData) => {
+                setIsDailyReportOpen(false);
+                setToastMessage('일일 현장 보고서가 제출되었습니다.');
+                setTimeout(() => setToastMessage(''), 3000);
+            };
+
+            const calcExp = (startDate, dueDate) => {
+                const start = new Date(startDate); const due = new Date(dueDate);
+                if (TODAY < start) return 0; if (TODAY > due) return 100;
+                return Math.round(((TODAY.getTime() - start.getTime()) / (due.getTime() - start.getTime())) * 100);
+            };
+
+            const calcAct = (tasks) => {
+                if (!tasks || tasks.length === 0) return 0;
+                return Math.round((tasks.filter(t => t.isCompleted).length / tasks.length) * 100);
+            };
+
+            const toggleTaskCompletion = (projectId, taskId) => {
+                const newData = projects.map(p => p.id === projectId ? { ...p, tasks: p.tasks.map(t => t.id === taskId ? { ...t, isCompleted: !t.isCompleted } : t) } : p);
+                setProjects(newData); syncToGoogle('UPDATE_PROJECTS', newData);
+            };
+
+            const handleAddTask = (projectId, taskName) => {
+                const newData = projects.map(p => {
+                    if (p.id === projectId) {
+                        const newTask = { id: Date.now(), name: taskName, isCompleted: false, delayReason: '' };
+                        return { ...p, tasks: [...p.tasks, newTask] };
+                    }
+                    return p;
+                });
+                setProjects(newData); syncToGoogle('UPDATE_PROJECTS', newData);
+            };
+
+            const handleEditTaskName = (projectId, taskId, newName) => {
+                if (!newName.trim()) return;
+                const newData = projects.map(p => {
+                    if (p.id === projectId) {
+                        const updatedTasks = p.tasks.map(t => t.id === taskId ? { ...t, name: newName.trim() } : t);
+                        return { ...p, tasks: updatedTasks };
+                    }
+                    return p;
+                });
+                setProjects(newData); syncToGoogle('UPDATE_PROJECTS', newData);
+            };
+
+            const handleDeleteTask = (projectId, taskId) => {
+                const newData = projects.map(p => {
+                    if (p.id === projectId) {
+                        const updatedTasks = p.tasks.filter(t => t.id !== taskId);
+                        return { ...p, tasks: updatedTasks };
+                    }
+                    return p;
+                });
+                setProjects(newData); syncToGoogle('UPDATE_PROJECTS', newData);
+            };
+
+            const handleUpdateDelayReason = (projectId, taskId, reason) => {
+                const newData = projects.map(p => {
+                    if (p.id === projectId) {
+                        const updatedTasks = p.tasks.map(t => t.id === taskId ? { ...t, delayReason: reason } : t);
+                        return { ...p, tasks: updatedTasks };
+                    }
+                    return p;
+                });
+                setProjects(newData); syncToGoogle('UPDATE_PROJECTS', newData);
+            };
+
+            const getStatusColor = (status) => {
+                switch(status) {
+                    case '완료': return 'bg-green-100 text-green-800'; case '진행중': return 'bg-blue-100 text-blue-800'; case '마감임박': return 'bg-yellow-100 text-yellow-800';
+                    case '조치 완료': return 'bg-emerald-100 text-emerald-800'; case '조치 진행 중': return 'bg-indigo-100 text-indigo-800'; case '이슈 확인': return 'bg-amber-100 text-amber-800';
+                    case 'High': return 'bg-red-100 text-red-800'; case 'Medium': return 'bg-yellow-100 text-yellow-800'; case 'Low': return 'bg-green-100 text-green-800';
+                    default: return 'bg-gray-100 text-gray-800';
+                }
+            };
+
+            const renderToast = () => {
+                if (!toastMessage) return null;
+                return (
+                    <div className="fixed top-16 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full shadow-2xl z-[300] flex items-center fade-in w-max font-bold text-sm">
+                        <i className="fa-solid fa-circle-check mr-2 text-emerald-400"></i>
+                        {toastMessage}
+                    </div>
+                );
+            };
+
+            // ==============================================
+            // 📱 모바일 현장 전용 뷰 (Mobile View)
+            // ==============================================
+            if (isMobileMode) {
+                return (
+                    <div className="flex flex-col h-screen bg-slate-100 font-sans text-slate-800 fade-in">
+                        {renderToast()}
+                        
+                        {/* Mobile Header */}
+                        <div className="bg-slate-900 text-white p-4 shadow-md flex justify-between items-center sticky top-0 z-20 shrink-0">
+                            <div className="flex items-center space-x-2">
+                                <div className="w-8 h-8 bg-blue-500 rounded flex items-center justify-center font-bold text-lg">E</div>
+                                <div><h1 className="font-bold text-sm leading-tight">EQ-PMS</h1><p className="text-[10px] text-blue-300">현장 엔지니어 모드</p></div>
+                            </div>
+                            <button onClick={() => setIsMobileMode(false)} className="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-full border border-slate-600 transition-colors shadow-sm">
+                                <i className="fa-solid fa-desktop mr-1"></i> PC화면
+                            </button>
+                        </div>
+
+                        {/* Mobile Content */}
+                        <div className="flex-1 overflow-y-auto scroll-smooth p-4 pb-24 space-y-4">
+                            {/* Action Buttons */}
+                            <div className="grid grid-cols-2 gap-3 mb-6">
+                                <button onClick={() => setIsIssueModalOpen(true)} className="bg-red-500 hover:bg-red-600 text-white rounded-2xl p-4 flex flex-col items-center justify-center shadow-md transition-transform active:scale-95">
+                                    <i className="fa-solid fa-camera text-2xl mb-2"></i>
+                                    <span className="font-bold text-sm">이슈/불량 등록</span>
+                                </button>
+                                <button onClick={() => setIsDailyReportOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white rounded-2xl p-4 flex flex-col items-center justify-center shadow-md transition-transform active:scale-95">
+                                    <i className="fa-solid fa-clipboard-check text-2xl mb-2"></i>
+                                    <span className="font-bold text-sm">일일 보고 작성</span>
+                                </button>
+                            </div>
+
+                            {/* Assigned Projects (Mobile) - 개선된 아코디언 UI 적용 */}
+                            <div>
+                                <h2 className="text-sm font-bold text-slate-500 mb-3 ml-1">나의 배정 현장 (진행중)</h2>
+                                <div className="space-y-3">
+                                    {projects.filter(p => p.status !== '완료').map(prj => {
+                                        const isExpanded = expandedMobileProjectId === prj.id;
+                                        
+                                        return (
+                                            <div key={prj.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all">
+                                                {/* 항상 보이는 요약 영역 */}
+                                                <div className="p-4" onClick={() => setExpandedMobileProjectId(isExpanded ? null : prj.id)}>
+                                                    <div className="flex justify-between items-start mb-2">
+                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${getStatusColor(prj.status)}`}>{prj.status}</span>
+                                                        <span className="text-[10px] text-slate-400"><i className="fa-solid fa-building mr-1"></i>{prj.customer}</span>
+                                                    </div>
+                                                    <h3 className="font-bold text-slate-800 text-base leading-tight mb-1">{prj.name}</h3>
+                                                    <p className="text-xs text-slate-500 mb-3">{prj.site}</p>
+                                                    
+                                                    <div className="flex justify-between items-center text-xs mb-1">
+                                                        <span className="font-medium text-slate-500">셋업 진척도</span>
+                                                        <span className="font-bold text-blue-600">{calcAct(prj.tasks)}%</span>
+                                                    </div>
+                                                    <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                                        <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${calcAct(prj.tasks)}%` }}></div>
+                                                    </div>
+                                                </div>
+
+                                                {/* 더보기 버튼 */}
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); setExpandedMobileProjectId(isExpanded ? null : prj.id); }}
+                                                    className="w-full bg-slate-50 border-t border-slate-100 text-slate-400 text-xs py-2 hover:bg-slate-100 transition-colors"
+                                                >
+                                                    {isExpanded ? <span><i className="fa-solid fa-chevron-up mr-1"></i>접기</span> : <span><i className="fa-solid fa-chevron-down mr-1"></i>상세 정보 보기</span>}
+                                                </button>
+
+                                                {/* 펼쳐지는 상세 정보 영역 */}
+                                                {isExpanded && (
+                                                    <div className="p-4 border-t border-slate-100 bg-slate-50 expand-down space-y-4">
+                                                        {/* 1. 기간 및 버전 */}
+                                                        <div>
+                                                            <div className="text-xs text-slate-600 flex items-center mb-2 font-medium">
+                                                                <i className="fa-regular fa-clock mr-1.5 text-slate-400"></i> {prj.startDate} ~ {prj.dueDate}
+                                                            </div>
+                                                            <div className="flex space-x-2 text-[10px]">
+                                                                <span className="bg-white px-2 py-1 rounded text-slate-600 border border-slate-200"><strong className="text-amber-500 mr-1">HW</strong>{prj.hwVersion}</span>
+                                                                <span className="bg-white px-2 py-1 rounded text-slate-600 border border-slate-200"><strong className="text-blue-500 mr-1">SW</strong>{prj.swVersion}</span>
+                                                                <span className="bg-white px-2 py-1 rounded text-slate-600 border border-slate-200"><strong className="text-emerald-500 mr-1">FW</strong>{prj.fwVersion}</span>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* 2. 파이프라인 (가로 스크롤 가능하게) */}
+                                                        <div>
+                                                            <span className="text-xs font-bold text-slate-500 mb-2 flex items-center">
+                                                                현재 업무 단계: <span className="ml-1 text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">{PROJECT_PHASES[prj.phaseIndex || 0]}</span>
+                                                            </span>
+                                                            <div className="overflow-x-auto pb-1 scroll-smooth">
+                                                                <ProjectPipelineStepper currentPhase={prj.phaseIndex || 0} onUpdatePhase={handleUpdatePhase} projectId={prj.id} />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* 3. 세부일정 및 이슈보기 액션 */}
+                                                        <div className="flex space-x-2 pt-2">
+                                                            <button onClick={(e) => { e.stopPropagation(); setSelectedProjectId(prj.id); setIsTaskModalOpen(true); }} className="flex-1 bg-blue-100 hover:bg-blue-200 text-blue-700 py-2.5 rounded-lg text-sm font-bold transition-colors shadow-sm">
+                                                                <i className="fa-solid fa-list-check mr-1.5"></i> 세부일정 및 이슈
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Mobile Bottom Nav */}
+                        <div className="bg-white border-t border-slate-200 flex justify-around p-3 fixed bottom-0 w-full z-20 pb-safe shrink-0">
+                            <button className="flex flex-col items-center text-blue-600">
+                                <i className="fa-solid fa-house text-lg mb-1"></i><span className="text-[10px] font-bold">홈</span>
+                            </button>
+                            <button onClick={() => { setActiveTab('issues'); setIsMobileMode(false); }} className="flex flex-col items-center text-slate-400 hover:text-slate-600 transition-colors">
+                                <i className="fa-solid fa-list-check text-lg mb-1"></i><span className="text-[10px] font-bold">내 이슈</span>
+                            </button>
+                            <button className="flex flex-col items-center text-slate-400 hover:text-slate-600 transition-colors">
+                                <i className="fa-solid fa-user text-lg mb-1"></i><span className="text-[10px] font-bold">내 정보</span>
+                            </button>
+                        </div>
+
+                        {/* 모바일에서 뜨는 모달들 */}
+                        {isIssueModalOpen && <MobileIssueModal projects={projects} onClose={() => setIsIssueModalOpen(false)} onSubmit={handleAddIssue} />}
+                        {isDailyReportOpen && <DailyReportModal projects={projects} onClose={() => setIsDailyReportOpen(false)} onSubmit={handleAddDailyReport} />}
+                        {isTaskModalOpen && (
+                            <TaskModal 
+                                project={projects.find(p => p.id === selectedProjectId)}
+                                projectIssues={issues.filter(i => i.projectId === selectedProjectId)} 
+                                getStatusColor={getStatusColor}
+                                onClose={() => setIsTaskModalOpen(false)}
+                                onToggleTask={toggleTaskCompletion}
+                                onAddTask={handleAddTask} onEditTaskName={handleEditTaskName} onDeleteTask={handleDeleteTask} onUpdateDelayReason={handleUpdateDelayReason} calcAct={calcAct}
+                            />
+                        )}
+                    </div>
+                );
+            }
+
+            // ==============================================
+            // 💻 웹/PC 대시보드 뷰 (Desktop View)
+            // ==============================================
+            return (
+                <div className="flex flex-col h-screen font-sans relative fade-in">
+                    {!isGasConfigured && (
+                        <div className="bg-red-500 text-white px-4 py-2.5 text-center text-sm font-bold shadow-md z-[200]">
+                            ⚠️ 구글 연동 오류: 소스 코드 상단의 <code className="bg-red-700 px-1.5 py-0.5 rounded">GAS_URL</code>에 발급받은 웹앱 URL을 입력해주세요!
+                        </div>
+                    )}
+                    
+                    {syncError && (
+                        <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full shadow-2xl z-50 flex items-center animate-fade-in-down">
+                            <i className="fa-solid fa-circle-exclamation mr-2 text-red-400"></i>
+                            <span className="font-medium text-sm">{syncError}</span>
+                        </div>
+                    )}
+
+                    {isLoading && (
+                        <div className="absolute inset-0 bg-white/60 backdrop-blur-sm flex items-center justify-center z-[100]">
+                            <div className="bg-white p-4 rounded-xl shadow-xl flex items-center space-x-3 border border-slate-200">
+                                <div className="w-6 h-6 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                                <span className="font-bold text-slate-700">서버와 동기화 중입니다...</span>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex flex-1 overflow-hidden">
+                        <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col shrink-0">
+                            <div className="h-16 flex items-center px-6 border-b border-slate-800 shrink-0">
+                                <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center mr-3">
+                                    <span className="text-white font-bold text-lg">E</span>
+                                </div>
+                                <span className="text-white font-bold text-lg tracking-wider">EQ-PMS</span>
+                            </div>
+                            
+                            <nav className="flex-1 py-6 px-4 space-y-2 overflow-y-auto">
+                                <NavItem icon="fa-chart-line" label="대시보드" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
+                                <NavItem icon="fa-list-check" label="프로젝트 관리" active={activeTab === 'projects'} onClick={() => setActiveTab('projects')} />
+                                <NavItem icon="fa-comment-dots" label="이슈/펀치 관리" active={activeTab === 'issues'} onClick={() => setActiveTab('issues')} />
+                                <NavItem icon="fa-code-commit" label="버전 릴리즈 관리" active={activeTab === 'versions'} onClick={() => setActiveTab('versions')} />
+                            </nav>
+                        </aside>
+
+                        <main className="flex-1 flex flex-col overflow-hidden relative min-w-0">
+                            <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 z-10 shadow-sm shrink-0">
+                                <div className="flex items-center text-slate-500 bg-slate-100 px-4 py-2 rounded-lg w-96">
+                                    <i className="fa-solid fa-magnifying-glass mr-2"></i>
+                                    <input type="text" placeholder="검색..." className="bg-transparent border-none outline-none w-full text-sm" />
+                                </div>
+                                <div className="flex items-center space-x-4">
+                                    <button onClick={() => setIsMobileMode(true)} className="bg-slate-800 hover:bg-slate-700 text-white text-xs px-4 py-2 rounded-lg font-bold transition-colors flex items-center shadow-sm">
+                                        <i className="fa-solid fa-mobile-screen-button mr-2"></i>모바일 현장 모드
+                                    </button>
+                                    
+                                    <div className="flex items-center space-x-3 border-l border-slate-200 pl-4 ml-2">
+                                        <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold">PM</div>
+                                        <div className="text-sm"><p className="font-semibold text-slate-700">본사 관리자</p></div>
+                                    </div>
+                                </div>
+                            </header>
+
+                            <div className="flex-1 overflow-auto p-8">
+                                {activeTab === 'dashboard' && <DashboardView projects={projects} issues={issues} getStatusColor={getStatusColor} calcExp={calcExp} calcAct={calcAct} />}
+                                {activeTab === 'projects' && <ProjectListView projects={projects} issues={issues} getStatusColor={getStatusColor} onAddClick={() => setIsProjectModalOpen(true)} onManageTasks={(id) => { setSelectedProjectId(id); setIsTaskModalOpen(true); }} onEditVersion={() => {}} onDeleteProject={(prj) => setProjectToDelete(prj)} onUpdatePhase={handleUpdatePhase} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} calcExp={calcExp} calcAct={calcAct} />}
+                                {activeTab === 'issues' && <IssueListView issues={issues} getStatusColor={getStatusColor} onAddClick={() => setIsIssueModalOpen(true)} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} onDeleteIssue={(issue) => setIssueToDelete(issue)} />}
+                                {activeTab === 'versions' && <VersionHistoryView releases={releases} onAddClick={() => setIsReleaseModalOpen(true)} onDeleteRelease={(release) => setReleaseToDelete(release)} />}
+                            </div>
+
+                            {/* Modals */}
+                            {isProjectModalOpen && <ProjectModal onClose={() => setIsProjectModalOpen(false)} onSubmit={handleAddProject} />}
+                            {isIssueModalOpen && <IssueModal projects={projects} onClose={() => setIsIssueModalOpen(false)} onSubmit={handleAddIssue} />}
+                            {isTaskModalOpen && (
+                                <TaskModal 
+                                    project={projects.find(p => p.id === selectedProjectId)} projectIssues={issues.filter(i => i.projectId === selectedProjectId)} getStatusColor={getStatusColor} onClose={() => setIsTaskModalOpen(false)} onToggleTask={toggleTaskCompletion} onAddTask={handleAddTask} onEditTaskName={handleEditTaskName} onDeleteTask={handleDeleteTask} onUpdateDelayReason={handleUpdateDelayReason} calcAct={calcAct}
+                                />
+                            )}
+                            {isIssueDetailModalOpen && <IssueDetailModal issue={selectedIssue} issuesList={issues} onClose={() => setIsIssueDetailModalOpen(false)} onAddComment={handleAddComment} onUpdateIssueStatus={handleUpdateIssueStatus} getStatusColor={getStatusColor} />}
+                            {projectToDelete && <DeleteConfirmModal type="project" item={projectToDelete} onClose={() => setProjectToDelete(null)} onConfirm={handleDeleteProject} />}
+                            {issueToDelete && <DeleteConfirmModal type="issue" item={issueToDelete} onClose={() => setIssueToDelete(null)} onConfirm={handleDeleteIssue} />}
+                            {releaseToDelete && <DeleteConfirmModal type="release" item={releaseToDelete} onClose={() => setReleaseToDelete(null)} onConfirm={handleDeleteRelease} />}
+                        </main>
+                    </div>
+                </div>
+            );
+        }
+
+        // ==============================================
+        // 📱 모바일 전용 모달 (카메라/앨범 선택, 일일 보고)
+        // ==============================================
+
+        function MobileIssueModal({ projects, onClose, onSubmit }) {
+            const [formData, setFormData] = useState({ projectId: projects[0]?.id || '', title: '', severity: 'High', author: '박현장(본인)' });
+            const [previewUrl, setPreviewUrl] = useState(null);
+            
+            const handleImageChange = (e) => {
+                const file = e.target.files[0];
+                if (file) { setPreviewUrl(URL.createObjectURL(file)); }
+            };
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                const submissionData = { ...formData };
+                if (previewUrl) submissionData.photo = previewUrl; 
+                onSubmit(submissionData);
+            };
+
+            return (
+                <div className="fixed inset-0 bg-white z-[100] flex flex-col fade-in">
+                    <div className="bg-red-500 text-white p-4 flex justify-between items-center shadow-md shrink-0">
+                        <h2 className="text-lg font-bold"><i className="fa-solid fa-triangle-exclamation mr-2"></i>현장 이슈 등록</h2>
+                        <button onClick={onClose}><i className="fa-solid fa-xmark text-2xl"></i></button>
+                    </div>
+                    <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 flex flex-col space-y-5 pb-20">
+                        <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-2">현장 사진 첨부</label>
+                            {previewUrl ? (
+                                <div className="relative bg-slate-100 rounded-xl p-2 border border-slate-200">
+                                    <img src={previewUrl} alt="Preview" className="w-full h-48 object-contain rounded-lg shadow-sm" />
+                                    <button type="button" onClick={() => setPreviewUrl(null)} className="absolute top-4 right-4 bg-slate-900/70 text-white w-8 h-8 rounded-full shadow-md backdrop-blur-sm"><i className="fa-solid fa-xmark"></i></button>
+                                </div>
+                            ) : (
+                                <div className="flex space-x-3 w-full">
+                                    <label className="flex-1 flex flex-col items-center justify-center py-5 bg-white border border-slate-300 rounded-xl cursor-pointer text-slate-500 hover:text-red-500 shadow-sm transition-colors active:bg-slate-50">
+                                        <i className="fa-solid fa-camera text-3xl mb-2 text-slate-400"></i>
+                                        <span className="font-bold text-sm">사진 촬영</span>
+                                        <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageChange} />
+                                    </label>
+                                    <label className="flex-1 flex flex-col items-center justify-center py-5 bg-white border border-slate-300 rounded-xl cursor-pointer text-slate-500 hover:text-blue-500 shadow-sm transition-colors active:bg-slate-50">
+                                        <i className="fa-solid fa-images text-3xl mb-2 text-slate-400"></i>
+                                        <span className="font-bold text-sm">앨범 선택</span>
+                                        <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+                                    </label>
+                                </div>
+                            )}
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-1.5">진행 중인 프로젝트</label>
+                            <select required className="w-full p-3.5 border border-slate-300 rounded-xl bg-white text-base focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none" value={formData.projectId} onChange={e => setFormData({...formData, projectId: e.target.value})}>
+                                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-1.5">이슈 내용 (상세)</label>
+                            <textarea required rows="4" placeholder="발생한 불량이나 이슈를 상세히 적어주세요." className="w-full p-3.5 border border-slate-300 rounded-xl text-base resize-none focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})}></textarea>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-1.5">중요도 (본사 알림용)</label>
+                            <div className="flex space-x-2">
+                                {['High', 'Medium', 'Low'].map(level => (
+                                    <button type="button" key={level} onClick={() => setFormData({...formData, severity: level})} className={`flex-1 py-3 rounded-xl text-sm font-bold border transition-colors shadow-sm ${formData.severity === level ? (level==='High'?'bg-red-500 text-white border-red-600':level==='Medium'?'bg-amber-500 text-white border-amber-600':'bg-emerald-500 text-white border-emerald-600') : 'bg-white text-slate-500 border-slate-300'}`}>
+                                        {level}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        <div className="mt-6 pt-2">
+                            <button type="submit" className="w-full bg-red-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg active:scale-95 transition-transform flex items-center justify-center">
+                                <i className="fa-solid fa-paper-plane mr-2"></i>본사로 이슈 전송
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            );
+        }
+
+        function DailyReportModal({ projects, onClose, onSubmit }) {
+            const [formData, setFormData] = useState({
+                projectId: projects[0]?.id || '',
+                date: new Date().toISOString().split('T')[0],
+                todayWork: '',
+                tomorrowPlan: '',
+                issues: '',
+                author: '박현장(본인)'
+            });
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                onSubmit(formData);
+            };
+
+            return (
+                <div className="fixed inset-0 bg-white z-[100] flex flex-col fade-in">
+                    <div className="bg-blue-600 text-white p-4 flex justify-between items-center shadow-md shrink-0">
+                        <h2 className="text-lg font-bold"><i className="fa-solid fa-clipboard-check mr-2"></i>일일 현장 보고서</h2>
+                        <button onClick={onClose}><i className="fa-solid fa-xmark text-2xl"></i></button>
+                    </div>
+                    <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 flex flex-col space-y-4 pb-24 scroll-smooth">
+                        <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-1.5">진행 중인 프로젝트</label>
+                            <select required className="w-full p-3.5 border border-slate-300 rounded-xl bg-white text-base focus:border-blue-500 outline-none" value={formData.projectId} onChange={e => setFormData({...formData, projectId: e.target.value})}>
+                                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-1.5">작업 일자</label>
+                            <input required type="date" className="w-full p-3.5 border border-slate-300 rounded-xl text-base bg-white" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-1.5">금일 작업 내용</label>
+                            <textarea required rows="3" placeholder="오늘 진행한 셋업 및 검수 내용을 입력하세요." className="w-full p-3.5 border border-slate-300 rounded-xl text-base resize-none focus:border-blue-500 outline-none leading-relaxed" value={formData.todayWork} onChange={e => setFormData({...formData, todayWork: e.target.value})}></textarea>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-1.5">명일 작업 계획</label>
+                            <textarea required rows="2" placeholder="내일 진행할 예정인 일정을 간략히 입력하세요." className="w-full p-3.5 border border-slate-300 rounded-xl text-base resize-none focus:border-blue-500 outline-none leading-relaxed" value={formData.tomorrowPlan} onChange={e => setFormData({...formData, tomorrowPlan: e.target.value})}></textarea>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-1.5">특이사항 / 고객 요청 (선택)</label>
+                            <textarea rows="2" placeholder="이슈나 고객의 요청사항이 있다면 공유해주세요." className="w-full p-3.5 border border-slate-300 rounded-xl text-base resize-none focus:border-blue-500 outline-none leading-relaxed" value={formData.issues} onChange={e => setFormData({...formData, issues: e.target.value})}></textarea>
+                        </div>
+                        
+                        <div className="mt-6 pt-2">
+                            <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg active:scale-95 transition-transform flex items-center justify-center">
+                                <i className="fa-solid fa-paper-plane mr-2"></i>보고서 제출 (본사 공유)
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            );
+        }
+
+        // --- 일반 공통 Views (데스크탑용) ---
+        // (이하 DashboardView, ProjectListView 등은 이전 코드와 동일하여 생략 없이 전체 포함함)
+
+        function DashboardView({ projects, issues, getStatusColor, calcExp, calcAct }) {
+            const activeProjectsCount = projects.filter(p => p.status !== '완료').length;
+            const unresolvedIssuesCount = issues.filter(i => i.status !== '조치 완료').length;
+
+            return (
+                <div className="space-y-6">
+                    <div>
+                        <h1 className="text-2xl font-bold text-slate-800">대시보드</h1>
+                        <p className="text-slate-500 mt-1">전체 현황을 실시간으로 파악합니다.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <StatCard title="진행중 프로젝트" value={activeProjectsCount} icon="fa-list-check" iconColor="text-blue-500" />
+                        <StatCard title="미해결 이슈" value={unresolvedIssuesCount} icon="fa-circle-exclamation" iconColor="text-amber-500" color="border-amber-200 bg-amber-50" />
+                        <StatCard title="전체 프로젝트" value={projects.length} icon="fa-circle-check" iconColor="text-emerald-500" />
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                            <h2 className="text-lg font-bold text-slate-800 mb-4">주요 프로젝트 진척도 (계획 vs 실적)</h2>
+                            <div className="space-y-6">
+                                {projects.slice(0, 5).map(prj => {
+                                    const expected = calcExp(prj.startDate, prj.dueDate);
+                                    const actual = calcAct(prj.tasks);
+                                    const isDelayed = actual < expected;
+
+                                    return (
+                                        <div key={prj.id}>
+                                            <div className="flex justify-between items-end mb-2">
+                                                <span className="text-sm font-bold text-slate-700">
+                                                    {prj.name} <span className="text-xs font-normal text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded ml-1">{PROJECT_PHASES[prj.phaseIndex || 0]} 단계</span>
+                                                </span>
+                                                <div className="text-right">
+                                                    <span className="text-xs text-slate-500 mr-2">계획: {expected}%</span>
+                                                    <span className={`text-sm font-bold ${isDelayed ? 'text-red-600' : 'text-blue-600'}`}>실적: {actual}%</span>
+                                                </div>
+                                            </div>
+                                            <div className="relative w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                                                <div className="absolute top-0 left-0 h-3 bg-slate-300 opacity-50" style={{ width: `${expected}%` }}></div>
+                                                <div className={`absolute top-0 left-0 h-3 rounded-full transition-all duration-500 ${prj.status === '완료' ? 'bg-emerald-500' : (isDelayed ? 'bg-red-500' : 'bg-blue-600')}`} style={{ width: `${actual}%` }}></div>
+                                            </div>
+                                            {isDelayed && prj.status !== '완료' && (
+                                                <p className="text-xs text-red-500 mt-1 flex items-center"><i className="fa-solid fa-circle-exclamation mr-1"></i> 계획 대비 지연 중입니다.</p>
+                                            )}
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                            <h2 className="text-lg font-bold text-slate-800 mb-4">최근 등록된 이슈</h2>
+                            <div className="space-y-4">
+                                {issues.slice(0, 5).map(issue => (
+                                    <div key={issue.id} className="p-3 border border-slate-100 bg-slate-50 rounded-lg flex items-center">
+                                        {/* 모바일에서 등록된 사진이 있을 경우 썸네일 표시 */}
+                                        {issue.photo && (
+                                            <div className="w-12 h-12 bg-slate-200 rounded-lg mr-3 shrink-0 overflow-hidden">
+                                                <img src={issue.photo} className="w-full h-full object-cover" alt="이슈사진" />
+                                            </div>
+                                        )}
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex justify-between items-start mb-1">
+                                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${getStatusColor(issue.severity)}`}>{issue.severity}</span>
+                                                <div className="flex items-center text-xs text-slate-400"><i className="fa-regular fa-comment-dots mr-1"></i>{issue.comments?.length || 0}</div>
+                                            </div>
+                                            <p className="text-sm font-bold text-slate-800 mb-0.5 truncate">{issue.title}</p>
+                                            <p className="text-xs text-slate-500 truncate">{issue.projectName}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function ProjectPipelineStepper({ currentPhase, onUpdatePhase, projectId }) {
+            return (
+                <div className="flex items-center flex-wrap gap-y-1 mt-3">
+                    {PROJECT_PHASES.map((step, idx) => {
+                        const isCompleted = idx < currentPhase;
+                        const isCurrent = idx === currentPhase;
+                        let btnClass = 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200 hover:text-slate-600';
+                        if (isCompleted) btnClass = 'bg-indigo-500 text-white border-indigo-600 shadow-sm hover:bg-indigo-600';
+                        else if (isCurrent) btnClass = 'bg-indigo-100 text-indigo-800 border-indigo-400 font-black shadow-sm ring-1 ring-indigo-400';
+
+                        return (
+                            <div key={step} className="flex items-center">
+                                <button onClick={(e) => { e.stopPropagation(); onUpdatePhase(projectId, idx); }} className={`text-[10px] px-2 py-1 rounded border transition-all ${btnClass}`}>{step}</button>
+                                {idx < PROJECT_PHASES.length - 1 && <i className={`fa-solid fa-chevron-right mx-1 text-[10px] ${isCompleted ? 'text-indigo-500' : 'text-slate-300'}`}></i>}
+                            </div>
+                        );
+                    })}
+                </div>
+            );
+        }
+
+        function ProjectIssueBadge({ prjId, projectIssues, openIssueDropdownId, setOpenIssueDropdownId, onIssueClick, getStatusColor, isGanttView = false }) {
+            if (projectIssues.length === 0) return null;
+
+            const isOpen = openIssueDropdownId === prjId;
+            const toggleDropdown = (e) => { e.stopPropagation(); setOpenIssueDropdownId(isOpen ? null : prjId); };
+            const btnClass = isGanttView
+                ? "text-[10px] text-red-600 bg-red-50 inline-flex items-center px-1.5 py-0.5 rounded font-bold border border-red-100 hover:bg-red-100 cursor-pointer relative z-10"
+                : "px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded-full flex items-center animate-pulse hover:bg-red-200 transition-colors cursor-pointer relative z-10";
+
+            return (
+                <div className="relative">
+                    <button onClick={toggleDropdown} className={btnClass} title="클릭하여 미해결 이슈 목록 보기">
+                        <i className="fa-solid fa-circle-exclamation mr-1"></i>
+                        {isGanttView ? `이슈 ${projectIssues.length}건` : `미해결 이슈 ${projectIssues.length}건`}
+                    </button>
+
+                    {isOpen && (
+                        <React.Fragment>
+                            <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setOpenIssueDropdownId(null); }}></div>
+                            <div className="absolute left-0 mt-2 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-50 py-1 overflow-hidden" style={{minWidth: '250px'}}>
+                                <div className="px-3 py-2 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                                    <span className="text-xs font-bold text-slate-700 flex items-center">
+                                        <i className="fa-solid fa-comment-dots text-red-500 mr-1.5"></i> 연관 미해결 이슈
+                                    </span>
+                                    <i className="fa-solid fa-xmark text-slate-400 cursor-pointer hover:text-slate-600 text-lg" onClick={(e) => { e.stopPropagation(); setOpenIssueDropdownId(null); }}></i>
+                                </div>
+                                <div className="max-h-48 overflow-y-auto">
+                                    {projectIssues.map((issue, idx) => (
+                                        <div
+                                            key={`${issue.id}-${idx}`} 
+                                            onClick={(e) => { e.stopPropagation(); onIssueClick(issue); setOpenIssueDropdownId(null); }}
+                                            className="px-3 py-2 border-b border-slate-50 hover:bg-blue-50 cursor-pointer text-xs group transition-colors"
+                                        >
+                                            <div className="font-bold text-slate-800 group-hover:text-blue-600 truncate mb-1">{issue.title}</div>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-slate-500 text-[10px] flex items-center">
+                                                    <i className="fa-solid fa-user mr-1 text-[10px]"></i>{issue.author}
+                                                </span>
+                                                <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${getStatusColor(issue.severity)}`}>{issue.severity}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </React.Fragment>
+                    )}
+                </div>
+            );
+        }
+
+        function ProjectListView({ projects, issues, getStatusColor, onAddClick, onManageTasks, onEditVersion, onDeleteProject, onUpdatePhase, onIssueClick, calcExp, calcAct }) {
+            const [viewMode, setViewMode] = useState('list'); 
+            const [filterManager, setFilterManager] = useState('all');
+            const [openIssueDropdownId, setOpenIssueDropdownId] = useState(null);
+
+            const managers = ['all', ...new Set(projects.map(p => p.manager).filter(Boolean))];
+
+            const filteredProjects = useMemo(() => {
+                if (filterManager === 'all') return projects;
+                return projects.filter(p => p.manager === filterManager);
+            }, [projects, filterManager]);
+
+            const ganttRange = useMemo(() => {
+                if (filteredProjects.length === 0) return { minDate: new Date(), maxDate: new Date(), totalDays: 1 };
+                const minDate = new Date(Math.min(...filteredProjects.map(p => new Date(p.startDate))));
+                const maxDate = new Date(Math.max(...filteredProjects.map(p => new Date(p.dueDate))));
+                minDate.setDate(minDate.getDate() - 15);
+                maxDate.setDate(maxDate.getDate() + 15);
+                const totalDays = (maxDate - minDate) / (1000 * 60 * 60 * 24);
+                return { minDate, maxDate, totalDays };
+            }, [filteredProjects]);
+
+            return (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-end">
+                        <div>
+                            <h1 className="text-2xl font-bold text-slate-800">프로젝트 관리</h1>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                            <div className="flex items-center bg-white border border-slate-200 rounded-lg px-3 py-1.5 shadow-sm">
+                                <i className="fa-solid fa-filter text-slate-400 mr-2"></i>
+                                <select 
+                                    className="text-sm border-none outline-none bg-transparent text-slate-700 font-medium cursor-pointer"
+                                    value={filterManager}
+                                    onChange={(e) => setFilterManager(e.target.value)}
+                                >
+                                    <option value="all">전체 담당자</option>
+                                    {managers.filter(m => m !== 'all').map(m => (
+                                        <option key={m} value={m}>{m}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            
+                            <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+                                <button 
+                                    onClick={() => setViewMode('list')}
+                                    className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'list' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    <i className="fa-solid fa-bars mr-1.5"></i> 리스트
+                                </button>
+                                <button 
+                                    onClick={() => setViewMode('gantt')}
+                                    className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'gantt' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    <i className="fa-regular fa-calendar mr-1.5"></i> 간트차트
+                                </button>
+                            </div>
+
+                            <button onClick={onAddClick} className="flex items-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">
+                                <i className="fa-solid fa-plus mr-1"></i> 새 프로젝트 생성
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        {viewMode === 'list' ? (
+                            <table className="min-w-full divide-y divide-slate-200">
+                                <thead className="bg-slate-50">
+                                    <tr>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase w-1/3">프로젝트명 / 진행 단계</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">고객사/사이트</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">담당자</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">버전 (HW/SW/FW)</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">진척도 (계획 / 실적)</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">일정관리</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-slate-200">
+                                    {filteredProjects.map((prj) => {
+                                        const expected = calcExp(prj.startDate, prj.dueDate);
+                                        const actual = calcAct(prj.tasks);
+                                        const isDelayed = actual < expected;
+                                        const projectIssues = issues.filter(i => i.projectId === prj.id && i.status !== '조치 완료');
+
+                                        return (
+                                        <tr key={prj.id} className="hover:bg-slate-50 group">
+                                            <td className="px-6 py-5 whitespace-nowrap">
+                                                <div className="flex items-center space-x-2">
+                                                    <span className={`px-2.5 py-0.5 inline-flex text-[10px] leading-5 font-semibold rounded-full ${getStatusColor(prj.status)}`}>{prj.status}</span>
+                                                    <ProjectIssueBadge prjId={prj.id} projectIssues={projectIssues} openIssueDropdownId={openIssueDropdownId} setOpenIssueDropdownId={setOpenIssueDropdownId} onIssueClick={onIssueClick} getStatusColor={getStatusColor} />
+                                                </div>
+                                                <div className="text-sm font-bold text-slate-900 mt-1.5">{prj.name}</div>
+                                                <div className="text-xs text-slate-500 flex items-center mt-1">
+                                                    <i className="fa-regular fa-clock mr-1 text-xs"></i> {prj.startDate} ~ {prj.dueDate}
+                                                </div>
+                                                <ProjectPipelineStepper currentPhase={prj.phaseIndex || 0} onUpdatePhase={onUpdatePhase} projectId={prj.id} />
+                                            </td>
+                                            <td className="px-6 py-5 whitespace-nowrap">
+                                                <div className="text-sm text-slate-900">{prj.customer}</div>
+                                                <div className="text-xs text-slate-500">{prj.site}</div>
+                                            </td>
+                                            <td className="px-6 py-5 whitespace-nowrap">
+                                                <div className="text-sm text-slate-700 flex items-center">
+                                                    <i className="fa-solid fa-user mr-1.5 text-slate-400"></i>
+                                                    {prj.manager || '미지정'}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-5 whitespace-nowrap">
+                                                <div className="flex flex-col space-y-1.5 text-xs text-slate-700">
+                                                    <div className="flex items-center">
+                                                        <i className="fa-solid fa-hard-drive mr-1.5 text-amber-500"></i> 
+                                                        <span className="font-medium">HW:</span> <span className="ml-1 bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">{prj.hwVersion || '-'}</span>
+                                                    </div>
+                                                    <div className="flex items-center">
+                                                        <i className="fa-solid fa-desktop mr-1.5 text-blue-500"></i> 
+                                                        <span className="font-medium">SW:</span> <span className="ml-1 bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">{prj.swVersion || '-'}</span>
+                                                    </div>
+                                                    <div className="flex items-center">
+                                                        <i className="fa-solid fa-microchip mr-1.5 text-emerald-500"></i> 
+                                                        <span className="font-medium">FW:</span> <span className="ml-1 bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">{prj.fwVersion || '-'}</span>
+                                                    </div>
+                                                </div>
+                                                <button onClick={() => onEditVersion(prj)} className="mt-2 flex items-center text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-500 hover:text-blue-600 px-2 py-1 rounded transition-all opacity-0 group-hover:opacity-100">
+                                                    <i className="fa-solid fa-pen-to-square mr-1"></i> 버전 변경
+                                                </button>
+                                            </td>
+                                            <td className="px-6 py-5 whitespace-nowrap min-w-[150px]">
+                                                <div className="flex flex-col space-y-1">
+                                                    <div className="flex justify-between text-xs">
+                                                        <span className="text-slate-500">계획: {expected}%</span>
+                                                        <span className={`font-bold ${isDelayed && prj.status !== '완료' ? 'text-red-600' : 'text-blue-600'}`}>실적: {actual}%</span>
+                                                    </div>
+                                                    <div className="relative w-full bg-slate-100 rounded-full h-2.5">
+                                                        <div className="absolute top-0 left-0 h-2.5 bg-slate-300 opacity-50 rounded-full" style={{ width: `${expected}%` }}></div>
+                                                        <div className={`absolute top-0 left-0 h-2.5 rounded-full ${prj.status === '완료' ? 'bg-emerald-500' : (isDelayed ? 'bg-red-500' : 'bg-blue-600')}`} style={{ width: `${actual}%` }}></div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-5 whitespace-nowrap text-sm text-slate-500">
+                                                <div className="flex items-center space-x-2">
+                                                    <button onClick={() => onManageTasks(prj.id)} className="flex items-center text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-md border border-blue-100 transition-colors shadow-sm">
+                                                        <i className="fa-solid fa-list-ul mr-1"></i> 세부일정
+                                                    </button>
+                                                    <button onClick={() => onDeleteProject(prj)} className="flex items-center text-slate-400 hover:text-red-600 bg-white hover:bg-red-50 px-2 py-1.5 rounded-md border border-transparent hover:border-red-100 transition-colors" title="프로젝트 삭제">
+                                                        <i className="fa-solid fa-trash-can"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        )
+                                    })}
+                                </tbody>
+                            </table>
+                        ) : (
+                            <div className="p-6 overflow-x-auto">
+                                <div className="min-w-[800px]">
+                                    <div className="flex border-b border-slate-200 pb-2 mb-4 relative h-6">
+                                        <div className="absolute left-0 text-xs font-bold text-slate-400">{ganttRange.minDate.toISOString().split('T')[0]}</div>
+                                        <div className="absolute right-0 text-xs font-bold text-slate-400">{ganttRange.maxDate.toISOString().split('T')[0]}</div>
+                                        <div className="absolute left-1/2 -translate-x-1/2 text-xs font-bold text-slate-400 bg-white px-2">프로젝트 일정 타임라인</div>
+                                    </div>
+                                    <div className="space-y-4">
+                                        {filteredProjects.length === 0 ? (
+                                            <div className="text-center py-8 text-slate-400 text-sm">해당 담당자의 프로젝트가 없습니다.</div>
+                                        ) : (
+                                            filteredProjects.map((prj) => {
+                                                const pStart = new Date(prj.startDate);
+                                                const pDue = new Date(prj.dueDate);
+                                                const leftPercent = ((pStart - ganttRange.minDate) / (1000 * 60 * 60 * 24) / ganttRange.totalDays) * 100;
+                                                const widthPercent = ((pDue - pStart) / (1000 * 60 * 60 * 24) / ganttRange.totalDays) * 100;
+                                                const actual = calcAct(prj.tasks);
+                                                const projectIssues = issues.filter(i => i.projectId === prj.id && i.status !== '조치 완료');
+
+                                                return (
+                                                    <div key={prj.id} className="relative h-14 flex items-center group">
+                                                        <div className="w-1/4 pr-4 border-r border-slate-200 flex flex-col justify-center relative">
+                                                            <div className="flex justify-between items-start pr-2">
+                                                                <div className="text-sm font-bold text-slate-800 truncate" title={prj.name}>{prj.name}</div>
+                                                                <button onClick={(e) => { e.stopPropagation(); onDeleteProject(prj); }} className="text-slate-300 hover:text-red-500 transition-colors">
+                                                                    <i className="fa-solid fa-trash-can text-sm"></i>
+                                                                </button>
+                                                            </div>
+                                                            <div className="flex items-center space-x-1 mt-0.5">
+                                                                <div className="text-[10px] text-indigo-600 bg-indigo-50 inline-block px-1.5 py-0.5 rounded font-bold">
+                                                                    {PROJECT_PHASES[prj.phaseIndex || 0]} 단계
+                                                                </div>
+                                                                <ProjectIssueBadge prjId={prj.id} projectIssues={projectIssues} openIssueDropdownId={openIssueDropdownId} setOpenIssueDropdownId={setOpenIssueDropdownId} onIssueClick={onIssueClick} getStatusColor={getStatusColor} isGanttView={true} />
+                                                            </div>
+                                                            <div className="text-xs text-slate-500 flex justify-between mt-1 pr-2">
+                                                                <span>{prj.manager || '미지정'}</span>
+                                                                <span className="text-blue-600 font-bold">{actual}%</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="w-3/4 relative h-full flex items-center mx-4">
+                                                            <div className="absolute w-full h-px bg-slate-200"></div>
+                                                            <div className="absolute h-7 bg-slate-100 border border-slate-300 rounded-md overflow-hidden cursor-pointer hover:border-blue-400 hover:shadow-md transition-all" style={{ left: `${leftPercent}%`, width: `${widthPercent}%` }} onClick={() => onManageTasks(prj.id)}>
+                                                                <div className={`h-full ${prj.status === '완료' ? 'bg-emerald-400' : 'bg-blue-400'}`} style={{ width: `${actual}%` }}></div>
+                                                            </div>
+                                                            <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 text-white text-xs py-1.5 px-3 rounded-lg -top-3 z-10 pointer-events-none whitespace-nowrap shadow-lg" style={{ left: `${leftPercent}%` }}>
+                                                                {prj.startDate} ~ {prj.dueDate}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        function IssueListView({ issues, getStatusColor, onAddClick, onIssueClick, onDeleteIssue }) {
+            return (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-end">
+                        <div>
+                            <h1 className="text-2xl font-bold text-slate-800">이슈 및 펀치 관리</h1>
+                        </div>
+                        <button onClick={onAddClick} className="flex items-center bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">
+                            <i className="fa-solid fa-plus mr-1"></i> 현장 이슈 등록
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4">
+                        {issues.map((issue) => (
+                            <div key={issue.id} onClick={() => onIssueClick(issue)} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between hover:border-blue-300 hover:shadow-md transition-all cursor-pointer group relative">
+                                <div className="flex-1">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div className="flex items-center space-x-3">
+                                            <span className="text-xs font-bold text-slate-500">{issue.id}</span>
+                                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${getStatusColor(issue.severity)}`}>{issue.severity}</span>
+                                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${getStatusColor(issue.status)}`}>{issue.status}</span>
+                                        </div>
+                                        <button onClick={(e) => { e.stopPropagation(); onDeleteIssue(issue); }} className="text-slate-300 hover:text-red-500 transition-colors p-1 md:hidden">
+                                            <i className="fa-solid fa-trash-can text-lg"></i>
+                                        </button>
+                                    </div>
+                                    <div className="flex items-center">
+                                        {issue.photo && (
+                                            <div className="w-10 h-10 bg-slate-200 rounded mr-3 shrink-0 overflow-hidden">
+                                                <img src={issue.photo} className="w-full h-full object-cover" alt="이슈사진" />
+                                            </div>
+                                        )}
+                                        <h3 className="text-lg font-bold text-slate-800 mb-1 group-hover:text-blue-600 transition-colors">{issue.title}</h3>
+                                    </div>
+                                    <p className="text-sm text-slate-500 flex items-center mt-1"><i className="fa-solid fa-list-check mr-1.5"></i> {issue.projectName}</p>
+                                </div>
+                                <div className="mt-4 md:mt-0 flex flex-col md:items-end border-t md:border-t-0 md:border-l border-slate-100 pt-4 md:pt-0 md:pl-6">
+                                    <div className="flex items-center justify-between w-full md:justify-end md:w-auto">
+                                        <div className="text-sm text-slate-600 mb-1">작성자: <span className="font-medium">{issue.author}</span></div>
+                                        <button onClick={(e) => { e.stopPropagation(); onDeleteIssue(issue); }} className="text-slate-300 hover:text-red-500 transition-colors p-1 hidden md:block ml-4">
+                                            <i className="fa-solid fa-trash-can text-lg"></i>
+                                        </button>
+                                    </div>
+                                    <div className="flex items-center space-x-3 text-sm text-slate-500 mt-1">
+                                        <span>등록일: {issue.date}</span>
+                                        <div className="flex items-center text-blue-500 bg-blue-50 px-2.5 py-1 rounded-full">
+                                            <i className="fa-regular fa-comment-dots mr-1.5"></i>
+                                            <span className="font-bold">{issue.comments?.length || 0}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        function VersionHistoryView({ releases, onAddClick, onDeleteRelease }) {
+            const [filterType, setFilterType] = useState('ALL');
+            const [toastMessage, setToastMessage] = useState('');
+
+            const filteredReleases = useMemo(() => {
+                if (filterType === 'ALL') return releases;
+                return releases.filter(r => r.type === filterType);
+            }, [releases, filterType]);
+
+            const handleExportCSV = () => {
+                const headers = ['분류', '버전', '배포일자', '작성자', '릴리즈 노트(업데이트 내용)'];
+                const rows = filteredReleases.map(r => [ r.type, r.version, r.date, r.author, `"${r.description.replace(/"/g, '""')}"` ]);
+                const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.setAttribute('download', `버전_릴리즈_내역.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                showToast('엑셀(CSV) 파일이 다운로드 되었습니다.');
+            };
+
+            const handleCopyText = () => {
+                const textContent = filteredReleases.map(r => `[${r.type}] ${r.version} (${r.date} | ${r.author})\n${r.description}`).join('\n\n----------------------------------------\n\n');
+                const textArea = document.createElement("textarea");
+                textArea.value = textContent;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showToast('클립보드에 복사되었습니다.');
+            };
+
+            const showToast = (msg) => {
+                setToastMessage(msg);
+                setTimeout(() => setToastMessage(''), 3000);
+            };
+
+            const getTypeIcon = (type) => {
+                switch(type) {
+                    case 'HW': return <i className="fa-solid fa-hard-drive text-amber-500"></i>;
+                    case 'SW': return <i className="fa-solid fa-desktop text-blue-500"></i>;
+                    case 'FW': return <i className="fa-solid fa-microchip text-emerald-500"></i>;
+                    default: return <i className="fa-solid fa-tag text-slate-500"></i>;
+                }
+            };
+
+            const getTypeStyle = (type) => {
+                switch(type) {
+                    case 'HW': return 'bg-amber-50 text-amber-700 border-amber-200';
+                    case 'SW': return 'bg-blue-50 text-blue-700 border-blue-200';
+                    case 'FW': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                    default: return 'bg-slate-50 text-slate-700 border-slate-200';
+                }
+            };
+
+            return (
+                <div className="space-y-6 max-w-5xl mx-auto relative">
+                    {toastMessage && (
+                        <div className="fixed top-20 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full shadow-2xl z-50 flex items-center animate-fade-in-down">
+                            <i className="fa-solid fa-circle-check mr-2 text-emerald-400"></i>
+                            <span className="font-medium text-sm">{toastMessage}</span>
+                        </div>
+                    )}
+
+                    <div className="flex justify-between items-end">
+                        <div>
+                            <h1 className="text-2xl font-bold text-slate-800">버전 릴리즈 관리</h1>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            <div className="flex bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden mr-2">
+                                <button onClick={handleCopyText} className="flex items-center px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-600 border-r border-slate-200 transition-colors">
+                                    <i className="fa-solid fa-copy mr-1.5"></i> 복사
+                                </button>
+                                <button onClick={handleExportCSV} className="flex items-center px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-emerald-600 transition-colors">
+                                    <i className="fa-solid fa-download mr-1.5"></i> 엑셀 다운로드
+                                </button>
+                            </div>
+                            <button onClick={onAddClick} className="flex items-center bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">
+                                <i className="fa-solid fa-plus mr-1"></i> 새 버전 배포 등록
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex space-x-2 bg-white p-1 rounded-lg border border-slate-200 inline-flex shadow-sm">
+                        {['ALL', 'HW', 'SW', 'FW'].map(type => (
+                            <button key={type} onClick={() => setFilterType(type)} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${filterType === type ? 'bg-slate-800 text-white shadow' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'}`}>
+                                {type === 'ALL' ? '전체 보기' : `${type} 릴리즈`}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 relative">
+                        <div className="absolute left-10 top-6 bottom-6 w-0.5 bg-slate-200 z-0"></div>
+                        <div className="space-y-6 relative z-10">
+                            {filteredReleases.length === 0 ? (
+                                <div className="text-center py-10 text-slate-500">등록된 릴리즈 내역이 없습니다.</div>
+                            ) : (
+                                filteredReleases.map((release) => (
+                                    <div key={release.id} className="flex items-start group">
+                                        <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center shrink-0 mt-1 bg-white ${getTypeStyle(release.type).replace('text-', 'border-').split(' ')[0]} ${getTypeStyle(release.type).split(' ')[1]}`}>
+                                            {getTypeIcon(release.type)}
+                                        </div>
+                                        <div className="ml-6 flex-1">
+                                            <div className={`border rounded-xl p-5 transition-shadow hover:shadow-md ${getTypeStyle(release.type).split(' ')[0]} bg-opacity-30`}>
+                                                <div className="flex justify-between items-start mb-3">
+                                                    <div className="flex items-center space-x-3">
+                                                        <span className={`px-2.5 py-1 rounded text-xs font-black border ${getTypeStyle(release.type)}`}>{release.type}</span>
+                                                        <h3 className="text-lg font-black text-slate-800 tracking-wide">{release.version}</h3>
+                                                    </div>
+                                                    <div className="flex items-start space-x-4">
+                                                        <div className="text-right">
+                                                            <div className="text-sm font-bold text-slate-600 flex items-center justify-end"><i className="fa-regular fa-calendar mr-1.5 text-slate-400"></i> {release.date}</div>
+                                                            <div className="text-xs text-slate-500 mt-1 flex items-center justify-end"><i className="fa-solid fa-user mr-1"></i> {release.author}</div>
+                                                        </div>
+                                                        <button onClick={() => onDeleteRelease(release)} className="text-slate-300 hover:text-red-500 transition-colors pt-0.5"><i className="fa-solid fa-trash-can text-lg"></i></button>
+                                                    </div>
+                                                </div>
+                                                <div className="bg-white p-4 rounded-lg border border-slate-100 mt-2">
+                                                    <h4 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center"><i className="fa-solid fa-file-lines mr-1"></i> Update Notes</h4>
+                                                    <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{release.description}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // --- Modals ---
+
+        function DeleteConfirmModal({ type, item, onClose, onConfirm }) {
+            if (!item) return null;
+
+            let title = '';
+            let itemName = '';
+            let desc = null;
+
+            if (type === 'project') {
+                title = '프로젝트를 삭제하시겠습니까?'; itemName = item.name; desc = <span className="text-red-500">모든 이슈 내역이 함께 영구 삭제</span>;
+            } else if (type === 'issue') {
+                title = '이슈를 삭제하시겠습니까?'; itemName = item.title; desc = <span className="text-red-500">등록된 진행 상황과 코멘트가 영구 삭제</span>;
+            } else if (type === 'release') {
+                title = '버전 릴리즈 노트를 삭제하시겠습니까?'; itemName = `[${item.type}] ${item.version}`; desc = <span className="text-red-500">해당 릴리즈 내역이 영구 삭제</span>;
+            }
+
+            return (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden p-6 text-center border border-slate-200">
+                        <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-red-100">
+                            <i className="fa-solid fa-circle-exclamation text-3xl"></i>
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-800 mb-2">{title}</h3>
+                        <p className="text-sm text-slate-500 mb-6 leading-relaxed">
+                            선택하신 <strong className="text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded">{itemName}</strong> 항목과<br/>{desc}됩니다.<br/>이 작업은 되돌릴 수 없습니다.
+                        </p>
+                        <div className="flex space-x-3">
+                            <button onClick={onClose} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-xl transition-colors">취소</button>
+                            <button onClick={onConfirm} className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl transition-colors shadow-sm">네, 삭제합니다</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function ProjectModal({ onClose, onSubmit }) {
+            const [formData, setFormData] = useState({ name: '', customer: '', site: '', startDate: '', dueDate: '', status: '진행중', manager: '', hwVersion: '', swVersion: '', fwVersion: '', phaseIndex: 0 });
+            const handleSubmit = (e) => { e.preventDefault(); onSubmit(formData); };
+
+            return (
+                <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col">
+                        <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 shrink-0">
+                            <h2 className="text-lg font-bold text-slate-800">새 프로젝트 생성</h2>
+                            <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600"><i className="fa-solid fa-xmark text-xl"></i></button>
+                        </div>
+                        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
+                            <div><label className="block text-sm font-medium text-slate-700 mb-1">프로젝트명</label><input required type="text" className="w-full p-2 border border-slate-300 rounded-lg text-sm" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} /></div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div><label className="block text-sm font-medium text-slate-700 mb-1">고객사</label><input required type="text" className="w-full p-2 border border-slate-300 rounded-lg text-sm" value={formData.customer} onChange={e => setFormData({...formData, customer: e.target.value})} /></div>
+                                <div><label className="block text-sm font-medium text-slate-700 mb-1">사이트(지역)</label><input required type="text" className="w-full p-2 border border-slate-300 rounded-lg text-sm" value={formData.site} onChange={e => setFormData({...formData, site: e.target.value})} /></div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div><label className="block text-sm font-medium text-slate-700 mb-1">시작일</label><input required type="date" className="w-full p-2 border border-slate-300 rounded-lg text-sm" value={formData.startDate} onChange={e => setFormData({...formData, startDate: e.target.value})} /></div>
+                                <div><label className="block text-sm font-medium text-slate-700 mb-1">납기일</label><input required type="date" className="w-full p-2 border border-slate-300 rounded-lg text-sm" value={formData.dueDate} onChange={e => setFormData({...formData, dueDate: e.target.value})} /></div>
+                            </div>
+                            <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100">
+                                <label className="block text-sm font-bold text-indigo-900 mb-1">현재 진행 단계 (업무 파이프라인)</label>
+                                <select className="w-full p-2 border border-slate-300 rounded-lg text-sm font-bold text-indigo-700" value={formData.phaseIndex} onChange={e => setFormData({...formData, phaseIndex: parseInt(e.target.value)})}>
+                                    {PROJECT_PHASES.map((phase, idx) => (<option key={idx} value={idx}>{idx + 1}. {phase}</option>))}
+                                </select>
+                            </div>
+                            <div className="grid grid-cols-3 gap-4">
+                                <div><label className="block text-sm font-medium text-slate-700 mb-1">HW 리비전</label><input type="text" className="w-full p-2 border border-slate-300 rounded-lg text-sm" value={formData.hwVersion} onChange={e => setFormData({...formData, hwVersion: e.target.value})} /></div>
+                                <div><label className="block text-sm font-medium text-slate-700 mb-1">SW 버전</label><input type="text" className="w-full p-2 border border-slate-300 rounded-lg text-sm" value={formData.swVersion} onChange={e => setFormData({...formData, swVersion: e.target.value})} /></div>
+                                <div><label className="block text-sm font-medium text-slate-700 mb-1">FW 버전</label><input type="text" className="w-full p-2 border border-slate-300 rounded-lg text-sm" value={formData.fwVersion} onChange={e => setFormData({...formData, fwVersion: e.target.value})} /></div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div><label className="block text-sm font-medium text-slate-700 mb-1">담당자 (PM)</label><input required type="text" className="w-full p-2 border border-slate-300 rounded-lg text-sm" value={formData.manager} onChange={e => setFormData({...formData, manager: e.target.value})} /></div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">초기 상태</label>
+                                    <select className="w-full p-2 border border-slate-300 rounded-lg text-sm" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
+                                        <option value="진행중">진행중</option><option value="이슈발생">이슈발생</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="pt-2 flex justify-end space-x-3 pb-2">
+                                <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg">취소</button>
+                                <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg">생성하기</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        function IssueModal({ projects, onClose, onSubmit }) {
+            const [formData, setFormData] = useState({ projectId: projects[0]?.id || '', title: '', severity: 'Medium', author: '' });
+            const handleSubmit = (e) => { e.preventDefault(); onSubmit(formData); };
+
+            return (
+                <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+                        <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-red-50">
+                            <h2 className="text-lg font-bold text-red-800">본사 이슈/펀치 등록</h2>
+                            <button type="button" onClick={onClose} className="text-red-400 hover:text-red-600"><i className="fa-solid fa-xmark text-xl"></i></button>
+                        </div>
+                        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">관련 프로젝트</label>
+                                <select required className="w-full p-2 border border-slate-300 rounded-lg text-sm" value={formData.projectId} onChange={e => setFormData({...formData, projectId: e.target.value})}>
+                                    {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                </select>
+                            </div>
+                            <div><label className="block text-sm font-medium text-slate-700 mb-1">이슈 내용 (제목)</label><input required type="text" placeholder="예: 펌프 누수 발생" className="w-full p-2 border border-slate-300 rounded-lg text-sm" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} /></div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">중요도</label>
+                                    <select className="w-full p-2 border border-slate-300 rounded-lg text-sm" value={formData.severity} onChange={e => setFormData({...formData, severity: e.target.value})}>
+                                        <option value="High">High (긴급)</option><option value="Medium">Medium (보통)</option><option value="Low">Low (낮음)</option>
+                                    </select>
+                                </div>
+                                <div><label className="block text-sm font-medium text-slate-700 mb-1">작성자</label><input required type="text" className="w-full p-2 border border-slate-300 rounded-lg text-sm" value={formData.author} onChange={e => setFormData({...formData, author: e.target.value})} /></div>
+                            </div>
+                            <div className="pt-4 flex justify-end space-x-3">
+                                <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg">취소</button>
+                                <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg">등록하기</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        function TaskModal({ project, projectIssues, getStatusColor, onClose, onToggleTask, onAddTask, onEditTaskName, onDeleteTask, onUpdateDelayReason, calcAct }) {
+            const [newTaskName, setNewTaskName] = useState('');
+            const [editingTaskId, setEditingTaskId] = useState(null);
+            const [editingTaskName, setEditingTaskName] = useState('');
+
+            if (!project) return null;
+            const actualProgress = calcAct(project.tasks);
+            const handleAddNewTask = () => { if (newTaskName.trim()) { onAddTask(project.id, newTaskName.trim()); setNewTaskName(''); } };
+
+            return (
+                <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-2 md:p-4">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="px-4 md:px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-blue-50 flex-shrink-0">
+                            <div><h2 className="text-lg font-bold text-blue-800 truncate max-w-[250px] md:max-w-none">{project.name}</h2><p className="text-xs text-blue-600 mt-1">상세 관리 (세부 일정 및 연관 이슈)</p></div>
+                            <button onClick={onClose} className="text-blue-400 hover:text-blue-600 p-2"><i className="fa-solid fa-xmark text-xl"></i></button>
+                        </div>
+                        <div className="p-4 md:p-6 overflow-y-auto flex-1 scroll-smooth">
+                            <div className="flex justify-between items-center mb-4"><span className="text-sm font-bold text-slate-700">현재 실적 진척도</span><span className="text-2xl font-black text-blue-600">{actualProgress}%</span></div>
+                            <div className="space-y-3">
+                                {project.tasks.map((task, index) => (
+                                    <div key={task.id} className={`flex items-start p-3 rounded-lg border ${task.isCompleted ? 'bg-slate-50 border-slate-200' : 'bg-white border-blue-100 hover:border-blue-300'} transition-colors cursor-pointer group`} onClick={() => onToggleTask(project.id, task.id)}>
+                                        <div className="mr-3 md:mr-4 flex-shrink-0 mt-0.5">
+                                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${task.isCompleted ? 'bg-blue-500 border-blue-500' : 'border-slate-300'}`}>
+                                                {task.isCompleted && <i className="fa-solid fa-circle-check text-white text-xs"></i>}
+                                            </div>
+                                        </div>
+                                        <div className="flex-1 w-full min-w-0">
+                                            {editingTaskId === task.id ? (
+                                                <div className="flex items-center space-x-2 mb-1" onClick={(e) => e.stopPropagation()}>
+                                                    <input type="text" value={editingTaskName} onChange={(e) => setEditingTaskName(e.target.value)} className="flex-1 text-xs md:text-sm p-1.5 border border-blue-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-0" autoFocus onKeyDown={(e) => { if (e.key === 'Enter') { onEditTaskName(project.id, task.id, editingTaskName); setEditingTaskId(null); } else if (e.key === 'Escape') setEditingTaskId(null); }} />
+                                                    <button onClick={() => { onEditTaskName(project.id, task.id, editingTaskName); setEditingTaskId(null); }} className="text-[10px] md:text-xs bg-blue-600 text-white px-2 py-1.5 rounded font-bold shrink-0">저장</button>
+                                                </div>
+                                            ) : (
+                                                <div className="flex justify-between items-start">
+                                                    <p className={`text-xs md:text-sm font-medium pr-2 ${task.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>Step {index + 1}. {task.name}</p>
+                                                    <div className="opacity-100 md:opacity-0 group-hover:opacity-100 flex items-center space-x-1 shrink-0">
+                                                        {!task.isCompleted && <button onClick={(e) => { e.stopPropagation(); setEditingTaskId(task.id); setEditingTaskName(task.name); }} className="text-slate-400 hover:text-blue-500 transition-colors p-1"><i className="fa-solid fa-pen-to-square"></i></button>}
+                                                        <button onClick={(e) => { e.stopPropagation(); onDeleteTask(project.id, task.id); }} className="text-slate-400 hover:text-red-500 transition-colors p-1"><i className="fa-solid fa-trash-can"></i></button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {!task.isCompleted && <input type="text" placeholder="지연 사유 등 메모 (선택)" className="mt-2 w-full text-[10px] md:text-xs p-1.5 border border-slate-200 rounded bg-slate-50 text-slate-600 focus:outline-none focus:border-blue-400 focus:bg-white transition-colors" value={task.delayReason || ''} onChange={(e) => onUpdateDelayReason(project.id, task.id, e.target.value)} onClick={(e) => e.stopPropagation()} />}
+                                            {task.isCompleted && task.delayReason && <p className="mt-1 text-[10px] md:text-xs text-slate-400">메모: {task.delayReason}</p>}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="mt-6 pt-4 border-t border-slate-100 flex gap-2 items-center">
+                                <input type="text" placeholder="새로운 항목 입력..." className="flex-1 text-xs md:text-sm p-2.5 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500" value={newTaskName} onChange={(e) => setNewTaskName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddNewTask()} />
+                                <button onClick={handleAddNewTask} className="px-3 md:px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs md:text-sm font-bold rounded-lg transition-colors whitespace-nowrap">추가</button>
+                            </div>
+
+                            <div className="mt-8 pt-5 border-t-2 border-slate-100">
+                                <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center">
+                                    <i className="fa-solid fa-comment-dots text-red-500 mr-1.5 text-lg"></i>연관된 현장 이슈 <span className="ml-2 text-red-600 bg-red-50 px-2 py-0.5 rounded-full text-xs font-black">{projectIssues.length}</span>
+                                </h3>
+                                {projectIssues.length === 0 ? (
+                                    <div className="text-center py-4 bg-slate-50 rounded-lg border border-slate-100 text-xs text-slate-400">현재 이 프로젝트에 발생한 이슈가 없습니다.</div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {projectIssues.map(issue => (
+                                            <div key={issue.id} className="flex items-center p-3 bg-white border border-slate-200 rounded-lg shadow-sm">
+                                                {issue.photo && <div className="w-10 h-10 bg-slate-200 rounded mr-2 shrink-0 overflow-hidden"><img src={issue.photo} className="w-full h-full object-cover" /></div>}
+                                                <div className="flex flex-col flex-1 min-w-0">
+                                                    <div className="flex items-center space-x-1.5 mb-1.5">
+                                                        <span className="text-[10px] font-bold text-slate-400">{issue.id}</span>
+                                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${getStatusColor(issue.severity)}`}>{issue.severity}</span>
+                                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${getStatusColor(issue.status)}`}>{issue.status}</span>
+                                                    </div>
+                                                    <span className="text-xs md:text-sm font-bold text-slate-700 truncate">{issue.title}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        <div className="px-4 md:px-6 py-4 border-t border-slate-100 flex justify-end bg-slate-50 flex-shrink-0"><button onClick={onClose} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg">닫기</button></div>
+                    </div>
+                </div>
+            );
+        }
+
+        function IssueDetailModal({ issue, issuesList, onClose, onAddComment, onUpdateIssueStatus, getStatusColor }) {
+            const [newComment, setNewComment] = useState('');
+            const currentIssue = issuesList.find(i => i.id === issue?.id) || issue;
+            if (!currentIssue) return null;
+
+            const handleSubmit = (e) => { e.preventDefault(); if (newComment.trim()) { onAddComment(currentIssue.id, newComment.trim()); setNewComment(''); } };
+
+            return (
+                <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-2 md:p-4">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="px-4 md:px-6 py-4 md:py-5 border-b border-slate-200 flex justify-between items-start bg-slate-50 flex-shrink-0">
+                            <div className="flex-1 min-w-0 pr-4">
+                                <div className="flex items-center space-x-2 mb-2 md:mb-3">
+                                    <span className="text-[10px] md:text-xs font-bold text-slate-500">{currentIssue.id}</span>
+                                    <span className={`px-2 py-0.5 rounded text-[10px] md:text-xs font-bold ${getStatusColor(currentIssue.severity)}`}>{currentIssue.severity}</span>
+                                </div>
+                                <h2 className="text-lg md:text-xl font-bold text-slate-800 break-words leading-tight">{currentIssue.title}</h2>
+                                <p className="text-[10px] md:text-sm text-slate-500 mt-1.5 flex flex-wrap items-center gap-y-1">
+                                    <span className="flex items-center"><i className="fa-solid fa-list-check mr-1"></i> <span className="truncate max-w-[150px] md:max-w-none">{currentIssue.projectName}</span></span>
+                                    <span className="mx-1 md:mx-2">|</span> 
+                                    <span className="flex items-center"><i className="fa-solid fa-user mr-1"></i> {currentIssue.author}</span>
+                                    <span className="mx-1 md:mx-2">|</span> 
+                                    <span>{currentIssue.date}</span>
+                                </p>
+                                <div className="mt-4 pt-4 border-t border-slate-200 overflow-x-auto pb-1">
+                                    <h3 className="text-[10px] md:text-xs font-bold text-slate-500 mb-2">이슈 처리 단계</h3>
+                                    <div className="flex items-center space-x-1 bg-slate-200/50 p-1 rounded-lg inline-flex border border-slate-200 min-w-max">
+                                        {ISSUE_PHASES.map((status) => (
+                                            <button key={status} onClick={() => onUpdateIssueStatus(currentIssue.id, status)} className={`px-3 md:px-4 py-1.5 text-[10px] md:text-sm font-bold rounded-md transition-all ${currentIssue.status === status ? 'bg-white text-blue-600 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/80'}`}>
+                                                {status}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-2 shrink-0"><i className="fa-solid fa-xmark text-xl md:text-2xl"></i></button>
+                        </div>
+                        <div className="p-4 md:p-6 overflow-y-auto flex-1 bg-slate-100/50">
+                            {/* 첨부 사진 영역 */}
+                            {currentIssue.photo && (
+                                <div className="mb-6">
+                                    <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center"><i className="fa-solid fa-image text-slate-400 mr-2"></i> 첨부 사진</h3>
+                                    <img src={currentIssue.photo} className="max-h-64 rounded-lg shadow-sm border border-slate-200 object-contain" alt="현장 첨부 이미지" />
+                                </div>
+                            )}
+
+                            <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center"><i className="fa-regular fa-comment-dots text-blue-500 mr-2 text-lg"></i> 진행 상황 및 코멘트 ({currentIssue.comments?.length || 0})</h3>
+                            <div className="space-y-4">
+                                {(!currentIssue.comments || currentIssue.comments.length === 0) ? (
+                                    <div className="text-center py-10 text-slate-400 text-xs md:text-sm border-2 border-dashed border-slate-200 rounded-xl bg-slate-50">아직 등록된 진행 상황이 없습니다.</div>
+                                ) : (
+                                    currentIssue.comments.map(comment => (
+                                        <div key={comment.id} className="bg-white p-3 md:p-4 rounded-xl border border-slate-200 shadow-sm relative">
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="font-bold text-xs md:text-sm text-slate-800 flex items-center">
+                                                    <div className="w-5 h-5 md:w-6 md:h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] md:text-xs mr-2">{comment.author.charAt(0)}</div>{comment.author}
+                                                </span>
+                                                <span className="text-[10px] md:text-xs text-slate-400">{comment.date}</span>
+                                            </div>
+                                            <p className="text-xs md:text-sm text-slate-600 whitespace-pre-wrap ml-7 md:ml-8 leading-relaxed">{comment.text}</p>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                        <div className="p-3 md:p-4 border-t border-slate-200 bg-white flex-shrink-0">
+                            <form onSubmit={handleSubmit} className="flex gap-2">
+                                <input type="text" placeholder="해결 상황 입력..." className="flex-1 text-xs md:text-sm p-2.5 md:p-3 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500" value={newComment} onChange={(e) => setNewComment(e.target.value)} />
+                                <button type="submit" disabled={!newComment.trim()} className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white text-xs md:text-sm font-bold rounded-lg transition-colors flex items-center shrink-0">
+                                    <i className="fa-solid fa-paper-plane md:mr-1.5"></i> <span className="hidden md:inline">등록</span>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ... 다른 모달들은 기존과 동일하게 유지
+        function VersionModal({ project, onClose, onSubmit }) {
+            const [hwVersion, setHwVersion] = useState(project?.hwVersion || '');
+            const [swVersion, setSwVersion] = useState(project?.swVersion || '');
+            const [fwVersion, setFwVersion] = useState(project?.fwVersion || '');
+            if (!project) return null;
+            const handleSubmit = (e) => { e.preventDefault(); onSubmit(project.id, hwVersion, swVersion, fwVersion); };
+
+            return (
+                <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden">
+                        <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+                            <h2 className="text-lg font-bold text-slate-800">버전 업데이트</h2>
+                            <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><i className="fa-solid fa-xmark text-xl"></i></button>
+                        </div>
+                        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                            <div><label className="flex items-center text-sm font-medium text-slate-700 mb-1">HW 리비전</label><input type="text" className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:border-amber-500" value={hwVersion} onChange={e => setHwVersion(e.target.value)} /></div>
+                            <div><label className="flex items-center text-sm font-medium text-slate-700 mb-1">SW 버전</label><input type="text" className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:border-blue-500" value={swVersion} onChange={e => setSwVersion(e.target.value)} /></div>
+                            <div><label className="flex items-center text-sm font-medium text-slate-700 mb-1">FW 버전</label><input type="text" className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:border-emerald-500" value={fwVersion} onChange={e => setFwVersion(e.target.value)} /></div>
+                            <div className="pt-2 flex justify-end space-x-3"><button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 rounded-lg">취소</button><button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg">업데이트</button></div>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        function ReleaseModal({ onClose, onSubmit }) {
+            const [formData, setFormData] = useState({ type: 'SW', version: '', author: '', description: '' });
+            const handleSubmit = (e) => { e.preventDefault(); onSubmit(formData); };
+            return (
+                <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden">
+                        <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-indigo-50">
+                            <h2 className="text-lg font-bold text-indigo-900">새 버전 배포 등록</h2>
+                            <button onClick={onClose} className="text-indigo-400 hover:text-indigo-600"><i className="fa-solid fa-xmark text-xl"></i></button>
+                        </div>
+                        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div><label className="block text-sm font-medium text-slate-700 mb-1">분류</label><select className="w-full p-2.5 border border-slate-300 rounded-lg text-sm font-bold" value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})}><option value="SW">SW (소프트웨어)</option><option value="FW">FW (펌웨어)</option><option value="HW">HW (하드웨어)</option></select></div>
+                                <div><label className="block text-sm font-medium text-slate-700 mb-1">버전 정보</label><input required type="text" className="w-full p-2.5 border border-slate-300 rounded-lg text-sm font-bold" value={formData.version} onChange={e => setFormData({...formData, version: e.target.value})} /></div>
+                            </div>
+                            <div><label className="block text-sm font-medium text-slate-700 mb-1">작성자</label><input required type="text" className="w-full p-2.5 border border-slate-300 rounded-lg text-sm" value={formData.author} onChange={e => setFormData({...formData, author: e.target.value})} /></div>
+                            <div><label className="block text-sm font-medium text-slate-700 mb-1">릴리즈 노트</label><textarea required rows="5" className="w-full p-2.5 border border-slate-300 rounded-lg text-sm resize-none" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})}></textarea></div>
+                            <div className="pt-4 flex justify-end space-x-3"><button type="button" onClick={onClose} className="px-4 py-2.5 text-sm font-medium text-slate-600 bg-slate-100 rounded-lg">취소</button><button type="submit" className="px-4 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-lg">공유하기</button></div>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        function NavItem({ icon, label, active, onClick }) {
+            return (
+                <button onClick={onClick} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${active ? 'bg-blue-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}>
+                    <i className={`fa-solid ${icon} text-lg w-5`}></i><span className="font-medium text-sm">{label}</span>
+                </button>
+            );
+        }
+
+        function StatCard({ title, value, icon, iconColor, color = 'bg-white border-slate-200' }) {
+            return (
+                <div className={`rounded-xl border shadow-sm p-6 ${color}`}>
+                    <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-slate-600 text-sm font-bold">{title}</h3>
+                        <div className="p-2 bg-white/50 rounded-lg"><i className={`fa-solid ${icon} text-2xl ${iconColor}`}></i></div>
+                    </div>
+                    <div className="text-3xl font-black text-slate-800">{value}</div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
