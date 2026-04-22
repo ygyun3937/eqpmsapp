@@ -3,7 +3,7 @@ import { GAS_URL, WEBHOOK_URL } from '../constants';
 export const loadFromGoogleDB = async () => {
   if (!GAS_URL) return null;
   try {
-    const res = await fetch(GAS_URL + '?action=LOAD_ALL');
+    const res = await fetch(GAS_URL);
     const data = await res.json();
     return data;
   } catch (error) {
@@ -12,12 +12,12 @@ export const loadFromGoogleDB = async () => {
   }
 };
 
-export const saveToGoogleDB = async (type, payload) => {
+export const saveToGoogleDB = async (action, data) => {
   if (!GAS_URL) return;
   try {
     await fetch(GAS_URL, {
       method: 'POST',
-      body: JSON.stringify({ type: type, data: payload })
+      body: JSON.stringify({ action, data })
     });
   } catch (error) {
     console.error('구글 DB 저장 실패:', error);

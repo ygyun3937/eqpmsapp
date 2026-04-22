@@ -121,7 +121,15 @@ export default function App() {
   const generateUniqueId = (prefix) => `${prefix}-${Date.now().toString().slice(-6)}`;
   const showToast = (msg) => { setToastMessage(msg); setTimeout(() => setToastMessage(''), 3000); };
 
-  // === CRUD Handlers (useCallback for stable references) ===
+  // === 헬퍼: state 변경 후 전체 배열을 GAS에 덮어쓰기 ===
+  const syncProjects = (updated) => { setProjects(updated); saveToGoogleDB('UPDATE_PROJECTS', updated); };
+  const syncIssues = (updated) => { setIssues(updated); saveToGoogleDB('UPDATE_ISSUES', updated); };
+  const syncReleases = (updated) => { setReleases(updated); saveToGoogleDB('UPDATE_RELEASES', updated); };
+  const syncEngineers = (updated) => { setEngineers(updated); saveToGoogleDB('UPDATE_ENGINEERS', updated); };
+  const syncParts = (updated) => { setParts(updated); saveToGoogleDB('UPDATE_PARTS', updated); };
+  const syncSites = (updated) => { setSites(updated); saveToGoogleDB('UPDATE_SITES', updated); };
+
+  // === CRUD Handlers ===
 
   const handleAddProject = (newProject) => {
     const domainTasks = DOMAIN_TASKS[newProject.domain] || DOMAIN_TASKS['반도체'];
@@ -129,110 +137,93 @@ export default function App() {
     const tasks = JSON.parse(JSON.stringify(domainTasks));
     const checklist = domainChecklist.map((item, idx) => ({ ...item, id: Date.now() + idx }));
     const newData = { ...newProject, id: generateUniqueId('PRJ'), tasks, checklist, signOff: null };
-    setProjects(prev => [newData, ...prev]);
+    syncProjects([newData, ...projects]);
     setIsProjectModalOpen(false);
     showToast('프로젝트가 추가되었습니다.');
-    saveToGoogleDB('ADD_PROJECT', newData);
   };
 
   const handleUpdatePhase = (projectId, newPhaseIndex) => {
-    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, phaseIndex: newPhaseIndex, status: newPhaseIndex === 6 ? '완료' : '진행중' } : p));
-    saveToGoogleDB('UPDATE_PHASE', { projectId, phaseIndex: newPhaseIndex });
+    syncProjects(projects.map(p => p.id === projectId ? { ...p, phaseIndex: newPhaseIndex, status: newPhaseIndex === 6 ? '완료' : '진행중' } : p));
   };
 
   const handleDeleteProject = () => {
     if (!projectToDelete) return;
-    setProjects(prev => prev.filter(p => p.id !== projectToDelete.id));
-    saveToGoogleDB('DELETE_PROJECT', { projectId: projectToDelete.id });
+    syncProjects(projects.filter(p => p.id !== projectToDelete.id));
     setProjectToDelete(null);
     showToast('프로젝트가 삭제되었습니다.');
   };
 
   const toggleTaskCompletion = (projectId, taskId) => {
-    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, tasks: p.tasks.map(t => t.id === taskId ? { ...t, isCompleted: !t.isCompleted } : t) } : p));
-    saveToGoogleDB('TOGGLE_TASK', { projectId, taskId });
+    syncProjects(projects.map(p => p.id === projectId ? { ...p, tasks: p.tasks.map(t => t.id === taskId ? { ...t, isCompleted: !t.isCompleted } : t) } : p));
   };
 
   const handleAddTask = (projectId, taskName) => {
-    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, tasks: [...p.tasks, { id: Date.now(), name: taskName, isCompleted: false, delayReason: '' }] } : p));
-    saveToGoogleDB('ADD_TASK', { projectId, taskName });
+    syncProjects(projects.map(p => p.id === projectId ? { ...p, tasks: [...p.tasks, { id: Date.now(), name: taskName, isCompleted: false, delayReason: '' }] } : p));
   };
 
   const handleEditTaskName = (projectId, taskId, newName) => {
     if (!newName.trim()) return;
-    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, tasks: p.tasks.map(t => t.id === taskId ? { ...t, name: newName.trim() } : t) } : p));
-    saveToGoogleDB('EDIT_TASK_NAME', { projectId, taskId, newName: newName.trim() });
+    syncProjects(projects.map(p => p.id === projectId ? { ...p, tasks: p.tasks.map(t => t.id === taskId ? { ...t, name: newName.trim() } : t) } : p));
   };
 
   const handleDeleteTask = (projectId, taskId) => {
-    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, tasks: p.tasks.filter(t => t.id !== taskId) } : p));
-    saveToGoogleDB('DELETE_TASK', { projectId, taskId });
+    syncProjects(projects.map(p => p.id === projectId ? { ...p, tasks: p.tasks.filter(t => t.id !== taskId) } : p));
   };
 
   const handleUpdateDelayReason = (projectId, taskId, reason) => {
-    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, tasks: p.tasks.map(t => t.id === taskId ? { ...t, delayReason: reason } : t) } : p));
-    saveToGoogleDB('UPDATE_DELAY_REASON', { projectId, taskId, reason });
+    syncProjects(projects.map(p => p.id === projectId ? { ...p, tasks: p.tasks.map(t => t.id === taskId ? { ...t, delayReason: reason } : t) } : p));
   };
 
   const handleUpdateChecklistItem = (projectId, itemId, newStatus, newNote) => {
-    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, checklist: p.checklist.map(c => c.id === itemId ? { ...c, status: newStatus, note: newNote !== undefined ? newNote : c.note } : c) } : p));
-    saveToGoogleDB('UPDATE_CHECKLIST', { projectId, itemId, newStatus, newNote });
+    syncProjects(projects.map(p => p.id === projectId ? { ...p, checklist: p.checklist.map(c => c.id === itemId ? { ...c, status: newStatus, note: newNote !== undefined ? newNote : c.note } : c) } : p));
   };
 
   const handleLoadDefaultChecklist = (projectId) => {
-    setProjects(prev => prev.map(p => {
+    syncProjects(projects.map(p => {
       if (p.id !== projectId) return p;
       const domainChecklist = DOMAIN_CHECKLIST[p.domain] || DOMAIN_CHECKLIST['반도체'];
       return { ...p, checklist: domainChecklist.map((item, idx) => ({ ...item, id: Date.now() + idx })) };
     }));
     showToast('기본 검수표가 불러와졌습니다.');
-    saveToGoogleDB('LOAD_DEFAULT_CHECKLIST', { projectId });
   };
 
   const handleAddChecklistItem = (projectId, category, taskName) => {
     if (!taskName.trim()) return;
-    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, checklist: [...(p.checklist || []), { id: Date.now(), category: category || '일반', task: taskName.trim(), status: 'Pending', note: '' }] } : p));
-    saveToGoogleDB('ADD_CHECKLIST_ITEM', { projectId, category, taskName: taskName.trim() });
+    syncProjects(projects.map(p => p.id === projectId ? { ...p, checklist: [...(p.checklist || []), { id: Date.now(), category: category || '일반', task: taskName.trim(), status: 'Pending', note: '' }] } : p));
   };
 
   const handleDeleteChecklistItem = (projectId, itemId) => {
-    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, checklist: (p.checklist || []).filter(c => c.id !== itemId) } : p));
-    saveToGoogleDB('DELETE_CHECKLIST_ITEM', { projectId, itemId });
+    syncProjects(projects.map(p => p.id === projectId ? { ...p, checklist: (p.checklist || []).filter(c => c.id !== itemId) } : p));
   };
 
   const handleSignOff = (projectId, customerName, signatureData) => {
     const todayStr = new Date().toISOString().split('T')[0];
-    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, status: '완료', phaseIndex: 6, signOff: { signed: true, customerName, signatureData, date: todayStr } } : p));
-    showToast('최종 ��수 및 서명이 완료되었습니다!');
-    saveToGoogleDB('SIGN_OFF', { projectId, customerName, signatureData, date: todayStr });
+    syncProjects(projects.map(p => p.id === projectId ? { ...p, status: '완료', phaseIndex: 6, signOff: { signed: true, customerName, signatureData, date: todayStr } } : p));
+    showToast('최종 검수 및 서명이 완료되었습니다!');
   };
 
   const handleAddIssue = (newIssue) => {
     const selectedProject = projects.find(p => p.id === newIssue.projectId);
     const issueWithDetails = { ...newIssue, id: generateUniqueId('ISS'), projectName: selectedProject ? selectedProject.name : '알 수 없는 프로젝트', date: TODAY.toISOString().split('T')[0], status: '이슈 확인', comments: [] };
-    setIssues(prev => [issueWithDetails, ...prev]);
+    syncIssues([issueWithDetails, ...issues]);
     setIsIssueModalOpen(false);
     const targetEmail = newIssue.alertEmail ? newIssue.alertEmail : '기본 담당자(default@company.com)';
     notifyWebhook(`신규 이슈 등록: [${issueWithDetails.projectName}] ${issueWithDetails.title} (수신자: ${targetEmail})`, 'ISSUE');
     showToast(`이슈 등록 완료. [${targetEmail}]로 알림이 전송되었습니다.`);
-    saveToGoogleDB('ADD_ISSUE', issueWithDetails);
   };
 
   const handleAddComment = (issueId, text) => {
     const commentData = { id: Date.now(), author: currentUser.name, text, date: new Date().toLocaleString() };
-    setIssues(prev => prev.map(issue => issue.id === issueId ? { ...issue, comments: [...(issue.comments || []), commentData] } : issue));
-    saveToGoogleDB('ADD_COMMENT', { issueId, commentData });
+    syncIssues(issues.map(issue => issue.id === issueId ? { ...issue, comments: [...(issue.comments || []), commentData] } : issue));
   };
 
   const handleUpdateIssueStatus = (issueId, newStatus) => {
-    setIssues(prev => prev.map(i => i.id === issueId ? { ...i, status: newStatus } : i));
-    saveToGoogleDB('UPDATE_ISSUE_STATUS', { issueId, status: newStatus });
+    syncIssues(issues.map(i => i.id === issueId ? { ...i, status: newStatus } : i));
   };
 
   const handleDeleteIssue = () => {
     if (!issueToDelete) return;
-    setIssues(prev => prev.filter(i => i.id !== issueToDelete.id));
-    saveToGoogleDB('DELETE_ISSUE', { issueId: issueToDelete.id });
+    syncIssues(issues.filter(i => i.id !== issueToDelete.id));
     setIssueToDelete(null);
     showToast(t('이슈가 삭제되었습니다.', 'Issue deleted.'));
   };
@@ -240,78 +231,68 @@ export default function App() {
   const handleAddPart = (newPart) => {
     const selectedProject = projects.find(p => p.id === newPart.projectId);
     const partWithDetails = { ...newPart, id: generateUniqueId('PRT'), projectName: selectedProject ? selectedProject.name : t('알 수 없는 프로젝트', 'Unknown Project'), date: TODAY.toISOString().split('T')[0], status: '청구' };
-    setParts(prev => [partWithDetails, ...prev]);
+    syncParts([partWithDetails, ...parts]);
     setIsPartModalOpen(false);
     showToast(t('자재 청구가 접수되었습니다.', 'Part request submitted.'));
-    saveToGoogleDB('ADD_PART', partWithDetails);
   };
 
   const handleDeletePart = () => {
     if (!partToDelete) return;
-    setParts(prev => prev.filter(p => p.id !== partToDelete.id));
-    saveToGoogleDB('DELETE_PART', { partId: partToDelete.id });
+    syncParts(parts.filter(p => p.id !== partToDelete.id));
     setPartToDelete(null);
     showToast(t('자재 청구 내역이 삭제되었습니다.', 'Part request deleted.'));
   };
 
   const handleUpdatePartStatus = (partId, newStatus) => {
-    setParts(prev => prev.map(p => p.id === partId ? { ...p, status: newStatus } : p));
-    saveToGoogleDB('UPDATE_PART_STATUS', { partId, newStatus });
+    syncParts(parts.map(p => p.id === partId ? { ...p, status: newStatus } : p));
   };
 
   const handleAddSite = (newSite) => {
     const newSiteData = selectedSite ? { ...newSite, id: selectedSite.id, date: selectedSite.date } : { ...newSite, id: generateUniqueId('SIT'), date: TODAY.toISOString().split('T')[0] };
-    setSites(prev => selectedSite ? prev.map(s => s.id === selectedSite.id ? newSiteData : s) : [newSiteData, ...prev]);
+    syncSites(selectedSite ? sites.map(s => s.id === selectedSite.id ? newSiteData : s) : [newSiteData, ...sites]);
     setIsSiteModalOpen(false);
     showToast(t('사이트가 업데이트되었습니다.', 'Site updated.'));
-    saveToGoogleDB(selectedSite ? 'UPDATE_SITE' : 'ADD_SITE', newSiteData);
   };
 
   const handleDeleteSite = () => {
     if (!siteToDelete) return;
-    setSites(prev => prev.filter(s => s.id !== siteToDelete.id));
-    saveToGoogleDB('DELETE_SITE', { siteId: siteToDelete.id });
+    syncSites(sites.filter(s => s.id !== siteToDelete.id));
     setSiteToDelete(null);
     showToast(t('사이트 환경 정보가 삭제되었습니다.', 'Site info deleted.'));
   };
 
   const handleAddRelease = (newRelease) => {
     const releaseData = { ...newRelease, id: generateUniqueId('REL'), date: TODAY.toISOString().split('T')[0] };
-    setReleases(prev => [releaseData, ...prev]);
+    syncReleases([releaseData, ...releases]);
     setIsReleaseModalOpen(false);
     showToast(t('릴리즈 정보가 등록되었습니다.', 'Release registered.'));
-    saveToGoogleDB('ADD_RELEASE', releaseData);
   };
 
   const handleDeleteRelease = () => {
     if (!releaseToDelete) return;
-    setReleases(prev => prev.filter(r => r.id !== releaseToDelete.id));
-    saveToGoogleDB('DELETE_RELEASE', { releaseId: releaseToDelete.id });
+    syncReleases(releases.filter(r => r.id !== releaseToDelete.id));
     setReleaseToDelete(null);
     showToast(t('버전 이력이 삭제되었습니다.', 'Release deleted.'));
   };
 
   const handleAddEngineer = (engineerData) => {
     const engData = selectedEngineer ? { ...engineerData, id: selectedEngineer.id } : { ...engineerData, id: generateUniqueId('ENG') };
-    setEngineers(prev => selectedEngineer ? prev.map(e => e.id === selectedEngineer.id ? engData : e) : [engData, ...prev]);
+    syncEngineers(selectedEngineer ? engineers.map(e => e.id === selectedEngineer.id ? engData : e) : [engData, ...engineers]);
     setIsEngineerModalOpen(false);
     showToast(t('엔지니어 정보가 업데이트되었습니다.', 'Engineer updated.'));
-    saveToGoogleDB(selectedEngineer ? 'UPDATE_ENGINEER' : 'ADD_ENGINEER', engData);
   };
 
   const handleDeleteEngineer = () => {
     if (!engineerToDelete) return;
-    setEngineers(prev => prev.filter(e => e.id !== engineerToDelete.id));
-    saveToGoogleDB('DELETE_ENGINEER', { engineerId: engineerToDelete.id });
+    syncEngineers(engineers.filter(e => e.id !== engineerToDelete.id));
     setEngineerToDelete(null);
     showToast(t('엔지니어 정보가 삭제되었습니다.', 'Engineer deleted.'));
   };
 
   const handleUpdateVersion = (projectId, hwVersion, swVersion, fwVersion) => {
-    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, hwVersion, swVersion, fwVersion } : p));
+    syncProjects(projects.map(p => p.id === projectId ? { ...p, hwVersion, swVersion, fwVersion } : p));
     setIsVersionModalOpen(false);
     showToast(t('버전이 업데이트되었습니다.', 'Version updated.'));
-    saveToGoogleDB('UPDATE_VERSION', { projectId, hwVersion, swVersion, fwVersion });
   };
 
   const handleAddDailyReport = (reportData) => {
