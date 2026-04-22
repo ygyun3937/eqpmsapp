@@ -144,7 +144,7 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                 <div className="space-y-3">
                   {projectIssues.map(issue => (
                     <div key={issue.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center">
-                      {issue.photo && <div className="w-12 h-12 bg-slate-200 rounded-lg mr-3 shrink-0 overflow-hidden"><img src={issue.photo} className="w-full h-full object-cover" alt="이슈" /></div>}
+                      {issue.photo && issue.photo !== 'null' && issue.photo.startsWith('data:') && <div className="w-12 h-12 bg-slate-200 rounded-lg mr-3 shrink-0 overflow-hidden"><img src={issue.photo} className="w-full h-full object-cover" alt="이슈" /></div>}
                       <div className="flex flex-col flex-1 min-w-0">
                         <div className="flex items-center space-x-1.5 mb-1.5">
                           <span className="text-[10px] font-bold text-slate-400">{issue.id}</span>

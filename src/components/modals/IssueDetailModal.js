@@ -37,7 +37,7 @@ const IssueDetailModal = memo(function IssueDetailModal({ issue, issuesList, onC
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-2 shrink-0"><X size={24} /></button>
         </div>
         <div className="p-4 md:p-6 overflow-y-auto flex-1 bg-slate-100/50">
-          {currentIssue.photo && (
+          {currentIssue.photo && currentIssue.photo !== 'null' && currentIssue.photo.startsWith('data:') && (
             <div className="mb-6">
               <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center"><ImageIcon size={16} className="text-slate-400 mr-2" /> {t('첨부 사진', 'Attached Photo')}</h3>
               <img src={currentIssue.photo} className="max-h-64 rounded-lg shadow-sm border border-slate-200 object-contain" alt="현장 첨부 이미지" />

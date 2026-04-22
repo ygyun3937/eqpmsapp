@@ -22,7 +22,7 @@ const IssueListView = memo(function IssueListView({ issues, getStatusColor, onAd
                 <span className={`px-2 py-0.5 rounded text-xs font-bold ${getStatusColor(issue.status)}`}>{issue.status}</span>
               </div>
               <div className="flex items-center">
-                {issue.photo && <img src={issue.photo} className="w-10 h-10 rounded mr-3 object-cover border border-slate-200" alt="이슈" />}
+                {issue.photo && issue.photo !== 'null' && issue.photo.startsWith('data:') && <img src={issue.photo} className="w-10 h-10 rounded mr-3 object-cover border border-slate-200" alt="이슈" />}
                 <h3 className="text-lg font-bold group-hover:text-blue-600 transition-colors">{issue.title}</h3>
               </div>
               <p className="text-sm text-slate-500 mt-1 flex items-center"><Kanban size={14} className="mr-1.5" /> {issue.projectName}</p>

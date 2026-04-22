@@ -50,7 +50,7 @@ const PartsListView = memo(function PartsListView({ parts, getStatusColor, onUpd
                 <tr key={part.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      {part.photo ? (
+                      {part.photo && part.photo !== 'null' && part.photo.startsWith('data:') ? (
                         <img src={part.photo} className="w-12 h-12 rounded-lg mr-4 object-cover border border-slate-200" alt="part" />
                       ) : (
                         <div className="w-12 h-12 bg-slate-100 rounded-lg mr-4 flex items-center justify-center border border-slate-200"><Package size={24} className="text-slate-300"/></div>
