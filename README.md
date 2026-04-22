@@ -384,21 +384,7 @@ npm run build
 - `build/index.html` 파일을 더블클릭하면 로컬에서 바로 실행 가능
 - `package.json`의 `"homepage": "."` 설정 덕분에 상대 경로로 동작
 
-### 방법 2: 내부 웹서버 (Nginx / Apache / IIS)
-
-**Nginx 예시:**
-```nginx
-server {
-    listen 80;
-    server_name eq-pms.internal.company.com;
-    root /var/www/eq-pms/build;
-    index index.html;
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-}
-```
+### 방법 2: 내부 웹서버 (IIS - Windows)
 
 **IIS (Windows 서버) 예시:**
 1. IIS에 새 사이트 추가
@@ -438,10 +424,12 @@ npx serve -s build -l 3000
 ### 방법 4: Docker
 
 ```dockerfile
-FROM nginx:alpine
-COPY build/ /usr/share/nginx/html/
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
+FROM node:18-alpine
+RUN npm install -g serve
+COPY build/ /app/build/
+WORKDIR /app
+EXPOSE 3000
+CMD ["serve", "-s", "build", "-l", "3000"]
 ```
 
 ### 배포 체크리스트
