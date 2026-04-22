@@ -1,5 +1,17 @@
 import { GAS_URL, WEBHOOK_URL } from '../constants';
 
+export const loadFromGoogleDB = async () => {
+  if (!GAS_URL) return null;
+  try {
+    const res = await fetch(GAS_URL + '?action=LOAD_ALL');
+    const data = await res.json();
+    return data;
+  } catch (error) {
+    console.error('구글 DB 로드 실패:', error);
+    return null;
+  }
+};
+
 export const saveToGoogleDB = async (type, payload) => {
   if (!GAS_URL) return;
   try {

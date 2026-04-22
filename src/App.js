@@ -1,4 +1,4 @@
-import React, { useState, useCallback, lazy, Suspense } from 'react';
+import React, { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import {
   LayoutDashboard, Kanban, AlertTriangle, Wrench, Database, Users,
   GitCommit, Search, Globe, Smartphone, Monitor, LogOut,
@@ -15,7 +15,7 @@ import {
 // Utils
 import { getStatusColor } from './utils/status';
 import { calcExp, calcAct } from './utils/calc';
-import { saveToGoogleDB, notifyWebhook } from './utils/api';
+import { loadFromGoogleDB, saveToGoogleDB, notifyWebhook } from './utils/api';
 
 // Common Components
 import NavItem from './components/common/NavItem';
@@ -81,6 +81,7 @@ export default function App() {
   const [siteToDelete, setSiteToDelete] = useState(null);
 
   const [toastMessage, setToastMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
   // Data states
   const [projects, setProjects] = useState(INITIAL_PROJECTS);
@@ -89,6 +90,24 @@ export default function App() {
   const [engineers, setEngineers] = useState(INITIAL_ENGINEERS);
   const [parts, setParts] = useState(INITIAL_PARTS);
   const [sites, setSites] = useState(INITIAL_SITES);
+
+  // 앱 시작 시 Google Sheets에서 데이터 불러오기
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      const data = await loadFromGoogleDB();
+      if (data) {
+        if (data.projects?.length) setProjects(data.projects);
+        if (data.issues?.length) setIssues(data.issues);
+        if (data.releases?.length) setReleases(data.releases);
+        if (data.engineers?.length) setEngineers(data.engineers);
+        if (data.parts?.length) setParts(data.parts);
+        if (data.sites?.length) setSites(data.sites);
+      }
+      setIsLoading(false);
+    };
+    fetchData();
+  }, []);
 
   // Login guard
   if (!currentUser) return (
