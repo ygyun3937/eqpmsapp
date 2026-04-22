@@ -1,4 +1,4 @@
 @echo off
 cd /d "%~dp0"
-node "%~dp0server.js"
+"C:\Program Files\nodejs\node.exe" server.js
 pause
