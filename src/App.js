@@ -7,9 +7,7 @@ import {
 
 // Constants & Initial Data
 import {
-  TODAY, DOMAIN_TASKS, DOMAIN_CHECKLIST,
-  INITIAL_PROJECTS, INITIAL_ISSUES, INITIAL_RELEASES,
-  INITIAL_ENGINEERS, INITIAL_PARTS, INITIAL_SITES
+  TODAY, DOMAIN_TASKS, DOMAIN_CHECKLIST
 } from './constants';
 
 // Utils
@@ -83,13 +81,13 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Data states
-  const [projects, setProjects] = useState(INITIAL_PROJECTS);
-  const [issues, setIssues] = useState(INITIAL_ISSUES);
-  const [releases, setReleases] = useState(INITIAL_RELEASES);
-  const [engineers, setEngineers] = useState(INITIAL_ENGINEERS);
-  const [parts, setParts] = useState(INITIAL_PARTS);
-  const [sites, setSites] = useState(INITIAL_SITES);
+  // Data states (Google Sheets에서 불러옴)
+  const [projects, setProjects] = useState([]);
+  const [issues, setIssues] = useState([]);
+  const [releases, setReleases] = useState([]);
+  const [engineers, setEngineers] = useState([]);
+  const [parts, setParts] = useState([]);
+  const [sites, setSites] = useState([]);
 
   // 앱 시작 시 Google Sheets에서 데이터 불러오기
   useEffect(() => {
@@ -97,12 +95,12 @@ export default function App() {
       setIsLoading(true);
       const data = await loadFromGoogleDB();
       if (data) {
-        if (data.projects?.length) setProjects(data.projects);
-        if (data.issues?.length) setIssues(data.issues);
-        if (data.releases?.length) setReleases(data.releases);
-        if (data.engineers?.length) setEngineers(data.engineers);
-        if (data.parts?.length) setParts(data.parts);
-        if (data.sites?.length) setSites(data.sites);
+        setProjects(data.projects || []);
+        setIssues(data.issues || []);
+        setReleases(data.releases || []);
+        setEngineers(data.engineers || []);
+        setParts(data.parts || []);
+        setSites(data.sites || []);
       }
       setIsLoading(false);
     };
