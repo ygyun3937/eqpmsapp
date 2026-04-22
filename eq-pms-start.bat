@@ -1,4 +1,4 @@
 @echo off
-cd /d "C:\eqpmsapp"
-node server.js
+cd /d "%~dp0"
+node "%~dp0server.js"
 pause
