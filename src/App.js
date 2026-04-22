@@ -7,7 +7,7 @@ import {
 
 // Constants & Initial Data
 import {
-  TODAY, DOMAIN_TASKS, DOMAIN_CHECKLIST
+  TODAY, DOMAIN_TASKS, DOMAIN_CHECKLIST, PROJECT_PHASES
 } from './constants';
 
 // Utils
@@ -121,6 +121,10 @@ export default function App() {
   const handleLogout = () => { setCurrentUser(null); setActiveTab('dashboard'); };
   const generateUniqueId = (prefix) => `${prefix}-${Date.now().toString().slice(-6)}`;
   const showToast = (msg) => { setToastMessage(msg); setTimeout(() => setToastMessage(''), 3000); };
+  const addLog = (project, type, detail) => ({
+    ...project,
+    activityLog: [...(project.activityLog || []), { date: new Date().toLocaleString(), user: currentUser.name, type, detail }]
+  });
 
   // === 헬퍼: state 변경 후 전체 배열을 GAS에 덮어쓰기 ===
   const syncProjects = (updated) => { setProjects(updated); saveToGoogleDB('UPDATE_PROJECTS', updated); };
@@ -137,14 +141,19 @@ export default function App() {
     const domainChecklist = DOMAIN_CHECKLIST[newProject.domain] || DOMAIN_CHECKLIST['반도체'];
     const tasks = JSON.parse(JSON.stringify(domainTasks));
     const checklist = domainChecklist.map((item, idx) => ({ ...item, id: Date.now() + idx }));
-    const newData = { ...newProject, id: generateUniqueId('PRJ'), tasks, checklist, signOff: null };
+    const newData = addLog({ ...newProject, id: generateUniqueId('PRJ'), tasks, checklist, signOff: null, activityLog: [], managerHistory: [] }, 'PROJECT_CREATE', `프로젝트 생성: ${newProject.name}`);
     syncProjects([newData, ...projects]);
     setIsProjectModalOpen(false);
     showToast('프로젝트가 추가되었습니다.');
   };
 
   const handleUpdatePhase = (projectId, newPhaseIndex) => {
-    syncProjects(projects.map(p => p.id === projectId ? { ...p, phaseIndex: newPhaseIndex, status: newPhaseIndex === 6 ? '완료' : '진행중' } : p));
+    syncProjects(projects.map(p => {
+      if (p.id !== projectId) return p;
+      const fromPhase = PROJECT_PHASES[p.phaseIndex || 0];
+      const toPhase = PROJECT_PHASES[newPhaseIndex];
+      return addLog({ ...p, phaseIndex: newPhaseIndex, status: newPhaseIndex === 6 ? '완료' : '진행중' }, 'PHASE_CHANGE', `${fromPhase} → ${toPhase}`);
+    }));
   };
 
   const handleDeleteProject = () => {
@@ -155,11 +164,17 @@ export default function App() {
   };
 
   const toggleTaskCompletion = (projectId, taskId) => {
-    syncProjects(projects.map(p => p.id === projectId ? { ...p, tasks: p.tasks.map(t => t.id === taskId ? { ...t, isCompleted: !t.isCompleted } : t) } : p));
+    syncProjects(projects.map(p => {
+      if (p.id !== projectId) return p;
+      const task = p.tasks.find(t => t.id === taskId);
+      if (!task) return p;
+      const updated = { ...p, tasks: p.tasks.map(t => t.id === taskId ? { ...t, isCompleted: !t.isCompleted } : t) };
+      return !task.isCompleted ? addLog(updated, 'TASK_COMPLETE', `태스크 완료: ${task.name}`) : updated;
+    }));
   };
 
   const handleAddTask = (projectId, taskName) => {
-    syncProjects(projects.map(p => p.id === projectId ? { ...p, tasks: [...p.tasks, { id: Date.now(), name: taskName, isCompleted: false, delayReason: '' }] } : p));
+    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, tasks: [...p.tasks, { id: Date.now(), name: taskName, isCompleted: false, delayReason: '' }] }, 'TASK_ADD', `태스크 추가: ${taskName}`)));
   };
 
   const handleEditTaskName = (projectId, taskId, newName) => {
@@ -168,7 +183,11 @@ export default function App() {
   };
 
   const handleDeleteTask = (projectId, taskId) => {
-    syncProjects(projects.map(p => p.id === projectId ? { ...p, tasks: p.tasks.filter(t => t.id !== taskId) } : p));
+    syncProjects(projects.map(p => {
+      if (p.id !== projectId) return p;
+      const task = p.tasks.find(t => t.id === taskId);
+      return addLog({ ...p, tasks: p.tasks.filter(t => t.id !== taskId) }, 'TASK_DELETE', `태스크 삭제: ${task?.name || ''}`);
+    }));
   };
 
   const handleUpdateDelayReason = (projectId, taskId, reason) => {
@@ -176,14 +195,20 @@ export default function App() {
   };
 
   const handleUpdateChecklistItem = (projectId, itemId, newStatus, newNote) => {
-    syncProjects(projects.map(p => p.id === projectId ? { ...p, checklist: p.checklist.map(c => c.id === itemId ? { ...c, status: newStatus, note: newNote !== undefined ? newNote : c.note } : c) } : p));
+    syncProjects(projects.map(p => {
+      if (p.id !== projectId) return p;
+      const item = p.checklist.find(c => c.id === itemId);
+      const updated = { ...p, checklist: p.checklist.map(c => c.id === itemId ? { ...c, status: newStatus, note: newNote !== undefined ? newNote : c.note } : c) };
+      if (item && item.status !== newStatus) return addLog(updated, 'CHECKLIST_CHANGE', `${item.task}: ${item.status} → ${newStatus}`);
+      return updated;
+    }));
   };
 
   const handleLoadDefaultChecklist = (projectId) => {
     syncProjects(projects.map(p => {
       if (p.id !== projectId) return p;
       const domainChecklist = DOMAIN_CHECKLIST[p.domain] || DOMAIN_CHECKLIST['반도체'];
-      return { ...p, checklist: domainChecklist.map((item, idx) => ({ ...item, id: Date.now() + idx })) };
+      return addLog({ ...p, checklist: domainChecklist.map((item, idx) => ({ ...item, id: Date.now() + idx })) }, 'CHECKLIST_CHANGE', '기본 검수표 로드');
     }));
     showToast('기본 검수표가 불러와졌습니다.');
   };
@@ -199,7 +224,7 @@ export default function App() {
 
   const handleSignOff = (projectId, customerName, signatureData) => {
     const todayStr = new Date().toISOString().split('T')[0];
-    syncProjects(projects.map(p => p.id === projectId ? { ...p, status: '완료', phaseIndex: 6, signOff: { signed: true, customerName, signatureData, date: todayStr } } : p));
+    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, status: '완료', phaseIndex: 6, signOff: { signed: true, customerName, signatureData, date: todayStr } }, 'SIGN_OFF', `고객 서명 완료: ${customerName}`)));
     showToast('최종 검수 및 서명이 완료되었습니다!');
   };
 
@@ -207,6 +232,8 @@ export default function App() {
     const selectedProject = projects.find(p => p.id === newIssue.projectId);
     const issueWithDetails = { ...newIssue, id: generateUniqueId('ISS'), projectName: selectedProject ? selectedProject.name : '알 수 없는 프로젝트', date: TODAY.toISOString().split('T')[0], status: '이슈 확인', comments: [] };
     syncIssues([issueWithDetails, ...issues]);
+    // 해당 프로젝트에 이슈 등록 이력 추가
+    syncProjects(projects.map(p => p.id !== newIssue.projectId ? p : addLog(p, 'ISSUE_ADD', `이슈 등록: ${issueWithDetails.title} (${newIssue.severity})`)));
     setIsIssueModalOpen(false);
     const targetEmail = newIssue.alertEmail ? newIssue.alertEmail : '기본 담당자(default@company.com)';
     notifyWebhook(`신규 이슈 등록: [${issueWithDetails.projectName}] ${issueWithDetails.title} (수신자: ${targetEmail})`, 'ISSUE');
@@ -233,6 +260,7 @@ export default function App() {
     const selectedProject = projects.find(p => p.id === newPart.projectId);
     const partWithDetails = { ...newPart, id: generateUniqueId('PRT'), projectName: selectedProject ? selectedProject.name : t('알 수 없는 프로젝트', 'Unknown Project'), date: TODAY.toISOString().split('T')[0], status: '청구' };
     syncParts([partWithDetails, ...parts]);
+    syncProjects(projects.map(p => p.id !== newPart.projectId ? p : addLog(p, 'PART_ADD', `자재 청구: ${newPart.partName} ${newPart.quantity}EA (${newPart.urgency})`)));
     setIsPartModalOpen(false);
     showToast(t('자재 청구가 접수되었습니다.', 'Part request submitted.'));
   };
@@ -295,15 +323,16 @@ export default function App() {
     const todayStr = new Date().toISOString().split('T')[0];
     syncProjects(projects.map(p => {
       if (p.id !== projectId) return p;
-      const historyEntry = { from: p.manager || '미지정', to: newManager, date: todayStr, reason, changedBy: currentUser.name };
-      return { ...p, manager: newManager, managerHistory: [...(p.managerHistory || []), historyEntry] };
+      const fromManager = p.manager || '미지정';
+      const historyEntry = { from: fromManager, to: newManager, date: todayStr, reason, changedBy: currentUser.name };
+      return addLog({ ...p, manager: newManager, managerHistory: [...(p.managerHistory || []), historyEntry] }, 'MANAGER_CHANGE', `${fromManager} → ${newManager}${reason ? ' (' + reason + ')' : ''}`);
     }));
     setIsManagerModalOpen(false);
     showToast(t('담당자가 변경되었습니다.', 'Manager changed.'));
   };
 
   const handleUpdateVersion = (projectId, hwVersion, swVersion, fwVersion) => {
-    syncProjects(projects.map(p => p.id === projectId ? { ...p, hwVersion, swVersion, fwVersion } : p));
+    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, hwVersion, swVersion, fwVersion }, 'VERSION_CHANGE', `HW:${hwVersion} SW:${swVersion} FW:${fwVersion}`)));
     setIsVersionModalOpen(false);
     showToast(t('버전이 업데이트되었습니다.', 'Version updated.'));
   };

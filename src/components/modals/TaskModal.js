@@ -1,5 +1,5 @@
 import React, { useState, memo } from 'react';
-import { X, ListTodo, CheckSquare, AlertTriangle, CheckCircle, User, Edit, Trash, PenTool, Info, ShieldCheck, FileText, ImageIcon } from 'lucide-react';
+import { X, ListTodo, CheckSquare, AlertTriangle, CheckCircle, User, Edit, Trash, PenTool, Info, ShieldCheck, FileText, ImageIcon, History, GitCommit as TimelineIcon, Package, Wrench, HardDrive } from 'lucide-react';
 import { PROJECT_PHASES } from '../../constants';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
 import SignaturePad from '../common/SignaturePad';
@@ -34,6 +34,7 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
           <button onClick={() => setActiveModalTab('tasks')} className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center ${activeModalTab === 'tasks' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><ListTodo size={16} className="mr-1.5" /> {t('세부 일정', 'Tasks')}</button>
           <button onClick={() => setActiveModalTab('checklist')} className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center ${activeModalTab === 'checklist' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><CheckSquare size={16} className="mr-1.5" /> {t('디지털 검수표', 'Checklist')} ({checklistCompleted}/{checklistCount})</button>
           <button onClick={() => setActiveModalTab('issues')} className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center ${activeModalTab === 'issues' ? 'border-red-600 text-red-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><AlertTriangle size={16} className="mr-1.5" /> {t('연관 이슈', 'Issues')} ({projectIssues.length})</button>
+          <button onClick={() => setActiveModalTab('history')} className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center ${activeModalTab === 'history' ? 'border-slate-600 text-slate-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><History size={16} className="mr-1.5" /> {t('활동 이력', 'History')} ({(project.activityLog || []).length})</button>
         </div>
         <div className="p-4 md:p-6 overflow-y-auto flex-1 scroll-smooth bg-slate-50">
           {activeModalTab === 'tasks' && (
@@ -156,6 +157,48 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+          {activeModalTab === 'history' && (
+            <div className="space-y-1">
+              {(!project.activityLog || project.activityLog.length === 0) ? (
+                <div className="text-center py-10 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl bg-white">{t('활동 이력이 없습니다.', 'No activity history.')}</div>
+              ) : (
+                <div className="relative">
+                  <div className="absolute left-4 top-2 bottom-2 w-0.5 bg-slate-200"></div>
+                  <div className="space-y-3">
+                    {[...project.activityLog].reverse().map((log, i) => {
+                      const typeConfig = {
+                        PROJECT_CREATE: { icon: <TimelineIcon size={14}/>, color: 'bg-blue-100 text-blue-600 border-blue-200', label: t('프로젝트 생성', 'Created') },
+                        PHASE_CHANGE: { icon: <TimelineIcon size={14}/>, color: 'bg-purple-100 text-purple-600 border-purple-200', label: t('단계 변경', 'Phase') },
+                        MANAGER_CHANGE: { icon: <User size={14}/>, color: 'bg-orange-100 text-orange-600 border-orange-200', label: t('담당자 변경', 'Manager') },
+                        TASK_COMPLETE: { icon: <CheckCircle size={14}/>, color: 'bg-emerald-100 text-emerald-600 border-emerald-200', label: t('태스크 완료', 'Task Done') },
+                        TASK_ADD: { icon: <ListTodo size={14}/>, color: 'bg-slate-100 text-slate-600 border-slate-200', label: t('태스크 추가', 'Task Add') },
+                        TASK_DELETE: { icon: <Trash size={14}/>, color: 'bg-slate-100 text-slate-500 border-slate-200', label: t('태스크 삭제', 'Task Del') },
+                        ISSUE_ADD: { icon: <AlertTriangle size={14}/>, color: 'bg-red-100 text-red-600 border-red-200', label: t('이슈 등록', 'Issue') },
+                        PART_ADD: { icon: <Package size={14}/>, color: 'bg-amber-100 text-amber-600 border-amber-200', label: t('자재 청구', 'Part') },
+                        CHECKLIST_CHANGE: { icon: <CheckSquare size={14}/>, color: 'bg-indigo-100 text-indigo-600 border-indigo-200', label: t('체크리스트', 'Checklist') },
+                        VERSION_CHANGE: { icon: <HardDrive size={14}/>, color: 'bg-slate-100 text-slate-600 border-slate-200', label: t('버전 변경', 'Version') },
+                        SIGN_OFF: { icon: <ShieldCheck size={14}/>, color: 'bg-emerald-100 text-emerald-700 border-emerald-300', label: t('Buy-off 서명', 'Sign-off') },
+                      };
+                      const cfg = typeConfig[log.type] || { icon: <Info size={14}/>, color: 'bg-slate-100 text-slate-600 border-slate-200', label: log.type };
+                      return (
+                        <div key={i} className="relative pl-10">
+                          <div className={`absolute left-2 top-3 w-5 h-5 rounded-full border flex items-center justify-center z-10 ${cfg.color}`}>{cfg.icon}</div>
+                          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                            <div className="flex justify-between items-center mb-1">
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${cfg.color}`}>{cfg.label}</span>
+                              <span className="text-[10px] text-slate-400">{log.date}</span>
+                            </div>
+                            <p className="text-sm font-bold text-slate-800">{log.detail}</p>
+                            <p className="text-xs text-slate-500 mt-1 flex items-center"><User size={10} className="mr-1"/>{log.user}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
