@@ -337,6 +337,15 @@ export default function App() {
     showToast(t('버전이 업데이트되었습니다.', 'Version updated.'));
   };
 
+  const handleAddNote = (projectId, text) => {
+    const note = { id: Date.now(), author: currentUser.name, text, date: new Date().toLocaleString() };
+    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, notes: [...(p.notes || []), note] }, 'NOTE_ADD', `공유 노트: ${text.substring(0, 30)}${text.length > 30 ? '...' : ''}`)));
+  };
+
+  const handleDeleteNote = (projectId, noteId) => {
+    syncProjects(projects.map(p => p.id !== projectId ? p : { ...p, notes: (p.notes || []).filter(n => n.id !== noteId) }));
+  };
+
   const handleAddDailyReport = (reportData) => {
     setIsDailyReportOpen(false);
     showToast(t('일일 보고서가 제출되었습니다.', 'Daily report submitted.'));
@@ -366,6 +375,7 @@ export default function App() {
     onAddChecklistItem: handleAddChecklistItem,
     onDeleteChecklistItem: handleDeleteChecklistItem,
     onUpdatePhase: handleUpdatePhase, onSignOff: handleSignOff,
+    onAddNote: handleAddNote, onDeleteNote: handleDeleteNote,
     calcAct, currentUser, t
   };
 

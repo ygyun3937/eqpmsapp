@@ -5,9 +5,10 @@ import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
 import SignaturePad from '../common/SignaturePad';
 import { generatePDF } from '../../utils/export';
 
-const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusColor, onClose, onToggleTask, onAddTask, onEditTaskName, onDeleteTask, onUpdateDelayReason, onUpdateChecklistItem, onLoadDefaultChecklist, onAddChecklistItem, onDeleteChecklistItem, onUpdatePhase, onSignOff, calcAct, currentUser, t }) {
+const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusColor, onClose, onToggleTask, onAddTask, onEditTaskName, onDeleteTask, onUpdateDelayReason, onUpdateChecklistItem, onLoadDefaultChecklist, onAddChecklistItem, onDeleteChecklistItem, onUpdatePhase, onSignOff, onAddNote, onDeleteNote, calcAct, currentUser, t }) {
   const [activeModalTab, setActiveModalTab] = useState('tasks');
   const [newTaskName, setNewTaskName] = useState('');
+  const [newNoteText, setNewNoteText] = useState('');
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [editingTaskName, setEditingTaskName] = useState('');
   const [newChecklistCategory, setNewChecklistCategory] = useState('일반');
@@ -35,6 +36,7 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
           <button onClick={() => setActiveModalTab('checklist')} className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center ${activeModalTab === 'checklist' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><CheckSquare size={16} className="mr-1.5" /> {t('디지털 검수표', 'Checklist')} ({checklistCompleted}/{checklistCount})</button>
           <button onClick={() => setActiveModalTab('issues')} className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center ${activeModalTab === 'issues' ? 'border-red-600 text-red-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><AlertTriangle size={16} className="mr-1.5" /> {t('연관 이슈', 'Issues')} ({projectIssues.length})</button>
           <button onClick={() => setActiveModalTab('history')} className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center ${activeModalTab === 'history' ? 'border-slate-600 text-slate-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><History size={16} className="mr-1.5" /> {t('활동 이력', 'History')} ({(project.activityLog || []).length})</button>
+          <button onClick={() => setActiveModalTab('notes')} className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center ${activeModalTab === 'notes' ? 'border-amber-600 text-amber-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><FileText size={16} className="mr-1.5" /> {t('공유 노트', 'Notes')} ({(project.notes || []).length})</button>
         </div>
         <div className="p-4 md:p-6 overflow-y-auto flex-1 scroll-smooth bg-slate-50">
           {activeModalTab === 'tasks' && (
@@ -182,6 +184,7 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                         CHECKLIST_CHANGE: { icon: <CheckSquare size={14}/>, color: 'bg-indigo-100 text-indigo-600 border-indigo-200', label: t('체크리스트', 'Checklist') },
                         VERSION_CHANGE: { icon: <HardDrive size={14}/>, color: 'bg-slate-100 text-slate-600 border-slate-200', label: t('버전 변경', 'Version') },
                         SIGN_OFF: { icon: <ShieldCheck size={14}/>, color: 'bg-emerald-100 text-emerald-700 border-emerald-300', label: t('Buy-off 서명', 'Sign-off') },
+                        NOTE_ADD: { icon: <FileText size={14}/>, color: 'bg-amber-100 text-amber-600 border-amber-200', label: t('공유 노트', 'Note') },
                       };
                       const cfg = typeConfig[log.type] || { icon: <Info size={14}/>, color: 'bg-slate-100 text-slate-600 border-slate-200', label: log.type };
                       return (
@@ -199,6 +202,41 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                       );
                     })}
                   </div>
+                </div>
+              )}
+            </div>
+          )}
+          {activeModalTab === 'notes' && (
+            <div className="space-y-4">
+              {currentUser.role !== 'CUSTOMER' && (
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <textarea rows="3" className="w-full text-sm p-3 border border-slate-300 rounded-lg resize-none focus:outline-none focus:border-amber-500" value={newNoteText} onChange={(e) => setNewNoteText(e.target.value)} placeholder={t('공유할 내용을 입력하세요...\n예: 고객사 담당자 요청으로 설치 위치 변경', 'Enter notes to share...')}></textarea>
+                  <div className="flex justify-end mt-2">
+                    <button onClick={() => { if (newNoteText.trim()) { onAddNote(project.id, newNoteText.trim()); setNewNoteText(''); } }} disabled={!newNoteText.trim()} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 text-white text-sm font-bold rounded-lg transition-colors flex items-center"><FileText size={14} className="mr-1.5" />{t('노트 등록', 'Add Note')}</button>
+                  </div>
+                </div>
+              )}
+              {(!project.notes || project.notes.length === 0) ? (
+                <div className="text-center py-10 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl bg-white">{t('등록된 공유 노트가 없습니다.', 'No notes yet.')}</div>
+              ) : (
+                <div className="space-y-3">
+                  {[...project.notes].reverse().map((note) => (
+                    <div key={note.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex items-center">
+                          <div className="w-7 h-7 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-xs font-bold mr-2">{note.author.charAt(0)}</div>
+                          <div>
+                            <span className="text-sm font-bold text-slate-800">{note.author}</span>
+                            <span className="text-[10px] text-slate-400 ml-2">{note.date}</span>
+                          </div>
+                        </div>
+                        {(currentUser.role === 'ADMIN' || currentUser.name === note.author) && (
+                          <button onClick={() => onDeleteNote(project.id, note.id)} className="text-slate-300 hover:text-red-500 transition-colors p-1"><Trash size={14} /></button>
+                        )}
+                      </div>
+                      <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed ml-9">{note.text}</p>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
