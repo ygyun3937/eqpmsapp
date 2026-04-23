@@ -1,5 +1,6 @@
-import React, { memo } from 'react';
-import { Kanban, AlertCircle, CheckCircle, AlertTriangle, PieChart, BarChart3, Clock, Wrench, Download } from 'lucide-react';
+import React, { useMemo, memo } from 'react';
+import { Kanban, AlertCircle, CheckCircle, AlertTriangle, PieChart, BarChart3, Clock, Wrench, Download, CalendarDays, User, Building } from 'lucide-react';
+import { PROJECT_PHASES } from '../../constants';
 import StatCard from '../common/StatCard';
 import SimpleDonutChart from '../common/SimpleDonutChart';
 import SimpleBarChart from '../common/SimpleBarChart';
@@ -78,6 +79,121 @@ const DashboardView = memo(function DashboardView({ projects, issues, engineers,
           <div className="flex-1 flex items-end"><SimpleBarChart data={projectStats} /></div>
         </div>
       </div>
+
+      {/* 전체 프로젝트 일정 타임라인 */}
+      {projects.length > 0 && (() => {
+        const sorted = [...projects].sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+        const minDate = new Date(Math.min(...sorted.map(p => new Date(p.startDate))));
+        const maxDate = new Date(Math.max(...sorted.map(p => new Date(p.dueDate))));
+        minDate.setDate(1); // 월 시작으로 맞춤
+        maxDate.setMonth(maxDate.getMonth() + 1, 0); // 월 끝으로 맞춤
+        const totalDays = (maxDate - minDate) / (1000 * 60 * 60 * 24);
+        const today = new Date();
+        const todayPercent = Math.max(0, Math.min(100, ((today - minDate) / (1000 * 60 * 60 * 24) / totalDays) * 100));
+
+        // 월별 눈금 생성
+        const months = [];
+        const cursor = new Date(minDate);
+        while (cursor <= maxDate) {
+          const pos = ((cursor - minDate) / (1000 * 60 * 60 * 24) / totalDays) * 100;
+          months.push({ label: `${cursor.getFullYear()}.${String(cursor.getMonth() + 1).padStart(2, '0')}`, pos });
+          cursor.setMonth(cursor.getMonth() + 1);
+        }
+
+        const chartLeft = '35%';
+
+        return (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+            <h2 className="text-lg font-bold text-slate-800 mb-2 flex items-center">
+              <CalendarDays size={18} className="mr-2 text-indigo-500" />
+              {t('전체 프로젝트 일정 현황', 'Project Schedule Overview')}
+            </h2>
+
+            <div className="overflow-x-auto">
+              <div className="min-w-[800px] relative">
+
+                {/* 월별 헤더 */}
+                <div className="flex h-8 border-b border-slate-200 relative" style={{ marginLeft: chartLeft }}>
+                  {months.map((m, i) => (
+                    <div key={i} className="absolute text-[10px] font-bold text-slate-500 border-l border-slate-200 pl-1 h-full flex items-end pb-1" style={{ left: `${m.pos}%` }}>{m.label}</div>
+                  ))}
+                </div>
+
+                {/* 오늘 표시선 */}
+                <div className="absolute top-0 bottom-0 w-px bg-red-400 z-10" style={{ left: `calc(${chartLeft} + ${todayPercent}% * 0.65)` }}>
+                  <div className="absolute top-0 -translate-x-1/2 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">{t('오늘', 'Today')}</div>
+                </div>
+
+                {/* 테이블 헤더 */}
+                <div className="flex h-6 text-[10px] font-bold text-slate-400 uppercase border-b border-slate-100 mt-2" style={{ paddingRight: '65%' }}>
+                  <div style={{ width: '40%' }} className="pl-4">{t('프로젝트', 'Project')}</div>
+                  <div style={{ width: '20%' }} className="text-center">{t('현재 단계', 'Phase')}</div>
+                  <div style={{ width: '20%' }} className="text-center">{t('담당자', 'Manager')}</div>
+                  <div style={{ width: '20%' }} className="text-center">{t('진행률', 'Progress')}</div>
+                </div>
+
+                {/* 프로젝트 바 */}
+                <div className="space-y-0 pt-1">
+                  {sorted.map(prj => {
+                    const pStart = new Date(prj.startDate);
+                    const pDue = new Date(prj.dueDate);
+                    const leftPercent = ((pStart - minDate) / (1000 * 60 * 60 * 24) / totalDays) * 100;
+                    const widthPercent = ((pDue - pStart) / (1000 * 60 * 60 * 24) / totalDays) * 100;
+                    const actual = calcAct(prj.tasks);
+                    const isCompleted = prj.status === '완료';
+                    const isDelayed = !isCompleted && actual < calcExp(prj.startDate, prj.dueDate);
+                    const phase = PROJECT_PHASES[typeof prj.phaseIndex === 'number' ? prj.phaseIndex : 0] || '';
+
+                    return (
+                      <div key={prj.id} className="flex items-center h-12 group hover:bg-slate-50 transition-colors border-b border-slate-50">
+                        {/* 왼쪽: 프로젝트 정보 (4열) */}
+                        <div className="flex items-center min-w-0" style={{ width: chartLeft }}>
+                          <div style={{ width: '40%' }} className="flex items-center min-w-0 pl-1">
+                            <span className={`w-2 h-2 rounded-full mr-1.5 shrink-0 ${isCompleted ? 'bg-emerald-500' : isDelayed ? 'bg-red-500' : 'bg-blue-500'}`}></span>
+                            <span className="text-xs font-bold text-slate-800 truncate">{prj.name}</span>
+                          </div>
+                          <div style={{ width: '20%' }} className="flex justify-center">
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border whitespace-nowrap ${isCompleted ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>{phase}</span>
+                          </div>
+                          <div style={{ width: '20%' }} className="text-[10px] text-slate-500 text-center truncate flex items-center justify-center">
+                            <User size={9} className="mr-0.5 shrink-0" /><span className="truncate">{prj.manager || '-'}</span>
+                          </div>
+                          <div style={{ width: '20%' }} className="text-center">
+                            <span className={`text-xs font-bold ${isCompleted ? 'text-emerald-600' : isDelayed ? 'text-red-600' : 'text-blue-600'}`}>{actual}%</span>
+                          </div>
+                        </div>
+
+                        {/* 오른쪽: 간트 바 */}
+                        <div className="relative h-full flex items-center" style={{ width: '65%' }}>
+                          {months.map((m, i) => (
+                            <div key={i} className="absolute top-0 bottom-0 border-l border-slate-100" style={{ left: `${m.pos}%` }}></div>
+                          ))}
+                          <div
+                            className={`absolute h-6 rounded-md overflow-hidden border transition-all hover:shadow-md cursor-default ${isCompleted ? 'bg-emerald-50 border-emerald-200' : isDelayed ? 'bg-red-50 border-red-200' : 'bg-blue-50 border-blue-200'}`}
+                            style={{ left: `${leftPercent}%`, width: `${Math.max(widthPercent, 1)}%` }}
+                            title={`${prj.startDate} ~ ${prj.dueDate}`}
+                          >
+                            <div className={`h-full ${isCompleted ? 'bg-emerald-400' : isDelayed ? 'bg-red-400' : 'bg-blue-400'}`} style={{ width: `${actual}%` }}></div>
+                            <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-slate-600 whitespace-nowrap">{prj.startDate} ~ {prj.dueDate}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* 범례 */}
+                <div className="flex items-center justify-end mt-4 pt-3 border-t border-slate-100 space-x-4 text-[10px] text-slate-500">
+                  <div className="flex items-center"><span className="w-3 h-2 rounded-sm bg-blue-400 mr-1"></span>{t('정상 진행', 'On Track')}</div>
+                  <div className="flex items-center"><span className="w-3 h-2 rounded-sm bg-red-400 mr-1"></span>{t('지연', 'Delayed')}</div>
+                  <div className="flex items-center"><span className="w-3 h-2 rounded-sm bg-emerald-400 mr-1"></span>{t('완료', 'Completed')}</div>
+                  <div className="flex items-center"><span className="w-px h-3 bg-red-400 mr-1"></span>{t('오늘', 'Today')}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 });

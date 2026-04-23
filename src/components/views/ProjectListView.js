@@ -6,7 +6,7 @@ import ProjectIssueBadge from '../common/ProjectIssueBadge';
 import { downloadICS, openGoogleCalendar } from '../../utils/calendar';
 import { exportToCSV } from '../../utils/export';
 
-const ProjectListView = memo(function ProjectListView({ projects, issues, getStatusColor, onAddClick, onManageTasks, onEditVersion, onChangeManager, onDeleteProject, onUpdatePhase, onIssueClick, calcExp, calcAct, currentUser, t }) {
+const ProjectListView = memo(function ProjectListView({ projects, issues, getStatusColor, onAddClick, onManageTasks, onEditVersion, onChangeManager, onViewPhaseGantt, onDeleteProject, onUpdatePhase, onIssueClick, calcExp, calcAct, currentUser, t }) {
   const [viewMode, setViewMode] = useState('list');
   const [filterManager, setFilterManager] = useState('all');
   const [openIssueDropdownId, setOpenIssueDropdownId] = useState(null);
@@ -73,12 +73,13 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, getSta
                   <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase min-w-[120px]">{t('담당자', 'Manager')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase min-w-[150px]">{t('버전 (HW/SW/FW)', 'Versions')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase min-w-[200px]">{t('진척도 (계획 / 실적)', 'Progress')}</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase min-w-[80px]">{t('단계 간트', 'Gantt')}</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase min-w-[180px]">{t('일정관리', 'Manage')}</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-200">
                 {filteredProjects.length === 0 ? (
-                  <tr><td colSpan="6" className="text-center py-10 text-slate-400">{t('프로젝트가 없습니다.', 'No projects found.')}</td></tr>
+                  <tr><td colSpan="7" className="text-center py-10 text-slate-400">{t('프로젝트가 없습니다.', 'No projects found.')}</td></tr>
                 ) : filteredProjects.map((prj) => {
                   const expected = calcExp(prj.startDate, prj.dueDate);
                   const actual = calcAct(prj.tasks);
@@ -134,6 +135,11 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, getSta
                         <div className={`absolute top-0 left-0 h-2.5 rounded-full ${prj.status === '완료' ? 'bg-emerald-500' : (isDelayed ? 'bg-red-500' : 'bg-blue-600')}`} style={{ width: `${actual}%` }}></div>
                       </div>
                     </div>
+                  </td>
+                  <td className="px-4 py-5 whitespace-nowrap text-center">
+                    <button onClick={() => onViewPhaseGantt(prj)} className="inline-flex items-center text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-3 py-2 rounded-lg border border-indigo-200 font-bold transition-colors shadow-sm">
+                      <CalendarDays size={14} className="mr-1" />{t('보기', 'View')}
+                    </button>
                   </td>
                   <td className="px-6 py-5 whitespace-nowrap text-sm text-slate-500 text-right">
                     <div className="flex justify-end items-center space-x-1.5">
@@ -191,8 +197,21 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, getSta
                         </div>
                         <div className="w-3/4 relative h-full flex items-center mx-4">
                           <div className="absolute w-full h-px bg-slate-200"></div>
-                          <div className="absolute h-7 bg-slate-100 border border-slate-300 rounded-md overflow-hidden cursor-pointer hover:border-blue-400 hover:shadow-md transition-all" style={{ left: `${leftPercent}%`, width: `${widthPercent}%` }} onClick={() => onManageTasks(prj.id)}>
-                            <div className={`h-full ${prj.status === '완료' ? 'bg-emerald-400' : 'bg-blue-400'}`} style={{ width: `${actual}%` }}></div>
+                          <div className="absolute h-8 bg-slate-50 border border-slate-300 rounded-md overflow-hidden cursor-pointer hover:border-blue-400 hover:shadow-md transition-all flex" style={{ left: `${leftPercent}%`, width: `${widthPercent}%` }} onClick={() => onManageTasks(prj.id)}>
+                            {(() => {
+                              const phaseColors = ['bg-slate-300','bg-blue-300','bg-cyan-300','bg-indigo-300','bg-amber-300','bg-purple-300','bg-emerald-300'];
+                              const currentPhase = typeof prj.phaseIndex === 'number' ? prj.phaseIndex : 0;
+                              const totalPhases = PROJECT_PHASES.length;
+                              return PROJECT_PHASES.map((phase, idx) => {
+                                const isPast = idx < currentPhase;
+                                const isCurrent = idx === currentPhase;
+                                return (
+                                  <div key={idx} className={`h-full relative ${isPast ? phaseColors[idx] : isCurrent ? phaseColors[idx] + ' opacity-70' : 'bg-slate-100'} ${idx < totalPhases - 1 ? 'border-r border-white/50' : ''}`} style={{ width: `${100 / totalPhases}%` }} title={phase}>
+                                    <span className="absolute inset-0 flex items-center justify-center text-[7px] font-bold text-slate-700 whitespace-nowrap overflow-hidden">{phase.length > 3 ? phase.substring(0, 3) : phase}</span>
+                                  </div>
+                                );
+                              });
+                            })()}
                           </div>
                           <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 text-white text-xs py-1.5 px-3 rounded-lg -top-3 z-10 pointer-events-none whitespace-nowrap shadow-lg" style={{ left: `${leftPercent}%` }}>{prj.startDate} ~ {prj.dueDate}</div>
                         </div>
