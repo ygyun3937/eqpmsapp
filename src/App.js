@@ -52,7 +52,16 @@ export default function App() {
   const t = useCallback((ko, en) => lang === 'ko' ? ko : en, [lang]);
 
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [isMobileMode, setIsMobileMode] = useState(false);
+  const [isMobileMode, setIsMobileMode] = useState(() => window.innerWidth < 768);
+
+  // 화면 크기 변경 시 자동 모드 전환
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768) setIsMobileMode(true);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Modal states
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
