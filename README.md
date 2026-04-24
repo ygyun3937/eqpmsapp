@@ -34,13 +34,13 @@ eq-pms-app/
 │   │   ├── export.js              # generatePDF, exportToCSV
 │   │   └── status.js              # getStatusColor (상태별 색상)
 │   ├── components/
-│   │   ├── common/                # 공통 재��용 UI (8개)
+│   │   ├── common/                # 공통 재사용 UI (8개)
 │   │   │   ├── NavItem.js         # 사이드바 네비게이션 버튼
-│   │   │   ├── StatCard.js        # ���시보드 통계 카드
+│   │   │   ├── StatCard.js        # 대시보드 통계 카드
 │   │   │   ├── SimpleDonutChart.js
 │   │   │   ├── SimpleBarChart.js
 │   │   │   ├── ProjectPipelineStepper.js  # 7단계 파이프라인
-│   │   │   ├── ProjectIssueBadge.js       # 이슈 ���지 + 드롭다운
+│   │   │   ├── ProjectIssueBadge.js       # 이슈 뱃지 + 드롭다운
 │   │   │   ├── SignaturePad.js            # 고객 전자서명
 │   │   │   └── ModalWrapper.js            # 공통 모달 프레임
 │   │   ├── modals/                # 모달 컴포넌트 (13개)
@@ -64,7 +64,7 @@ eq-pms-app/
 │   │       └── LoginScreen.js
 │   ├── App.js                     # 메인 앱 (~300줄, 상태관리 + 라우팅)
 │   ├── App.css
-│   ├── index.js                   # React ���트리포인트
+│   ├── index.js                   # React 엔트리포인트
 │   └── index.css                  # Tailwind 지시문 + 글로벌 스타일
 ├── tailwind.config.js
 ├── package.json
@@ -76,7 +76,7 @@ graph TD
     App["App.js<br/>(메인 ~300줄)"]
     
     subgraph Constants["constants/"]
-        C1["index.js<br/>상수 + ��기데이터"]
+        C1["index.js<br/>상수 + 초기데이터"]
     end
     
     subgraph Utils["utils/"]
@@ -161,7 +161,7 @@ graph LR
 | **ENGINEER** | `eng` / `1234` | 셋업 엔지니어 | 전체 메뉴 (업무 확인/이슈 등록 중심) |
 | **CUSTOMER** | `client` / `1234` | 고객사 담당자 (A전자) | 대시보드/프로젝트/이슈 열람 + Buy-off 서명만 가능 |
 
-- CUSTOMER 역할은 자재/사이트/인력/릴리즈 메뉴��� 숨겨짐
+- CUSTOMER 역할은 자재/사이트/인력/릴리즈 메뉴가 숨겨짐
 - CUSTOMER는 파이프라인 단계 변경 불가 (읽기 전용)
 
 ---
@@ -177,13 +177,13 @@ graph LR
 ### 5-2. 프로젝트 관리 (Projects)
 - 프로젝트 생성/조회/삭제 (CRUD)
 - **7단계 파이프라인 스테퍼**: 영업/수주 → 설계 → 구매/자재 → 제조/조립 → 출하 → 현장 셋업 → 완료
-- 도메인 선��� 시 해당 도메인의 기본 셋업 태스크 & 체크리스트 자동 로드
+- 도메인 선택 시 해당 도메인의 기본 셋업 태스크 & 체크리스트 자동 로드
 - **기대 진행률 vs 실제 진행률** 비교 (일정 기반 vs 태스크 완료 기반)
 - 리스트 뷰 / 간트 차트 뷰 전환
 - HW / SW / FW 버전 관리
-- ICS 캘린더 파일 다운로��� / 구글 캘린더 일정 추가
+- ICS 캘린더 파일 다운로드 / 구글 캘린더 일정 추가
 - Notion 링크 연동
-- 프로젝트별 미해결 이슈 뱃지 표시 → 클릭하면 이슈 ���록 드롭다운
+- 프로젝트별 미해결 이슈 뱃지 표시 → 클릭하면 이슈 목록 드롭다운
 
 ### 5-3. 이슈/펀치 관리 (Issues)
 - 이슈 등록 (심각도: High / Medium / Low)
@@ -285,7 +285,7 @@ graph LR
     │  모든 항목 확인 후 고객 서명 (SignaturePad)
     ▼
 [완료]
-    │  Buy-off Report PDF 자동 생성 ��� 인쇄
+    │  Buy-off Report PDF 자동 생성 및 인쇄
     │  프로젝트 상태 "완료"로 전환
     └  CSV 데이터 내보내기 가능
 ```
@@ -334,7 +334,7 @@ flowchart TD
 | **파일 수** | 1개 (App.js) | **30개+** (역할별 분리) |
 | **Tailwind** | CDN 런타임 로드 + tailwindReady 체크 | 빌드 타임 (tree-shaking 적용) |
 | **컴포넌트 렌더링** | 매번 전체 리렌더링 | React.memo로 불필요한 렌더링 차단 |
-| **코드 로딩** | 한 번에 전�� 로드 | React.lazy + Suspense (지연 로딩) |
+| **코드 로딩** | 한 번에 전체 로드 | React.lazy + Suspense (지연 로딩) |
 | **State 업데이트** | 직접 참조 `setX(data)` | 함수형 `setX(prev => ...)` |
 
 ### 최적화 기법 요약
@@ -377,7 +377,7 @@ graph TB
 # 1. 빌드
 npm run build
 
-# 2. build/ 폴더를 내부 공유 드라이브나 서��에 복사
+# 2. build/ 폴더를 내부 공유 드라이브나 서버에 복사
 # 3. build/index.html을 브라우저로 열면 바로 실행됨
 ```
 
@@ -483,6 +483,154 @@ npm start
 # 프로덕션 빌드
 npm run build
 
-# 간이 배포 서��� (내부망)
+# 간이 배포 서버 (내부망)
 npx serve -s build -l 3000
 ```
+
+---
+
+## 13. 향후 계획 (로드맵)
+
+### 로드맵 한눈에 보기
+
+```mermaid
+gantt
+    title EQ-PMS 향후 발전 로드맵
+    dateFormat  YYYY-MM
+    section 단기 (1~2개월)
+    Teams/Slack 알림 연동    :a1, 2026-05, 1M
+    대시보드 고급 분석        :a2, after a1, 1M
+    section 중기 (3~6개월)
+    SSO 연동 (Azure AD)      :b1, after a2, 2M
+    계정/권한 자동 관리        :b2, after b1, 1M
+    section 장기 (6개월~)
+    PWA 오프라인 지원        :c1, after b2, 2M
+    AI 기반 예측 분석         :c2, after c1, 3M
+```
+
+### 13-1. SSO 연동 (기업 표준 계정 체계)
+
+**SSO (Single Sign-On)**: 회사 계정 하나로 여러 사내 시스템에 로그인하는 통합 인증 방식
+
+```mermaid
+graph LR
+    subgraph Before["현재 (자체 인증)"]
+        U1[사용자] -->|ID/PW 별도| EQ1[EQ-PMS]
+        U1 -->|ID/PW 별도| S1[다른 시스템1]
+        U1 -->|ID/PW 별도| S2[다른 시스템2]
+    end
+
+    subgraph After["SSO 도입 후"]
+        U2[사용자] -->|한 번 로그인| SSO[Azure AD / Google Workspace]
+        SSO -->|자동 인증| EQ2[EQ-PMS]
+        SSO -->|자동 인증| S3[다른 시스템1]
+        SSO -->|자동 인증| S4[다른 시스템2]
+    end
+```
+
+**도입 효과:**
+| 항목 | 현재 | SSO 도입 후 |
+|------|------|------------|
+| 계정 관리 | EQ-PMS 자체 계정 (admin/pm/eng/client) | 회사 메일 계정과 통합 |
+| 보안 | 고정 비밀번호 (1234) | 회사 정책 적용 (2FA 등) |
+| 입/퇴사 처리 | 수동 계정 생성/삭제 | 자동 권한 부여/회수 |
+| 부서/직급 | 수동 입력 | AD에서 자동 연동 |
+
+---
+
+### 13-2. 알림 채널 확대 (Teams / Slack 연동)
+
+**현재**: 이슈 등록 시 이메일만 발송 → **실시간성 부족**
+
+```mermaid
+flowchart LR
+    A[현장 이슈 발생] --> B[이슈 등록 + 사진 첨부]
+    B --> C{알림 채널}
+    C -->|현재| D[이메일<br/>Gmail]
+    C -->|추가 예정| E[Microsoft Teams<br/>채널 메시지]
+    C -->|추가 예정| F[Slack<br/>채널 메시지]
+    D --> G[담당자 수신]
+    E --> G
+    F --> G
+    G --> H[모바일/PC에서<br/>즉시 확인]
+    H --> I[메시지 내<br/>프로젝트 바로가기]
+```
+
+**추가 가능한 알림 시나리오:**
+- High 등급 이슈 발생 시 담당 팀 채널 즉시 알림
+- Buy-off 서명 완료 시 관련 팀 전체 공지
+- 출입증 만료 임박 시 당사자 + 관리자 알림
+- 일정 지연 경고 (계획 대비 실적 차이 큰 경우)
+
+---
+
+### 13-3. 대시보드 고급 분석 강화
+
+**현재**: 기본 통계 + 심각도/상태 차트 + 평균 Lead Time/MTTR
+
+```mermaid
+mindmap
+  root((고급 분석))
+    도메인별 분석
+      평균 셋업 기간
+      이슈 발생률
+      자재 청구 패턴
+    기간 비교
+      분기별 처리량
+      전년 대비 Lead Time
+      월별 이슈 트렌드
+    담당자별 분석
+      담당 프로젝트 수
+      평균 Buy-off 소요일
+      이슈 해결 속도
+    위험 예측
+      지연 위험 조기 경고
+      이슈 급증 감지
+      리소스 과부하 알림
+```
+
+---
+
+### 13-4. 모바일 PWA 지원 (오프라인 대응)
+
+**PWA (Progressive Web App)**: 웹앱을 네이티브 앱처럼 설치 가능하게 만들고, 오프라인에서도 동작
+
+```mermaid
+sequenceDiagram
+    participant U as 현장 엔지니어
+    participant App as EQ-PMS PWA
+    participant Cache as 로컬 캐시
+    participant Server as 서버
+
+    Note over U,App: 앱 설치 (1회)
+    U->>App: "홈 화면에 추가"
+    App-->>U: 네이티브 앱처럼 아이콘 생성
+
+    Note over U,Server: 오프라인 시나리오
+    U->>App: 현장에서 이슈 등록 + 사진
+    App->>Cache: 로컬 저장 (오프라인)
+    App-->>U: 즉시 반영됨 (임시 표시)
+    
+    Note over U,Server: 네트워크 복구 시
+    App->>Server: 자동 동기화
+    Server-->>App: 저장 완료
+    App-->>U: 정식 반영
+```
+
+**현장 시나리오:**
+- 반도체 Fab 청정실 → Wi-Fi 약함 → 오프라인으로 체크리스트 입력
+- 해외 현장 → 데이터 로밍 부담 → 오프라인 작성 후 Wi-Fi 구역에서 일괄 업로드
+- 장비실 지하 → 신호 없음 → 이슈 사진 촬영/작성 → 복귀 후 자동 전송
+
+---
+
+### 13-5. 우선순위 및 도입 효과 요약
+
+| 단계 | 항목 | 구현 난이도 | 도입 효과 |
+|------|------|------------|----------|
+| **1순위** | Teams/Slack 알림 연동 | 낮 (GAS 설정만) | 실시간 대응력 향상 |
+| **2순위** | 대시보드 고급 분석 | 중 (차트 추가 개발) | 경영진 보고/의사결정 지원 |
+| **3순위** | SSO 연동 | 중 (IT팀 협조 필요) | 보안/계정관리 대폭 개선 |
+| **4순위** | PWA 오프라인 지원 | 중 (manifest + Service Worker) | 현장 접근성 향상 |
+| **5순위** | AI 기반 예측 분석 | 높 (데이터 축적 후 가능) | 위험 사전 감지 / 자동 분류 |
+

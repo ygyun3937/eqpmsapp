@@ -120,8 +120,8 @@ const DashboardView = memo(function DashboardView({ projects, issues, engineers,
                 </div>
 
                 {/* 오늘 표시선 */}
-                <div className="absolute top-0 bottom-0 w-px bg-red-400 z-10" style={{ left: `calc(${chartLeft} + ${todayPercent}% * 0.65)` }}>
-                  <div className="absolute top-0 -translate-x-1/2 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">{t('오늘', 'Today')}</div>
+                <div className="absolute top-0 bottom-8 w-px bg-orange-400 z-10" style={{ left: `calc(${chartLeft} + ${todayPercent}% * 0.65)` }}>
+                  <div className="absolute bottom-0 -translate-x-1/2 translate-y-5 text-orange-500 text-[10px] font-bold">{t('오늘', 'Today')}</div>
                 </div>
 
                 {/* 테이블 헤더 */}
@@ -133,7 +133,7 @@ const DashboardView = memo(function DashboardView({ projects, issues, engineers,
                 </div>
 
                 {/* 프로젝트 바 */}
-                <div className="space-y-0 pt-1">
+                <div className="space-y-2 pt-3">
                   {sorted.map(prj => {
                     const pStart = new Date(prj.startDate);
                     const pDue = new Date(prj.dueDate);
@@ -144,22 +144,27 @@ const DashboardView = memo(function DashboardView({ projects, issues, engineers,
                     const isDelayed = !isCompleted && actual < calcExp(prj.startDate, prj.dueDate);
                     const phase = PROJECT_PHASES[typeof prj.phaseIndex === 'number' ? prj.phaseIndex : 0] || '';
 
+                    // 색상 팔레트: 완료(sage green) / 정상(teal) / 지연(coral)
+                    const dotColor = isCompleted ? 'bg-emerald-300' : isDelayed ? 'bg-orange-400' : 'bg-teal-500';
+                    const barColor = isCompleted ? 'bg-emerald-300' : isDelayed ? 'bg-orange-400' : 'bg-teal-500';
+                    const progressColor = isCompleted ? 'text-emerald-600' : isDelayed ? 'text-orange-600' : 'text-teal-600';
+
                     return (
-                      <div key={prj.id} className="flex items-center h-12 group hover:bg-slate-50 transition-colors border-b border-slate-50">
+                      <div key={prj.id} className="flex items-center h-10 group hover:bg-slate-50/50 transition-colors">
                         {/* 왼쪽: 프로젝트 정보 (4열) */}
                         <div className="flex items-center min-w-0" style={{ width: chartLeft }}>
                           <div style={{ width: '40%' }} className="flex items-center min-w-0 pl-1">
-                            <span className={`w-2 h-2 rounded-full mr-1.5 shrink-0 ${isCompleted ? 'bg-emerald-500' : isDelayed ? 'bg-red-500' : 'bg-blue-500'}`}></span>
-                            <span className="text-xs font-bold text-slate-800 truncate">{prj.name}</span>
+                            <span className={`w-2.5 h-2.5 rounded-full mr-2 shrink-0 ${dotColor}`}></span>
+                            <span className="text-sm font-semibold text-slate-800 truncate">{prj.name}</span>
                           </div>
-                          <div style={{ width: '20%' }} className="flex justify-center">
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border whitespace-nowrap ${isCompleted ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>{phase}</span>
+                          <div style={{ width: '20%' }} className="text-xs text-slate-600 text-center truncate px-1">
+                            {phase}
                           </div>
-                          <div style={{ width: '20%' }} className="text-[10px] text-slate-500 text-center truncate flex items-center justify-center">
-                            <User size={9} className="mr-0.5 shrink-0" /><span className="truncate">{prj.manager || '-'}</span>
+                          <div style={{ width: '20%' }} className="text-xs text-slate-600 text-center truncate px-1">
+                            {prj.manager || '-'}
                           </div>
                           <div style={{ width: '20%' }} className="text-center">
-                            <span className={`text-xs font-bold ${isCompleted ? 'text-emerald-600' : isDelayed ? 'text-red-600' : 'text-blue-600'}`}>{actual}%</span>
+                            <span className={`text-sm font-bold ${progressColor}`}>{actual}%</span>
                           </div>
                         </div>
 
@@ -169,13 +174,10 @@ const DashboardView = memo(function DashboardView({ projects, issues, engineers,
                             <div key={i} className="absolute top-0 bottom-0 border-l border-slate-100" style={{ left: `${m.pos}%` }}></div>
                           ))}
                           <div
-                            className={`absolute h-6 rounded-md overflow-hidden border transition-all hover:shadow-md cursor-default ${isCompleted ? 'bg-emerald-50 border-emerald-200' : isDelayed ? 'bg-red-50 border-red-200' : 'bg-blue-50 border-blue-200'}`}
+                            className={`absolute h-5 rounded-sm transition-all hover:shadow-sm cursor-default ${barColor}`}
                             style={{ left: `${leftPercent}%`, width: `${Math.max(widthPercent, 1)}%` }}
                             title={`${prj.startDate} ~ ${prj.dueDate}`}
-                          >
-                            <div className={`h-full ${isCompleted ? 'bg-emerald-400' : isDelayed ? 'bg-red-400' : 'bg-blue-400'}`} style={{ width: `${actual}%` }}></div>
-                            <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-slate-600 whitespace-nowrap">{prj.startDate} ~ {prj.dueDate}</span>
-                          </div>
+                          ></div>
                         </div>
                       </div>
                     );
@@ -183,11 +185,11 @@ const DashboardView = memo(function DashboardView({ projects, issues, engineers,
                 </div>
 
                 {/* 범례 */}
-                <div className="flex items-center justify-end mt-4 pt-3 border-t border-slate-100 space-x-4 text-[10px] text-slate-500">
-                  <div className="flex items-center"><span className="w-3 h-2 rounded-sm bg-blue-400 mr-1"></span>{t('정상 진행', 'On Track')}</div>
-                  <div className="flex items-center"><span className="w-3 h-2 rounded-sm bg-red-400 mr-1"></span>{t('지연', 'Delayed')}</div>
-                  <div className="flex items-center"><span className="w-3 h-2 rounded-sm bg-emerald-400 mr-1"></span>{t('완료', 'Completed')}</div>
-                  <div className="flex items-center"><span className="w-px h-3 bg-red-400 mr-1"></span>{t('오늘', 'Today')}</div>
+                <div className="flex items-center mt-6 pt-4 border-t border-slate-100 space-x-6 text-xs text-slate-500">
+                  <div className="flex items-center"><span className="w-4 h-2.5 rounded-sm bg-teal-500 mr-2"></span>{t('정상 진행', 'On Track')}</div>
+                  <div className="flex items-center"><span className="w-4 h-2.5 rounded-sm bg-orange-400 mr-2"></span>{t('지연', 'Delayed')}</div>
+                  <div className="flex items-center"><span className="w-4 h-2.5 rounded-sm bg-emerald-300 mr-2"></span>{t('완료', 'Completed')}</div>
+                  <div className="flex items-center"><span className="w-px h-4 bg-orange-400 mr-2"></span>{t('오늘 기준선', 'Today')}</div>
                 </div>
               </div>
             </div>

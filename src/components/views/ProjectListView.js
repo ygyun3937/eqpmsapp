@@ -1,5 +1,5 @@
 import React, { useState, useMemo, memo } from 'react';
-import { Plus, Filter, AlignJustify, CalendarDays, Clock, User, HardDrive, Monitor, Cpu, Edit, ListTodo, Trash, Download, Link as LinkIcon, History } from 'lucide-react';
+import { Plus, Filter, AlignJustify, CalendarDays, Clock, User, HardDrive, Monitor, Cpu, Edit, ListTodo, Trash, Download, Link as LinkIcon, History, ChevronDown, ChevronUp } from 'lucide-react';
 import { PROJECT_PHASES } from '../../constants';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
 import ProjectIssueBadge from '../common/ProjectIssueBadge';
@@ -10,6 +10,7 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, getSta
   const [viewMode, setViewMode] = useState('list');
   const [filterManager, setFilterManager] = useState('all');
   const [openIssueDropdownId, setOpenIssueDropdownId] = useState(null);
+  const [expandedGanttId, setExpandedGanttId] = useState(null);
 
   const managers = ['all', ...new Set(projects.map(p => p.manager).filter(Boolean))];
 
@@ -87,7 +88,8 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, getSta
                   const projectIssues = issues.filter(i => i.projectId === prj.id && i.status !== '조치 완료');
 
                   return (
-                  <tr key={prj.id} className="hover:bg-slate-50 group">
+                  <React.Fragment key={prj.id}>
+                  <tr className="hover:bg-slate-50 group">
                     <td className="px-6 py-5 whitespace-nowrap">
                       <div className="flex items-center space-x-2">
                       <ProjectIssueBadge prjId={prj.id} projectIssues={projectIssues} openIssueDropdownId={openIssueDropdownId} setOpenIssueDropdownId={setOpenIssueDropdownId} onIssueClick={onIssueClick} getStatusColor={getStatusColor} t={t} />
@@ -137,8 +139,10 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, getSta
                     </div>
                   </td>
                   <td className="px-4 py-5 whitespace-nowrap text-center">
-                    <button onClick={() => onViewPhaseGantt(prj)} className="inline-flex items-center text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-3 py-2 rounded-lg border border-indigo-200 font-bold transition-colors shadow-sm">
-                      <CalendarDays size={14} className="mr-1" />{t('보기', 'View')}
+                    <button onClick={() => setExpandedGanttId(expandedGanttId === prj.id ? null : prj.id)} className={`inline-flex items-center text-xs px-3 py-2 rounded-lg border font-bold transition-colors shadow-sm ${expandedGanttId === prj.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border-indigo-200'}`}>
+                      <CalendarDays size={14} className="mr-1" />
+                      {expandedGanttId === prj.id ? t('접기', 'Close') : t('보기', 'View')}
+                      {expandedGanttId === prj.id ? <ChevronUp size={12} className="ml-1" /> : <ChevronDown size={12} className="ml-1" />}
                     </button>
                   </td>
                   <td className="px-6 py-5 whitespace-nowrap text-sm text-slate-500 text-right">
@@ -152,6 +156,109 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, getSta
                     </div>
                   </td>
                 </tr>
+                {expandedGanttId === prj.id && (
+                  <tr className="bg-slate-50">
+                    <td colSpan="7" className="px-6 py-5">
+                      {(() => {
+                        const pStartDate = new Date(prj.startDate);
+                        const pDueDate = new Date(prj.dueDate);
+                        const totalDays = (pDueDate - pStartDate) / (1000 * 60 * 60 * 24);
+                        const currentPhaseIdx = typeof prj.phaseIndex === 'number' ? prj.phaseIndex : 0;
+                        const phaseCount = PROJECT_PHASES.length;
+                        const daysPerPhase = totalDays / phaseCount;
+                        const phaseColors = ['bg-slate-400', 'bg-blue-400', 'bg-cyan-400', 'bg-indigo-400', 'bg-amber-400', 'bg-purple-400', 'bg-emerald-400'];
+
+                        const gMinDate = new Date(pStartDate); gMinDate.setDate(1);
+                        const gMaxDate = new Date(pDueDate); gMaxDate.setMonth(gMaxDate.getMonth() + 1, 0);
+                        const fullDays = (gMaxDate - gMinDate) / (1000 * 60 * 60 * 24);
+                        const months = [];
+                        const cursor = new Date(gMinDate);
+                        while (cursor <= gMaxDate) {
+                          const pos = ((cursor - gMinDate) / (1000 * 60 * 60 * 24) / fullDays) * 100;
+                          months.push({ label: `${cursor.getFullYear()}.${String(cursor.getMonth() + 1).padStart(2, '0')}`, pos });
+                          cursor.setMonth(cursor.getMonth() + 1);
+                        }
+                        const today = new Date();
+                        const todayPercent = Math.max(0, Math.min(100, ((today - gMinDate) / (1000 * 60 * 60 * 24) / fullDays) * 100));
+
+                        return (
+                          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                            <h3 className="text-base font-bold text-slate-800 mb-1">{t('단계별 간트 차트', 'Phase Gantt Chart')}</h3>
+                            <p className="text-xs text-slate-500 mb-5">{prj.name}  ·  {prj.startDate} ~ {prj.dueDate}</p>
+
+                            {/* 월 헤더 */}
+                            <div className="flex">
+                              <div className="w-52 shrink-0"></div>
+                              <div className="flex-1 relative h-6">
+                                {months.map((m, i) => (
+                                  <div key={i} className="absolute text-xs font-medium text-slate-500" style={{ left: `${m.pos}%` }}>{m.label}</div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* 단계별 바 */}
+                            <div className="space-y-3 mt-2 relative">
+                              {/* 오늘선 */}
+                              <div className="absolute w-px bg-orange-400 z-10" style={{ left: `calc(13rem + (100% - 13rem) * ${todayPercent} / 100)`, top: '-0.5rem', bottom: '-0.5rem' }}>
+                                <div className="absolute -top-3 -translate-x-1/2 text-orange-500 text-xs font-bold">{t('오늘', 'Today')}</div>
+                              </div>
+
+                              {PROJECT_PHASES.map((phase, idx) => {
+                                const phaseStart = new Date(pStartDate.getTime() + daysPerPhase * idx * 24 * 60 * 60 * 1000);
+                                const phaseEnd = new Date(pStartDate.getTime() + daysPerPhase * (idx + 1) * 24 * 60 * 60 * 1000);
+                                const leftPercent = ((phaseStart - gMinDate) / (1000 * 60 * 60 * 24) / fullDays) * 100;
+                                const widthPercent = ((phaseEnd - phaseStart) / (1000 * 60 * 60 * 24) / fullDays) * 100;
+                                const isPast = idx < currentPhaseIdx;
+                                const isCurrent = idx === currentPhaseIdx;
+
+                                // 색상: 완료=sage green, 현재=teal, 예정=light gray
+                                const barBg = isPast ? 'bg-emerald-300' : isCurrent ? 'bg-teal-500' : 'bg-slate-200';
+
+                                return (
+                                  <div key={idx} className="flex items-center h-7">
+                                    {/* 왼쪽: 아이콘 + 단계명 + 날짜 */}
+                                    <div className="w-52 shrink-0 pr-3 flex items-center">
+                                      <span className="w-5 h-5 flex items-center justify-center mr-2 shrink-0">
+                                        {isPast ? (
+                                          <span className="text-emerald-500 text-sm font-bold">✓</span>
+                                        ) : isCurrent ? (
+                                          <span className="text-teal-600 text-sm">▶</span>
+                                        ) : (
+                                          <span className="w-3 h-3 rounded-full border-2 border-slate-300 inline-block"></span>
+                                        )}
+                                      </span>
+                                      <span className={`text-sm font-semibold truncate ${isPast ? 'text-slate-400' : isCurrent ? 'text-slate-800' : 'text-slate-500'}`}>{phase}</span>
+                                      <span className="text-xs text-slate-400 ml-3 shrink-0 whitespace-nowrap">{phaseStart.toISOString().split('T')[0].slice(5)} ~ {phaseEnd.toISOString().split('T')[0].slice(5)}</span>
+                                    </div>
+
+                                    {/* 오른쪽: 바 */}
+                                    <div className="flex-1 relative h-full flex items-center">
+                                      <div
+                                        className={`absolute h-5 rounded-sm ${barBg}`}
+                                        style={{ left: `${leftPercent}%`, width: `${Math.max(widthPercent, 1)}%` }}
+                                      ></div>
+                                      {isCurrent && (
+                                        <span className="absolute text-xs text-teal-700 font-bold" style={{ left: `calc(${leftPercent + widthPercent}% + 0.5rem)` }}>{t('진행중', 'Active')}</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* 범례 */}
+                            <div className="flex items-center mt-6 pt-4 border-t border-slate-100 space-x-6 text-xs text-slate-500">
+                              <div className="flex items-center"><span className="w-4 h-2.5 rounded-sm bg-emerald-300 mr-2"></span>{t('완료된 단계', 'Completed')}</div>
+                              <div className="flex items-center"><span className="w-4 h-2.5 rounded-sm bg-teal-500 mr-2"></span>{t('현재 단계', 'Current')}</div>
+                              <div className="flex items-center"><span className="w-4 h-2.5 rounded-sm bg-slate-200 mr-2"></span>{t('예정 단계', 'Planned')}</div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
                 )
               })}
             </tbody>
