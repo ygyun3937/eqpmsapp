@@ -1,17 +1,21 @@
 import React, { memo } from 'react';
 import { Plus, Kanban, User, Trash, MessageCircle, Download } from 'lucide-react';
-import { exportToCSV } from '../../utils/export';
+import { exportToExcel } from '../../utils/export';
 
 const IssueListView = memo(function IssueListView({ issues, getStatusColor, onAddClick, onIssueClick, onDeleteIssue, currentUser, t }) {
   const handleExport = () => {
-    exportToCSV(issues.map(i => ({
-      id: i.id, projectName: i.projectName, title: i.title, severity: i.severity, status: i.status,
-      author: i.author, date: i.date, comments: (i.comments || []).length
-    })), '이슈_리스트', [
-      { header: 'ID', key: 'id' }, { header: '프로젝트', key: 'projectName' }, { header: '이슈 제목', key: 'title' },
-      { header: '심각도', key: 'severity' }, { header: '상태', key: 'status' }, { header: '작성자', key: 'author' },
-      { header: '일자', key: 'date' }, { header: '코멘트 수', key: 'comments' }
-    ]);
+    exportToExcel('이슈_리스트', [{
+      name: '이슈 리스트',
+      rows: issues.map(i => ({
+        id: i.id, projectName: i.projectName, title: i.title, severity: i.severity, status: i.status,
+        author: i.author, date: i.date, comments: (i.comments || []).length
+      })),
+      columns: [
+        { header: 'ID', key: 'id' }, { header: '프로젝트', key: 'projectName' }, { header: '이슈 제목', key: 'title' },
+        { header: '심각도', key: 'severity' }, { header: '상태', key: 'status' }, { header: '작성자', key: 'author' },
+        { header: '일자', key: 'date' }, { header: '코멘트 수', key: 'comments' }
+      ]
+    }]);
   };
 
   return (
@@ -20,7 +24,7 @@ const IssueListView = memo(function IssueListView({ issues, getStatusColor, onAd
         <div><h1 className="text-2xl font-bold">{t('이슈 및 펀치 관리', 'Issues & Punches')}</h1></div>
         <div className="flex items-center space-x-3">
           <button onClick={handleExport} className="flex items-center bg-slate-100 text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors shadow-sm">
-            <Download size={16} className="mr-1.5" /> CSV
+            <Download size={16} className="mr-1.5" /> Excel
           </button>
           {currentUser.role !== 'CUSTOMER' && (
             <button onClick={onAddClick} className="flex items-center bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors">

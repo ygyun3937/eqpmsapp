@@ -1,16 +1,20 @@
 import React, { useState, useMemo, memo } from 'react';
 import { Plus, HardDrive, Monitor, Cpu, CalendarDays, User, FileText, Trash, Download } from 'lucide-react';
-import { exportToCSV } from '../../utils/export';
+import { exportToExcel } from '../../utils/export';
 
 const VersionHistoryView = memo(function VersionHistoryView({ releases, onAddClick, onDeleteRelease, currentUser, t }) {
   const [filterType, setFilterType] = useState('ALL');
   const filteredReleases = useMemo(() => filterType === 'ALL' ? releases : releases.filter(r => r.type === filterType), [releases, filterType]);
 
   const handleExport = () => {
-    exportToCSV(filteredReleases, '릴리즈_이력', [
-      { header: 'ID', key: 'id' }, { header: '유형', key: 'type' }, { header: '버전', key: 'version' },
-      { header: '작성자', key: 'author' }, { header: '일자', key: 'date' }, { header: '릴리즈 노트', key: 'description' }
-    ]);
+    exportToExcel('릴리즈_이력', [{
+      name: '릴리즈 이력',
+      rows: filteredReleases,
+      columns: [
+        { header: 'ID', key: 'id' }, { header: '유형', key: 'type' }, { header: '버전', key: 'version' },
+        { header: '작성자', key: 'author' }, { header: '일자', key: 'date' }, { header: '릴리즈 노트', key: 'description' }
+      ]
+    }]);
   };
 
   return (
@@ -19,7 +23,7 @@ const VersionHistoryView = memo(function VersionHistoryView({ releases, onAddCli
         <div><h1 className="text-2xl font-bold text-slate-800">{t('버전 릴리즈 관리', 'Releases')}</h1></div>
         <div className="flex items-center space-x-2">
           <button onClick={handleExport} className="flex items-center bg-slate-100 text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors shadow-sm">
-            <Download size={16} className="mr-1.5" /> CSV
+            <Download size={16} className="mr-1.5" /> Excel
           </button>
           {(currentUser.role === 'ADMIN' || currentUser.role === 'PM') && (
             <button onClick={onAddClick} className="flex items-center bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"><Plus size={16} className="mr-1" /> {t('새 버전 배포', 'New Release')}</button>

@@ -4,9 +4,9 @@ import { PROJECT_PHASES } from '../../constants';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
 import ProjectIssueBadge from '../common/ProjectIssueBadge';
 import { downloadICS, openGoogleCalendar } from '../../utils/calendar';
-import { exportToCSV } from '../../utils/export';
+import { exportToExcel, exportSectionedExcel } from '../../utils/export';
 
-const ProjectListView = memo(function ProjectListView({ projects, issues, getStatusColor, onAddClick, onManageTasks, onEditVersion, onChangeManager, onViewPhaseGantt, onDeleteProject, onUpdatePhase, onIssueClick, calcExp, calcAct, currentUser, t }) {
+const ProjectListView = memo(function ProjectListView({ projects, issues, getStatusColor, onAddClick, onManageTasks, onEditVersion, onChangeManager, onViewPhaseGantt, onEditProject, onDeleteProject, onUpdatePhase, onIssueClick, calcExp, calcAct, currentUser, t }) {
   const [viewMode, setViewMode] = useState('list');
   const [filterManager, setFilterManager] = useState('all');
   const [openIssueDropdownId, setOpenIssueDropdownId] = useState(null);
@@ -31,11 +31,153 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, getSta
     return { minDate, maxDate, totalDays };
   }, [filteredProjects]);
 
-  const handleExportProjects = () => {
-    const exportData = filteredProjects.map(p => ({ id: p.id, domain: p.domain, name: p.name, customer: p.customer, site: p.site, startDate: p.startDate, dueDate: p.dueDate, manager: p.manager, status: p.status, progress: `${calcAct(p.tasks)}%` }));
-    exportToCSV(exportData, '프로젝트_리스트', [
-      { header: '프로젝트 ID', key: 'id' }, { header: '산업군', key: 'domain' }, { header: '프로젝트명', key: 'name' }, { header: '고객사', key: 'customer' }, { header: '사이트', key: 'site' }, { header: '담당자', key: 'manager' }, { header: '시작일', key: 'startDate' }, { header: '납기일', key: 'dueDate' }, { header: '상태', key: 'status' }, { header: '현재 진척도', key: 'progress' }
-    ]);
+  // 간단 리스트 Excel (1 시트)
+  const handleExportList = () => {
+    const exportData = filteredProjects.map(p => ({
+      id: p.id, domain: p.domain, name: p.name, customer: p.customer, site: p.site,
+      startDate: p.startDate, dueDate: p.dueDate, manager: p.manager, status: p.status,
+      phase: PROJECT_PHASES[typeof p.phaseIndex === 'number' ? p.phaseIndex : 0] || '',
+      expected: calcExp(p.startDate, p.dueDate) + '%', actual: calcAct(p.tasks) + '%'
+    }));
+    exportToExcel('프로젝트_리스트', [{
+      name: '프로젝트 리스트',
+      rows: exportData,
+      columns: [
+        { header: 'ID', key: 'id' }, { header: '도메인', key: 'domain' }, { header: '프로젝트명', key: 'name' },
+        { header: '고객사', key: 'customer' }, { header: '사이트', key: 'site' }, { header: '담당자', key: 'manager' },
+        { header: '시작일', key: 'startDate' }, { header: '납기일', key: 'dueDate' }, { header: '상태', key: 'status' },
+        { header: '현재 단계', key: 'phase' }, { header: '계획', key: 'expected' }, { header: '실적', key: 'actual' }
+      ]
+    }]);
+  };
+
+  // 프로젝트별 상세 Excel (프로젝트별 시트 분리)
+  const handleExportDetail = () => {
+    const sheets = [];
+
+    // 첫 번째 시트: 전체 개요
+    sheets.push({
+      name: '0.전체 개요',
+      sections: [{
+        title: '전체 프로젝트 현황',
+        rows: filteredProjects.map(p => ({
+          id: p.id, domain: p.domain, name: p.name, customer: p.customer, site: p.site,
+          startDate: p.startDate, dueDate: p.dueDate, manager: p.manager, status: p.status,
+          phase: PROJECT_PHASES[typeof p.phaseIndex === 'number' ? p.phaseIndex : 0] || '',
+          expected: calcExp(p.startDate, p.dueDate) + '%', actual: calcAct(p.tasks) + '%'
+        })),
+        columns: [
+          { header: 'ID', key: 'id' }, { header: '도메인', key: 'domain' }, { header: '프로젝트명', key: 'name' },
+          { header: '고객사', key: 'customer' }, { header: '사이트', key: 'site' }, { header: '담당자', key: 'manager' },
+          { header: '시작일', key: 'startDate' }, { header: '납기일', key: 'dueDate' }, { header: '상태', key: 'status' },
+          { header: '단계', key: 'phase' }, { header: '계획', key: 'expected' }, { header: '실적', key: 'actual' }
+        ]
+      }]
+    });
+
+    // 프로젝트별 시트 (각 프로젝트가 하나의 시트)
+    filteredProjects.forEach((p, idx) => {
+      const prjIssues = issues.filter(i => i.projectId === p.id);
+      const sheetName = `${idx + 1}.${p.name}`;
+
+      const sections = [];
+
+      // 기본 정보
+      sections.push({
+        title: '기본 정보',
+        rows: [
+          { field: '프로젝트 ID', value: p.id },
+          { field: '프로젝트명', value: p.name },
+          { field: '도메인', value: p.domain },
+          { field: '고객사', value: p.customer },
+          { field: '사이트', value: p.site },
+          { field: '시작일', value: p.startDate },
+          { field: '납기일', value: p.dueDate },
+          { field: '상태', value: p.status },
+          { field: '현재 단계', value: PROJECT_PHASES[typeof p.phaseIndex === 'number' ? p.phaseIndex : 0] || '' },
+          { field: '담당자', value: p.manager || '-' },
+          { field: '계획 진행률', value: calcExp(p.startDate, p.dueDate) + '%' },
+          { field: '실적 진행률', value: calcAct(p.tasks) + '%' },
+          { field: 'HW 버전', value: p.hwVersion || '-' },
+          { field: 'SW 버전', value: p.swVersion || '-' },
+          { field: 'FW 버전', value: p.fwVersion || '-' },
+          { field: 'Notion 링크', value: p.notionLink || '-' }
+        ],
+        columns: [{ header: '항목', key: 'field' }, { header: '값', key: 'value' }]
+      });
+
+      // 세부 일정
+      sections.push({
+        title: `세부 일정 (${(p.tasks || []).length}건)`,
+        rows: (p.tasks || []).map((task, i) => ({
+          step: `Step ${i + 1}`, name: task.name,
+          startDate: task.startDate || '-', endDate: task.endDate || '-',
+          status: task.isCompleted ? '완료' : '진행중',
+          delayReason: task.delayReason || '-'
+        })),
+        columns: [
+          { header: '순서', key: 'step' }, { header: '업무명', key: 'name' },
+          { header: '시작일', key: 'startDate' }, { header: '종료일', key: 'endDate' },
+          { header: '상태', key: 'status' }, { header: '메모/지연사유', key: 'delayReason' }
+        ]
+      });
+
+      // 체크리스트
+      sections.push({
+        title: `디지털 검수표 (${(p.checklist || []).length}건)`,
+        rows: (p.checklist || []).map(c => ({ category: c.category, task: c.task, status: c.status, note: c.note || '-' })),
+        columns: [{ header: '카테고리', key: 'category' }, { header: '점검 항목', key: 'task' }, { header: '결과', key: 'status' }, { header: '비고', key: 'note' }]
+      });
+
+      // 연관 이슈
+      sections.push({
+        title: `연관 이슈 (${prjIssues.length}건)`,
+        rows: prjIssues.map(i => ({ id: i.id, title: i.title, severity: i.severity, status: i.status, author: i.author, date: i.date, comments: (i.comments || []).length })),
+        columns: [{ header: 'ID', key: 'id' }, { header: '제목', key: 'title' }, { header: '심각도', key: 'severity' }, { header: '상태', key: 'status' }, { header: '작성자', key: 'author' }, { header: '일자', key: 'date' }, { header: '코멘트', key: 'comments' }]
+      });
+
+      // 공유 노트
+      sections.push({
+        title: `공유 노트 (${(p.notes || []).length}건)`,
+        rows: (p.notes || []).map(n => ({ author: n.author, date: n.date, text: n.text })),
+        columns: [{ header: '작성자', key: 'author' }, { header: '일시', key: 'date' }, { header: '내용', key: 'text' }]
+      });
+
+      // 고객 요청사항
+      sections.push({
+        title: `고객 요청사항 (${(p.customerRequests || []).length}건)`,
+        rows: (p.customerRequests || []).map(r => ({
+          requester: r.requester, urgency: r.urgency, status: r.status, content: r.content,
+          date: r.date, responses: (r.responses || []).map(res => `[${res.author}] ${res.text}`).join(' / ')
+        })),
+        columns: [{ header: '요청자', key: 'requester' }, { header: '긴급도', key: 'urgency' }, { header: '상태', key: 'status' }, { header: '요청 내용', key: 'content' }, { header: '일자', key: 'date' }, { header: '응답 이력', key: 'responses' }]
+      });
+
+      // AS 내역
+      sections.push({
+        title: `AS 내역 (${(p.asRecords || []).length}건)`,
+        rows: (p.asRecords || []).map(a => ({ type: a.type, engineer: a.engineer, status: a.status, description: a.description, resolution: a.resolution, date: a.date })),
+        columns: [{ header: '유형', key: 'type' }, { header: '담당 엔지니어', key: 'engineer' }, { header: '상태', key: 'status' }, { header: '증상', key: 'description' }, { header: '조치', key: 'resolution' }, { header: '일자', key: 'date' }]
+      });
+
+      // 담당자 변경 이력
+      sections.push({
+        title: `담당자 변경 이력 (${(p.managerHistory || []).length}건)`,
+        rows: (p.managerHistory || []).map(h => ({ from: h.from, to: h.to, reason: h.reason || '-', changedBy: h.changedBy, date: h.date })),
+        columns: [{ header: '이전 담당자', key: 'from' }, { header: '새 담당자', key: 'to' }, { header: '사유', key: 'reason' }, { header: '변경자', key: 'changedBy' }, { header: '일자', key: 'date' }]
+      });
+
+      // 활동 이력
+      sections.push({
+        title: `활동 이력 (${(p.activityLog || []).length}건)`,
+        rows: (p.activityLog || []).map(log => ({ date: log.date, user: log.user, type: log.type, detail: log.detail })),
+        columns: [{ header: '일시', key: 'date' }, { header: '작성자', key: 'user' }, { header: '유형', key: 'type' }, { header: '상세', key: 'detail' }]
+      });
+
+      sheets.push({ name: sheetName, sections });
+    });
+
+    exportSectionedExcel('프로젝트_상세_전체', sheets);
   };
 
   return (
@@ -43,7 +185,8 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, getSta
       <div className="flex justify-between items-end">
         <div><h1 className="text-2xl font-bold">{t('프로젝트 관리', 'Projects')}</h1></div>
         <div className="flex items-center space-x-3">
-          <button onClick={handleExportProjects} className="flex items-center bg-slate-100 text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors shadow-sm"><Download size={16} className="mr-1.5" /> CSV</button>
+          <button onClick={handleExportList} className="flex items-center bg-slate-100 text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors shadow-sm" title={t('간단 리스트 Excel', 'Simple list Excel')}><Download size={16} className="mr-1.5" /> {t('리스트 (Excel)', 'List (Excel)')}</button>
+          <button onClick={handleExportDetail} className="flex items-center bg-indigo-50 text-indigo-600 border border-indigo-200 px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-indigo-100 transition-colors shadow-sm" title={t('프로젝트별 시트 분리 Excel', 'Per-project sheets')}><Download size={16} className="mr-1.5" /> {t('상세 (Excel)', 'Detail (Excel)')}</button>
           {currentUser.role !== 'CUSTOMER' && (
             <div className="flex items-center bg-white rounded-lg px-3 py-1.5 shadow-sm border border-slate-200">
               <Filter size={16} className="text-slate-400 mr-2" />
@@ -102,6 +245,9 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, getSta
                     <div className="text-sm font-bold text-slate-900 mt-1.5 flex items-center">
                       {prj.name}
                       <span className="ml-2 bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] font-medium border border-slate-200">{prj.domain}</span>
+                      {(currentUser.role === 'ADMIN' || currentUser.role === 'PM') && (
+                        <button onClick={() => onEditProject(prj)} className="ml-2 text-slate-300 hover:text-indigo-600 transition-colors opacity-0 group-hover:opacity-100" title={t('프로젝트 정보 수정', 'Edit Project')}><Edit size={12} /></button>
+                      )}
                     </div>
                     <div className="text-xs text-slate-500 flex items-center mt-1"><Clock size={12} className="mr-1" /> {prj.startDate} ~ {prj.dueDate}</div>
                     <ProjectPipelineStepper currentPhase={prj.phaseIndex || 0} onUpdatePhase={onUpdatePhase} projectId={prj.id} role={currentUser.role} />

@@ -4,7 +4,7 @@ import { PROJECT_PHASES } from '../../constants';
 import StatCard from '../common/StatCard';
 import SimpleDonutChart from '../common/SimpleDonutChart';
 import SimpleBarChart from '../common/SimpleBarChart';
-import { exportToCSV, exportMultiSectionCSV } from '../../utils/export';
+import { exportToExcel } from '../../utils/export';
 
 const DashboardView = memo(function DashboardView({ projects, issues, engineers, getStatusColor, calcExp, calcAct, t }) {
   const activeProjectsCount = projects.filter(p => p.status !== '완료').length;
@@ -122,14 +122,14 @@ const DashboardView = memo(function DashboardView({ projects, issues, engineers,
     activityRows.sort((a, b) => new Date(b.date) - new Date(a.date));
     const recentActivity = activityRows.slice(0, 50);
 
-    exportMultiSectionCSV('EQ_PMS_종합리포트', [
+    exportToExcel('EQ_PMS_종합리포트', [
       {
-        title: '1. 기본 통계',
+        name: '1.기본통계',
         rows: basic,
         columns: [{ header: '항목', key: 'category' }, { header: '값', key: 'count' }]
       },
       {
-        title: '2. 도메인별 현황',
+        name: '2.도메인별',
         rows: domainRows,
         columns: [
           { header: '도메인', key: 'domain' }, { header: '전체', key: 'total' }, { header: '진행중', key: 'active' },
@@ -137,7 +137,7 @@ const DashboardView = memo(function DashboardView({ projects, issues, engineers,
         ]
       },
       {
-        title: '3. 프로젝트별 상세',
+        name: '3.프로젝트별 상세',
         rows: projectRows,
         columns: [
           { header: 'ID', key: 'id' }, { header: '프로젝트명', key: 'name' }, { header: '도메인', key: 'domain' },
@@ -149,7 +149,7 @@ const DashboardView = memo(function DashboardView({ projects, issues, engineers,
         ]
       },
       {
-        title: '4. 지연 위험 프로젝트 (계획-실적 15%p 이상)',
+        name: '4.지연 위험',
         rows: delayRows,
         columns: [
           { header: '프로젝트명', key: 'name' }, { header: '담당자', key: 'manager' }, { header: '도메인', key: 'domain' },
@@ -157,7 +157,7 @@ const DashboardView = memo(function DashboardView({ projects, issues, engineers,
         ]
       },
       {
-        title: '5. 미해결 이슈',
+        name: '5.미해결 이슈',
         rows: issueRows,
         columns: [
           { header: 'ID', key: 'id' }, { header: '프로젝트', key: 'projectName' }, { header: '이슈 제목', key: 'title' },
@@ -165,7 +165,7 @@ const DashboardView = memo(function DashboardView({ projects, issues, engineers,
         ]
       },
       {
-        title: '6. 진행중 고객 요청사항',
+        name: '6.진행중 고객요청',
         rows: requestRows,
         columns: [
           { header: '프로젝트', key: 'projectName' }, { header: '요청자', key: 'requester' }, { header: '긴급도', key: 'urgency' },
@@ -173,7 +173,7 @@ const DashboardView = memo(function DashboardView({ projects, issues, engineers,
         ]
       },
       {
-        title: '7. AS 내역',
+        name: '7.AS 내역',
         rows: asRows,
         columns: [
           { header: '프로젝트', key: 'projectName' }, { header: 'AS 유형', key: 'type' }, { header: '담당 엔지니어', key: 'engineer' },
@@ -181,7 +181,7 @@ const DashboardView = memo(function DashboardView({ projects, issues, engineers,
         ]
       },
       {
-        title: '8. 담당자 변경 이력',
+        name: '8.담당자 변경이력',
         rows: mgrHistoryRows,
         columns: [
           { header: '프로젝트', key: 'projectName' }, { header: '이전 담당자', key: 'from' }, { header: '새 담당자', key: 'to' },
@@ -189,7 +189,7 @@ const DashboardView = memo(function DashboardView({ projects, issues, engineers,
         ]
       },
       {
-        title: '9. 엔지니어 현황',
+        name: '9.엔지니어 현황',
         rows: engRows,
         columns: [
           { header: 'ID', key: 'id' }, { header: '이름', key: 'name' }, { header: '부서', key: 'dept' }, { header: '역할', key: 'role' },
@@ -197,7 +197,7 @@ const DashboardView = memo(function DashboardView({ projects, issues, engineers,
         ]
       },
       {
-        title: '10. 최근 활동 이력 (최근 50건)',
+        name: '10.최근 활동 이력',
         rows: recentActivity,
         columns: [
           { header: '프로젝트', key: 'projectName' }, { header: '일시', key: 'date' }, { header: '작성자', key: 'user' },
@@ -215,7 +215,7 @@ const DashboardView = memo(function DashboardView({ projects, issues, engineers,
           <p className="text-slate-500 mt-1">{t('프로젝트 및 이슈의 전체적인 현황을 차트로 분석합니다.', 'Analyze the overall status of projects and issues.')}</p>
         </div>
         <button onClick={handleExportSummary} className="flex items-center bg-emerald-50 text-emerald-600 border border-emerald-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-emerald-100 transition-colors shadow-sm">
-          <Download size={16} className="mr-2" /> {t('종합 리포트 다운로드 (CSV)', 'Full Report (CSV)')}
+          <Download size={16} className="mr-2" /> {t('종합 리포트 다운로드 (Excel)', 'Full Report (Excel)')}
         </button>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

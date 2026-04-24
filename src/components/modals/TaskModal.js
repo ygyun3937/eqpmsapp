@@ -5,7 +5,7 @@ import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
 import SignaturePad from '../common/SignaturePad';
 import { generatePDF } from '../../utils/export';
 
-const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusColor, onClose, onToggleTask, onAddTask, onEditTaskName, onDeleteTask, onUpdateDelayReason, onUpdateChecklistItem, onLoadDefaultChecklist, onAddChecklistItem, onDeleteChecklistItem, onUpdatePhase, onSignOff, onAddNote, onDeleteNote, onAddCustomerRequest, onUpdateCustomerRequestStatus, onAddCustomerResponse, onDeleteCustomerRequest, onAddAS, onUpdateAS, onDeleteAS, calcAct, currentUser, t }) {
+const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusColor, onClose, onToggleTask, onAddTask, onEditTaskName, onDeleteTask, onUpdateDelayReason, onUpdateTaskDates, onUpdateChecklistItem, onLoadDefaultChecklist, onAddChecklistItem, onDeleteChecklistItem, onUpdatePhase, onSignOff, onAddNote, onDeleteNote, onAddCustomerRequest, onUpdateCustomerRequestStatus, onAddCustomerResponse, onDeleteCustomerRequest, onAddAS, onUpdateAS, onDeleteAS, calcAct, currentUser, t }) {
   const [activeModalTab, setActiveModalTab] = useState('tasks');
   const [newTaskName, setNewTaskName] = useState('');
   const [newNoteText, setNewNoteText] = useState('');
@@ -76,6 +76,25 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                           )}
                         </div>
                       )}
+                      {/* 시작일 / 종료일 */}
+                      {currentUser.role !== 'CUSTOMER' && (
+                        <div className="flex items-center gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex-1">
+                            <label className="text-[9px] text-slate-400 font-bold block mb-0.5">{t('시작일', 'Start')}</label>
+                            <input type="date" className="w-full text-[10px] md:text-xs p-1 border border-slate-200 rounded bg-slate-50 focus:outline-none focus:border-blue-400 focus:bg-white" value={task.startDate || ''} onChange={(e) => onUpdateTaskDates(project.id, task.id, { startDate: e.target.value })} />
+                          </div>
+                          <div className="flex-1">
+                            <label className="text-[9px] text-slate-400 font-bold block mb-0.5">{t('종료일', 'End')}</label>
+                            <input type="date" className="w-full text-[10px] md:text-xs p-1 border border-slate-200 rounded bg-slate-50 focus:outline-none focus:border-blue-400 focus:bg-white" value={task.endDate || ''} onChange={(e) => onUpdateTaskDates(project.id, task.id, { endDate: e.target.value })} />
+                          </div>
+                        </div>
+                      )}
+                      {currentUser.role === 'CUSTOMER' && (task.startDate || task.endDate) && (
+                        <div className="mt-1 text-[10px] text-slate-500">
+                          {task.startDate || '?'} ~ {task.endDate || '?'}
+                        </div>
+                      )}
+
                       {!task.isCompleted && currentUser.role !== 'CUSTOMER' && <input type="text" placeholder={t("지연 사유 등 메모 (선택)", "Delay Reason/Notes (Optional)")} className="mt-2 w-full text-[10px] md:text-xs p-1.5 border border-slate-200 rounded bg-slate-50 text-slate-600 focus:outline-none focus:border-blue-400 focus:bg-white transition-colors" value={task.delayReason || ''} onChange={(e) => onUpdateDelayReason(project.id, task.id, e.target.value)} onClick={(e) => e.stopPropagation()} />}
                       {task.delayReason && <p className="mt-1 text-[10px] md:text-xs text-slate-400">{t('메모:', 'Note:')} {task.delayReason}</p>}
                     </div>

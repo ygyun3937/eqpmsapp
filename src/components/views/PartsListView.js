@@ -1,21 +1,25 @@
 import React, { useState, useMemo, memo } from 'react';
 import { Plus, Filter, User, Trash, ChevronRight, Package, Download } from 'lucide-react';
 import { PART_PHASES } from '../../constants';
-import { exportToCSV } from '../../utils/export';
+import { exportToExcel } from '../../utils/export';
 
 const PartsListView = memo(function PartsListView({ parts, getStatusColor, onUpdateStatus, onDeletePart, onAddClick, currentUser, t }) {
   const [filterStatus, setFilterStatus] = useState('all');
   const filteredParts = useMemo(() => filterStatus === 'all' ? parts : parts.filter(p => p.status === filterStatus), [parts, filterStatus]);
 
   const handleExport = () => {
-    exportToCSV(filteredParts.map(p => ({
-      id: p.id, projectName: p.projectName, partName: p.partName, partNumber: p.partNumber,
-      quantity: p.quantity, urgency: p.urgency, status: p.status, author: p.author, date: p.date
-    })), '자재_리스트', [
-      { header: 'ID', key: 'id' }, { header: '프로젝트', key: 'projectName' }, { header: '파트명', key: 'partName' },
-      { header: 'P/N', key: 'partNumber' }, { header: '수량', key: 'quantity' }, { header: '긴급도', key: 'urgency' },
-      { header: '상태', key: 'status' }, { header: '청구자', key: 'author' }, { header: '일자', key: 'date' }
-    ]);
+    exportToExcel('자재_리스트', [{
+      name: '자재 리스트',
+      rows: filteredParts.map(p => ({
+        id: p.id, projectName: p.projectName, partName: p.partName, partNumber: p.partNumber,
+        quantity: p.quantity, urgency: p.urgency, status: p.status, author: p.author, date: p.date
+      })),
+      columns: [
+        { header: 'ID', key: 'id' }, { header: '프로젝트', key: 'projectName' }, { header: '파트명', key: 'partName' },
+        { header: 'P/N', key: 'partNumber' }, { header: '수량', key: 'quantity' }, { header: '긴급도', key: 'urgency' },
+        { header: '상태', key: 'status' }, { header: '청구자', key: 'author' }, { header: '일자', key: 'date' }
+      ]
+    }]);
   };
 
   const getStepClass = (currentStatus, step) => {
@@ -32,7 +36,7 @@ const PartsListView = memo(function PartsListView({ parts, getStatusColor, onUpd
         <div><h1 className="text-2xl font-bold text-slate-800">{t('자재 및 스페어 파트 관리', 'Parts Management')}</h1></div>
         <div className="flex items-center space-x-3">
           <button onClick={handleExport} className="flex items-center bg-slate-100 text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors shadow-sm">
-            <Download size={16} className="mr-1.5" /> CSV
+            <Download size={16} className="mr-1.5" /> Excel
           </button>
           <div className="flex bg-white rounded-lg px-3 py-1.5 border border-slate-200 items-center">
             <Filter size={16} className="text-slate-400 mr-2" />

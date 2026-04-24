@@ -1,13 +1,13 @@
 import React, { memo } from 'react';
 import { Users, HardHat, Building, UserCircle, User, MapPin, Edit, Trash, AlertTriangle, XCircle, Download } from 'lucide-react';
 import StatCard from '../common/StatCard';
-import { exportToCSV } from '../../utils/export';
+import { exportToExcel } from '../../utils/export';
 
 const ResourceListView = memo(function ResourceListView({ engineers, projects, getStatusColor, TODAY, onAddClick, onEditClick, onDeleteClick, currentUser, t }) {
   const warningCount = engineers.filter(eng => { const expDate = new Date(eng.accessExpiry); return TODAY > expDate || (expDate - TODAY) / (1000 * 60 * 60 * 24) <= 30; }).length;
 
   const handleExport = () => {
-    exportToCSV(engineers.map(e => {
+    const rows = engineers.map(e => {
       const expDate = new Date(e.accessExpiry);
       const daysLeft = Math.floor((expDate - TODAY) / (1000 * 60 * 60 * 24));
       const expiryStatus = TODAY > expDate ? '만료됨' : daysLeft <= 30 ? `임박(${daysLeft}일)` : `정상(${daysLeft}일)`;
@@ -16,12 +16,17 @@ const ResourceListView = memo(function ResourceListView({ engineers, projects, g
         id: e.id, name: e.name, dept: e.dept, role: e.role, status: e.status,
         currentSite: e.currentSite, accessExpiry: e.accessExpiry, expiryStatus, assignedProjects: assigned || '-'
       };
-    }), '엔지니어_리스트', [
-      { header: 'ID', key: 'id' }, { header: '이름', key: 'name' }, { header: '부서', key: 'dept' }, { header: '역할', key: 'role' },
-      { header: '상태', key: 'status' }, { header: '현재 위치', key: 'currentSite' },
-      { header: '출입증 만료일', key: 'accessExpiry' }, { header: '만료 상태', key: 'expiryStatus' },
-      { header: '배정 프로젝트', key: 'assignedProjects' }
-    ]);
+    });
+    exportToExcel('엔지니어_리스트', [{
+      name: '엔지니어 리스트',
+      rows: rows,
+      columns: [
+        { header: 'ID', key: 'id' }, { header: '이름', key: 'name' }, { header: '부서', key: 'dept' }, { header: '역할', key: 'role' },
+        { header: '상태', key: 'status' }, { header: '현재 위치', key: 'currentSite' },
+        { header: '출입증 만료일', key: 'accessExpiry' }, { header: '만료 상태', key: 'expiryStatus' },
+        { header: '배정 프로젝트', key: 'assignedProjects' }
+      ]
+    }]);
   };
 
   return (
@@ -30,7 +35,7 @@ const ResourceListView = memo(function ResourceListView({ engineers, projects, g
         <div><h1 className="text-2xl font-bold text-slate-800">{t('인력 및 리소스 관리', 'Resource Management')}</h1></div>
         <div className="flex items-center space-x-3">
           <button onClick={handleExport} className="flex items-center bg-slate-100 text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors shadow-sm">
-            <Download size={16} className="mr-1.5" /> CSV
+            <Download size={16} className="mr-1.5" /> Excel
           </button>
           {currentUser.role === 'ADMIN' && (
             <button onClick={onAddClick} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm flex items-center transition-colors"><User className="mr-2" size={16}/> {t('엔지니어 추가', 'Add Engineer')}</button>

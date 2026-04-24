@@ -1,3 +1,82 @@
+import * as XLSX from 'xlsx';
+
+// Excel 여러 시트 내보내기
+// sheets: [{ name: 'Sheet1', rows: [{...}, ...], columns: [{ header, key }, ...] }]
+export const exportToExcel = (filename, sheets) => {
+  const wb = XLSX.utils.book_new();
+
+  sheets.forEach(sheet => {
+    const rows = sheet.rows || [];
+    const cols = sheet.columns || [];
+
+    // 2D 배열로 변환 (첫 행: 헤더)
+    const aoa = [cols.map(c => c.header)];
+    rows.forEach(row => {
+      aoa.push(cols.map(c => {
+        const val = row[c.key];
+        if (val === null || val === undefined) return '';
+        if (typeof val === 'object') return JSON.stringify(val);
+        return val;
+      }));
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    // 컬럼 너비 자동 조정
+    const colWidths = cols.map((c, i) => {
+      const maxLen = Math.max(
+        String(c.header).length,
+        ...rows.slice(0, 100).map(row => String(row[c.key] || '').length)
+      );
+      return { wch: Math.min(Math.max(maxLen + 2, 8), 50) };
+    });
+    ws['!cols'] = colWidths;
+
+    // 시트명 엑셀 제한 (31자, 특수문자 제외)
+    const safeName = (sheet.name || 'Sheet').replace(/[\\/?*[\]:]/g, '_').substring(0, 31);
+    XLSX.utils.book_append_sheet(wb, ws, safeName);
+  });
+
+  XLSX.writeFile(wb, `${filename}_${new Date().toISOString().split('T')[0]}.xlsx`);
+};
+
+// 한 시트에 여러 섹션(테이블) 넣기
+export const exportSectionedExcel = (filename, sheets) => {
+  const wb = XLSX.utils.book_new();
+
+  sheets.forEach(sheet => {
+    const aoa = [];
+    (sheet.sections || []).forEach((section, idx) => {
+      if (idx > 0) { aoa.push([]); aoa.push([]); }
+      aoa.push([`■ ${section.title}`]);
+      if (!section.rows || section.rows.length === 0) {
+        aoa.push(['(데이터 없음)']);
+        return;
+      }
+      aoa.push(section.columns.map(c => c.header));
+      section.rows.forEach(row => {
+        aoa.push(section.columns.map(c => {
+          const val = row[c.key];
+          if (val === null || val === undefined) return '';
+          if (typeof val === 'object') return JSON.stringify(val);
+          return val;
+        }));
+      });
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    // 최대 컬럼 수 파악 후 너비 조정
+    let maxCols = 0;
+    aoa.forEach(row => { if (row.length > maxCols) maxCols = row.length; });
+    ws['!cols'] = Array(maxCols).fill({ wch: 20 });
+
+    const safeName = (sheet.name || 'Sheet').replace(/[\\/?*[\]:]/g, '_').substring(0, 31);
+    XLSX.utils.book_append_sheet(wb, ws, safeName);
+  });
+
+  XLSX.writeFile(wb, `${filename}_${new Date().toISOString().split('T')[0]}.xlsx`);
+};
+
 export const generatePDF = (project, projectIssues) => {
   const printWin = window.open('', '', 'width=800,height=900');
   const html = `

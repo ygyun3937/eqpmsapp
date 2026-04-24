@@ -44,6 +44,7 @@ const MobilePartModal = lazy(() => import('./components/modals/MobilePartModal')
 const DeleteConfirmModal = lazy(() => import('./components/modals/DeleteConfirmModal'));
 const ManagerChangeModal = lazy(() => import('./components/modals/ManagerChangeModal'));
 const PhaseGanttModal = lazy(() => import('./components/modals/PhaseGanttModal'));
+const ProjectEditModal = lazy(() => import('./components/modals/ProjectEditModal'));
 
 const Loading = () => <div className="flex items-center justify-center h-32 text-slate-400 text-sm">Loading...</div>;
 
@@ -84,6 +85,8 @@ export default function App() {
   const [managerEditProject, setManagerEditProject] = useState(null);
   const [isPhaseGanttOpen, setIsPhaseGanttOpen] = useState(false);
   const [phaseGanttProject, setPhaseGanttProject] = useState(null);
+  const [isProjectEditOpen, setIsProjectEditOpen] = useState(false);
+  const [projectEditTarget, setProjectEditTarget] = useState(null);
 
   // Delete confirm states
   const [engineerToDelete, setEngineerToDelete] = useState(null);
@@ -204,6 +207,10 @@ export default function App() {
 
   const handleUpdateDelayReason = (projectId, taskId, reason) => {
     syncProjects(projects.map(p => p.id === projectId ? { ...p, tasks: p.tasks.map(t => t.id === taskId ? { ...t, delayReason: reason } : t) } : p));
+  };
+
+  const handleUpdateTaskDates = (projectId, taskId, dates) => {
+    syncProjects(projects.map(p => p.id === projectId ? { ...p, tasks: p.tasks.map(t => t.id === taskId ? { ...t, ...dates } : t) } : p));
   };
 
   const handleUpdateChecklistItem = (projectId, itemId, newStatus, newNote) => {
@@ -396,6 +403,22 @@ export default function App() {
     syncProjects(projects.map(p => p.id !== projectId ? p : { ...p, asRecords: (p.asRecords || []).filter(a => a.id !== asId) }));
   };
 
+  const handleEditProject = (projectId, data) => {
+    syncProjects(projects.map(p => {
+      if (p.id !== projectId) return p;
+      const changes = [];
+      if (p.name !== data.name) changes.push(`이름: ${p.name} → ${data.name}`);
+      if (p.customer !== data.customer) changes.push(`고객사: ${p.customer} → ${data.customer}`);
+      if (p.site !== data.site) changes.push(`사이트: ${p.site} → ${data.site}`);
+      if (p.startDate !== data.startDate) changes.push(`시작일: ${p.startDate} → ${data.startDate}`);
+      if (p.dueDate !== data.dueDate) changes.push(`납기일: ${p.dueDate} → ${data.dueDate}`);
+      const updated = { ...p, ...data };
+      return changes.length > 0 ? addLog(updated, 'PROJECT_EDIT', `프로젝트 수정: ${changes.join(', ')}`) : updated;
+    }));
+    setIsProjectEditOpen(false);
+    showToast(t('프로젝트 정보가 수정되었습니다.', 'Project updated.'));
+  };
+
   const handleUpdateVersion = (projectId, hwVersion, swVersion, fwVersion) => {
     syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, hwVersion, swVersion, fwVersion }, 'VERSION_CHANGE', `HW:${hwVersion} SW:${swVersion} FW:${fwVersion}`)));
     setIsVersionModalOpen(false);
@@ -435,6 +458,7 @@ export default function App() {
     onToggleTask: toggleTaskCompletion, onAddTask: handleAddTask,
     onEditTaskName: handleEditTaskName, onDeleteTask: handleDeleteTask,
     onUpdateDelayReason: handleUpdateDelayReason,
+    onUpdateTaskDates: handleUpdateTaskDates,
     onUpdateChecklistItem: handleUpdateChecklistItem,
     onLoadDefaultChecklist: handleLoadDefaultChecklist,
     onAddChecklistItem: handleAddChecklistItem,
@@ -486,7 +510,7 @@ export default function App() {
                 </div>
               </div>
             )}
-            {activeTab === 'projects' && <ProjectListView projects={projects} issues={issues} getStatusColor={getStatusColor} onAddClick={() => setIsProjectModalOpen(true)} onManageTasks={(id) => { setSelectedProjectId(id); setIsTaskModalOpen(true); }} onEditVersion={(prj) => { setVersionEditProject(prj); setIsVersionModalOpen(true); }} onChangeManager={(prj) => { setManagerEditProject(prj); setIsManagerModalOpen(true); }} onViewPhaseGantt={(prj) => { setPhaseGanttProject(prj); setIsPhaseGanttOpen(true); }} onDeleteProject={(prj) => setProjectToDelete(prj)} onUpdatePhase={handleUpdatePhase} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} calcExp={calcExp} calcAct={calcAct} currentUser={currentUser} t={t} />}
+            {activeTab === 'projects' && <ProjectListView projects={projects} issues={issues} getStatusColor={getStatusColor} onAddClick={() => setIsProjectModalOpen(true)} onManageTasks={(id) => { setSelectedProjectId(id); setIsTaskModalOpen(true); }} onEditVersion={(prj) => { setVersionEditProject(prj); setIsVersionModalOpen(true); }} onChangeManager={(prj) => { setManagerEditProject(prj); setIsManagerModalOpen(true); }} onViewPhaseGantt={(prj) => { setPhaseGanttProject(prj); setIsPhaseGanttOpen(true); }} onEditProject={(prj) => { setProjectEditTarget(prj); setIsProjectEditOpen(true); }} onDeleteProject={(prj) => setProjectToDelete(prj)} onUpdatePhase={handleUpdatePhase} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} calcExp={calcExp} calcAct={calcAct} currentUser={currentUser} t={t} />}
             {activeTab === 'issues' && <IssueListView issues={issues} getStatusColor={getStatusColor} onAddClick={() => setIsIssueModalOpen(true)} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} onDeleteIssue={(issue) => setIssueToDelete(issue)} currentUser={currentUser} t={t} />}
             {activeTab === 'sites' && <SiteListView sites={sites} onAddClick={() => { setSelectedSite(null); setIsSiteModalOpen(true); }} onEditClick={(site) => { setSelectedSite(site); setIsSiteModalOpen(true); }} onDeleteClick={(site) => setSiteToDelete(site)} currentUser={currentUser} t={t} />}
           </Suspense>
@@ -554,7 +578,7 @@ export default function App() {
           <div className="flex-1 overflow-auto p-8">
             <Suspense fallback={<Loading />}>
               {activeTab === 'dashboard' && <DashboardView projects={projects} issues={issues} engineers={engineers} getStatusColor={getStatusColor} calcExp={calcExp} calcAct={calcAct} t={t} />}
-              {activeTab === 'projects' && <ProjectListView projects={projects} issues={issues} getStatusColor={getStatusColor} onAddClick={() => setIsProjectModalOpen(true)} onManageTasks={(id) => { setSelectedProjectId(id); setIsTaskModalOpen(true); }} onEditVersion={(prj) => { setVersionEditProject(prj); setIsVersionModalOpen(true); }} onChangeManager={(prj) => { setManagerEditProject(prj); setIsManagerModalOpen(true); }} onViewPhaseGantt={(prj) => { setPhaseGanttProject(prj); setIsPhaseGanttOpen(true); }} onDeleteProject={(prj) => setProjectToDelete(prj)} onUpdatePhase={handleUpdatePhase} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} calcExp={calcExp} calcAct={calcAct} currentUser={currentUser} t={t} />}
+              {activeTab === 'projects' && <ProjectListView projects={projects} issues={issues} getStatusColor={getStatusColor} onAddClick={() => setIsProjectModalOpen(true)} onManageTasks={(id) => { setSelectedProjectId(id); setIsTaskModalOpen(true); }} onEditVersion={(prj) => { setVersionEditProject(prj); setIsVersionModalOpen(true); }} onChangeManager={(prj) => { setManagerEditProject(prj); setIsManagerModalOpen(true); }} onViewPhaseGantt={(prj) => { setPhaseGanttProject(prj); setIsPhaseGanttOpen(true); }} onEditProject={(prj) => { setProjectEditTarget(prj); setIsProjectEditOpen(true); }} onDeleteProject={(prj) => setProjectToDelete(prj)} onUpdatePhase={handleUpdatePhase} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} calcExp={calcExp} calcAct={calcAct} currentUser={currentUser} t={t} />}
               {activeTab === 'issues' && <IssueListView issues={issues} getStatusColor={getStatusColor} onAddClick={() => setIsIssueModalOpen(true)} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} onDeleteIssue={(issue) => setIssueToDelete(issue)} currentUser={currentUser} t={t} />}
               {activeTab === 'parts' && <PartsListView parts={parts} getStatusColor={getStatusColor} onUpdateStatus={handleUpdatePartStatus} onDeletePart={(part) => setPartToDelete(part)} onAddClick={() => setIsPartModalOpen(true)} currentUser={currentUser} t={t} />}
               {activeTab === 'sites' && <SiteListView sites={sites} onAddClick={() => { setSelectedSite(null); setIsSiteModalOpen(true); }} onEditClick={(site) => { setSelectedSite(site); setIsSiteModalOpen(true); }} onDeleteClick={(site) => setSiteToDelete(site)} currentUser={currentUser} t={t} />}
@@ -573,6 +597,7 @@ export default function App() {
             {isVersionModalOpen && <VersionModal project={versionEditProject} onClose={() => setIsVersionModalOpen(false)} onSubmit={handleUpdateVersion} t={t} />}
             {isManagerModalOpen && <ManagerChangeModal project={managerEditProject} onClose={() => setIsManagerModalOpen(false)} onSubmit={handleChangeManager} t={t} />}
             {isPhaseGanttOpen && <PhaseGanttModal project={phaseGanttProject} onClose={() => setIsPhaseGanttOpen(false)} t={t} />}
+            {isProjectEditOpen && <ProjectEditModal project={projectEditTarget} onClose={() => setIsProjectEditOpen(false)} onSubmit={handleEditProject} t={t} />}
             {isReleaseModalOpen && <ReleaseModal onClose={() => setIsReleaseModalOpen(false)} onSubmit={handleAddRelease} t={t} />}
             {isEngineerModalOpen && <EngineerModal engineer={selectedEngineer} onClose={() => setIsEngineerModalOpen(false)} onSubmit={handleAddEngineer} t={t} />}
 
