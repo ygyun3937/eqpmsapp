@@ -49,6 +49,42 @@ export const generatePDF = (project, projectIssues) => {
   setTimeout(() => { printWin.print(); }, 500);
 };
 
+const formatCell = (val) => {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'object') val = JSON.stringify(val);
+  const str = String(val);
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return `"${str.replace(/"/g, '""').replace(/\n/g, ' ')}"`;
+  }
+  return str;
+};
+
+// 섹션별로 구분된 종합 CSV 내보내기 (엑셀에서 섹션 구분 ### 으로 표시)
+export const exportMultiSectionCSV = (filename, sections) => {
+  const lines = [];
+  sections.forEach((section, idx) => {
+    if (idx > 0) lines.push('', '');
+    lines.push(`### ${section.title} ###`);
+    if (!section.rows || section.rows.length === 0) {
+      lines.push('(데이터 없음)');
+      return;
+    }
+    lines.push(section.columns.map(c => c.header).join(','));
+    section.rows.forEach(row => {
+      lines.push(section.columns.map(c => formatCell(row[c.key])).join(','));
+    });
+  });
+
+  const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `${filename}_${new Date().toISOString().split('T')[0]}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
 export const exportToCSV = (data, filename, columns) => {
   if (!data || data.length === 0) {
     alert('다운로드할 데이터가 없습니다.');
@@ -56,16 +92,10 @@ export const exportToCSV = (data, filename, columns) => {
   }
   const csvContent = [
     columns.map(c => c.header).join(','),
-    ...data.map(item => columns.map(c => {
-      let val = item[c.key] || '';
-      if (typeof val === 'string') {
-        val = `"${val.replace(/"/g, '""').replace(/\n/g, ' ')}"`;
-      }
-      return val;
-    }).join(','))
+    ...data.map(item => columns.map(c => formatCell(item[c.key])).join(','))
   ].join('\n');
 
-  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;

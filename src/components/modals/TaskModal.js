@@ -1,11 +1,11 @@
 import React, { useState, memo } from 'react';
-import { X, ListTodo, CheckSquare, AlertTriangle, CheckCircle, User, Edit, Trash, PenTool, Info, ShieldCheck, FileText, ImageIcon, History, GitCommit as TimelineIcon, Package, Wrench, HardDrive } from 'lucide-react';
+import { X, ListTodo, CheckSquare, AlertTriangle, CheckCircle, User, Edit, Trash, PenTool, Info, ShieldCheck, FileText, ImageIcon, History, GitCommit as TimelineIcon, Package, Wrench, HardDrive, MessageSquare, Send, LifeBuoy } from 'lucide-react';
 import { PROJECT_PHASES } from '../../constants';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
 import SignaturePad from '../common/SignaturePad';
 import { generatePDF } from '../../utils/export';
 
-const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusColor, onClose, onToggleTask, onAddTask, onEditTaskName, onDeleteTask, onUpdateDelayReason, onUpdateChecklistItem, onLoadDefaultChecklist, onAddChecklistItem, onDeleteChecklistItem, onUpdatePhase, onSignOff, onAddNote, onDeleteNote, calcAct, currentUser, t }) {
+const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusColor, onClose, onToggleTask, onAddTask, onEditTaskName, onDeleteTask, onUpdateDelayReason, onUpdateChecklistItem, onLoadDefaultChecklist, onAddChecklistItem, onDeleteChecklistItem, onUpdatePhase, onSignOff, onAddNote, onDeleteNote, onAddCustomerRequest, onUpdateCustomerRequestStatus, onAddCustomerResponse, onDeleteCustomerRequest, onAddAS, onUpdateAS, onDeleteAS, calcAct, currentUser, t }) {
   const [activeModalTab, setActiveModalTab] = useState('tasks');
   const [newTaskName, setNewTaskName] = useState('');
   const [newNoteText, setNewNoteText] = useState('');
@@ -13,6 +13,9 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
   const [editingTaskName, setEditingTaskName] = useState('');
   const [newChecklistCategory, setNewChecklistCategory] = useState('일반');
   const [newChecklistTask, setNewChecklistTask] = useState('');
+  const [newRequestForm, setNewRequestForm] = useState({ requester: '', content: '', urgency: 'Medium' });
+  const [responseText, setResponseText] = useState({});
+  const [newASForm, setNewASForm] = useState({ type: '정기점검', engineer: '', description: '', resolution: '' });
 
   if (!project) return null;
 
@@ -31,12 +34,14 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
           </div>
           <button onClick={onClose} className="text-blue-400 hover:text-blue-600 p-2 shrink-0"><X size={20} /></button>
         </div>
-        <div className="flex border-b border-slate-200 bg-white shrink-0 px-4 pt-2 overflow-x-auto no-scrollbar">
-          <button onClick={() => setActiveModalTab('tasks')} className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center ${activeModalTab === 'tasks' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><ListTodo size={16} className="mr-1.5" /> {t('세부 일정', 'Tasks')}</button>
-          <button onClick={() => setActiveModalTab('checklist')} className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center ${activeModalTab === 'checklist' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><CheckSquare size={16} className="mr-1.5" /> {t('디지털 검수표', 'Checklist')} ({checklistCompleted}/{checklistCount})</button>
-          <button onClick={() => setActiveModalTab('issues')} className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center ${activeModalTab === 'issues' ? 'border-red-600 text-red-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><AlertTriangle size={16} className="mr-1.5" /> {t('연관 이슈', 'Issues')} ({projectIssues.length})</button>
-          <button onClick={() => setActiveModalTab('history')} className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center ${activeModalTab === 'history' ? 'border-slate-600 text-slate-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><History size={16} className="mr-1.5" /> {t('활동 이력', 'History')} ({(project.activityLog || []).length})</button>
-          <button onClick={() => setActiveModalTab('notes')} className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center ${activeModalTab === 'notes' ? 'border-amber-600 text-amber-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><FileText size={16} className="mr-1.5" /> {t('공유 노트', 'Notes')} ({(project.notes || []).length})</button>
+        <div className="grid grid-cols-7 border-b border-slate-200 bg-white shrink-0">
+          <button onClick={() => setActiveModalTab('tasks')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'tasks' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><ListTodo size={16} className="mb-0.5" /><span>{t('세부 일정', 'Tasks')}</span></button>
+          <button onClick={() => setActiveModalTab('checklist')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'checklist' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><CheckSquare size={16} className="mb-0.5" /><span>{t('검수표', 'Checklist')} ({checklistCompleted}/{checklistCount})</span></button>
+          <button onClick={() => setActiveModalTab('issues')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'issues' ? 'border-red-600 text-red-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><AlertTriangle size={16} className="mb-0.5" /><span>{t('이슈', 'Issues')} ({projectIssues.length})</span></button>
+          <button onClick={() => setActiveModalTab('history')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'history' ? 'border-slate-600 text-slate-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><History size={16} className="mb-0.5" /><span>{t('이력', 'History')} ({(project.activityLog || []).length})</span></button>
+          <button onClick={() => setActiveModalTab('notes')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'notes' ? 'border-amber-600 text-amber-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><FileText size={16} className="mb-0.5" /><span>{t('노트', 'Notes')} ({(project.notes || []).length})</span></button>
+          <button onClick={() => setActiveModalTab('requests')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'requests' ? 'border-cyan-600 text-cyan-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><MessageSquare size={16} className="mb-0.5" /><span>{t('고객요청', 'Requests')} ({(project.customerRequests || []).length})</span></button>
+          <button onClick={() => setActiveModalTab('as')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'as' ? 'border-purple-600 text-purple-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><LifeBuoy size={16} className="mb-0.5" /><span>{t('AS 관리', 'AS')} ({(project.asRecords || []).length})</span></button>
         </div>
         <div className="p-4 md:p-6 overflow-y-auto flex-1 scroll-smooth bg-slate-50">
           {activeModalTab === 'tasks' && (
@@ -185,6 +190,10 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                         VERSION_CHANGE: { icon: <HardDrive size={14}/>, color: 'bg-slate-100 text-slate-600 border-slate-200', label: t('버전 변경', 'Version') },
                         SIGN_OFF: { icon: <ShieldCheck size={14}/>, color: 'bg-emerald-100 text-emerald-700 border-emerald-300', label: t('Buy-off 서명', 'Sign-off') },
                         NOTE_ADD: { icon: <FileText size={14}/>, color: 'bg-amber-100 text-amber-600 border-amber-200', label: t('공유 노트', 'Note') },
+                        REQUEST_ADD: { icon: <MessageSquare size={14}/>, color: 'bg-cyan-100 text-cyan-600 border-cyan-200', label: t('고객 요청', 'Request') },
+                        REQUEST_STATUS: { icon: <MessageSquare size={14}/>, color: 'bg-cyan-100 text-cyan-600 border-cyan-200', label: t('요청 처리', 'Req Status') },
+                        AS_ADD: { icon: <LifeBuoy size={14}/>, color: 'bg-purple-100 text-purple-600 border-purple-200', label: t('AS 등록', 'AS') },
+                        AS_UPDATE: { icon: <LifeBuoy size={14}/>, color: 'bg-purple-100 text-purple-600 border-purple-200', label: t('AS 처리', 'AS Update') },
                       };
                       const cfg = typeConfig[log.type] || { icon: <Info size={14}/>, color: 'bg-slate-100 text-slate-600 border-slate-200', label: log.type };
                       return (
@@ -237,6 +246,200 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                       <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed ml-9">{note.text}</p>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+          {activeModalTab === 'requests' && (
+            <div className="space-y-4">
+              <div className="bg-cyan-50 text-cyan-800 p-3 rounded-lg text-xs font-medium border border-cyan-200 flex items-center">
+                <Info size={14} className="mr-1.5 shrink-0" />
+                {t('고객 요청사항을 체계적으로 관리합니다. 접수 → 검토 → 반영 완료/반려 단계로 추적됩니다.', 'Track customer requests: Received → Reviewing → Completed/Rejected')}
+              </div>
+
+              {/* 새 요청 등록 폼 */}
+              {currentUser.role !== 'CUSTOMER' && (
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">{t('요청자 (고객사)', 'Requester')}</label>
+                      <input type="text" className="w-full text-sm p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-cyan-500" value={newRequestForm.requester} onChange={(e) => setNewRequestForm({...newRequestForm, requester: e.target.value})} placeholder={t('예: 홍길동 책임', 'Name')} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">{t('긴급도', 'Urgency')}</label>
+                      <select className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newRequestForm.urgency} onChange={(e) => setNewRequestForm({...newRequestForm, urgency: e.target.value})}>
+                        <option value="High">High</option><option value="Medium">Medium</option><option value="Low">Low</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">{t('요청 내용', 'Content')}</label>
+                    <textarea rows="2" className="w-full text-sm p-2 border border-slate-300 rounded-lg resize-none focus:outline-none focus:border-cyan-500" value={newRequestForm.content} onChange={(e) => setNewRequestForm({...newRequestForm, content: e.target.value})} placeholder={t('고객이 요청한 내용을 입력하세요', 'Request content')}></textarea>
+                  </div>
+                  <div className="flex justify-end">
+                    <button onClick={() => { if (newRequestForm.content.trim() && newRequestForm.requester.trim()) { onAddCustomerRequest(project.id, newRequestForm); setNewRequestForm({ requester: '', content: '', urgency: 'Medium' }); } }} disabled={!newRequestForm.content.trim() || !newRequestForm.requester.trim()} className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-300 text-white text-sm font-bold rounded-lg transition-colors flex items-center"><MessageSquare size={14} className="mr-1.5" />{t('요청 등록', 'Submit')}</button>
+                  </div>
+                </div>
+              )}
+
+              {/* 요청 목록 */}
+              {(!project.customerRequests || project.customerRequests.length === 0) ? (
+                <div className="text-center py-10 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl bg-white">{t('등록된 고객 요청사항이 없습니다.', 'No customer requests.')}</div>
+              ) : (
+                <div className="space-y-3">
+                  {[...project.customerRequests].reverse().map(req => {
+                    const statusColor = req.status === '반영 완료' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : req.status === '검토중' ? 'bg-blue-50 text-blue-700 border-blue-200' : req.status === '반려' ? 'bg-slate-50 text-slate-500 border-slate-200' : 'bg-amber-50 text-amber-700 border-amber-200';
+                    const urgencyColor = req.urgency === 'High' ? 'bg-red-100 text-red-700' : req.urgency === 'Medium' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700';
+                    return (
+                      <div key={req.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                        {/* 헤더 */}
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex items-center flex-wrap gap-1.5">
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${urgencyColor}`}>{req.urgency}</span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${statusColor}`}>{req.status}</span>
+                            <span className="text-xs font-bold text-slate-700 ml-1"><User size={10} className="inline mr-0.5" />{req.requester}</span>
+                          </div>
+                          <div className="flex items-center space-x-1 shrink-0">
+                            <span className="text-[10px] text-slate-400">{req.date}</span>
+                            {(currentUser.role === 'ADMIN' || currentUser.role === 'PM') && (
+                              <button onClick={() => onDeleteCustomerRequest(project.id, req.id)} className="text-slate-300 hover:text-red-500 p-1"><Trash size={12} /></button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 요청 내용 */}
+                        <p className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed mb-3 p-2 bg-slate-50 rounded-lg border border-slate-100">{req.content}</p>
+
+                        {/* 상태 변경 버튼 */}
+                        {currentUser.role !== 'CUSTOMER' && (
+                          <div className="flex space-x-1 mb-2">
+                            {['접수', '검토중', '반영 완료', '반려'].map(s => (
+                              <button key={s} onClick={() => onUpdateCustomerRequestStatus(project.id, req.id, s)} className={`text-[10px] px-2 py-1 rounded font-bold border transition-colors ${req.status === s ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>{s}</button>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* 응답 내역 */}
+                        {req.responses && req.responses.length > 0 && (
+                          <div className="space-y-1.5 mt-2 pt-2 border-t border-slate-100">
+                            {req.responses.map((res, i) => (
+                              <div key={i} className="flex items-start bg-blue-50 p-2 rounded text-xs border border-blue-100">
+                                <Send size={10} className="text-blue-500 mr-1.5 mt-0.5 shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex justify-between text-[10px] text-slate-500 mb-0.5">
+                                    <span className="font-bold">{res.author}</span>
+                                    <span>{res.date}</span>
+                                  </div>
+                                  <p className="text-slate-700 whitespace-pre-wrap">{res.text}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* 응답 입력 */}
+                        {currentUser.role !== 'CUSTOMER' && (
+                          <div className="flex gap-2 mt-2">
+                            <input type="text" placeholder={t('고객에게 답변 입력...', 'Response to customer...')} className="flex-1 text-xs p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-cyan-500" value={responseText[req.id] || ''} onChange={(e) => setResponseText({...responseText, [req.id]: e.target.value})} onKeyDown={(e) => { if (e.key === 'Enter' && responseText[req.id]?.trim()) { onAddCustomerResponse(project.id, req.id, responseText[req.id].trim()); setResponseText({...responseText, [req.id]: ''}); } }} />
+                            <button onClick={() => { if (responseText[req.id]?.trim()) { onAddCustomerResponse(project.id, req.id, responseText[req.id].trim()); setResponseText({...responseText, [req.id]: ''}); } }} disabled={!responseText[req.id]?.trim()} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white text-xs font-bold rounded-lg transition-colors"><Send size={12} /></button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+          {activeModalTab === 'as' && (
+            <div className="space-y-4">
+              <div className="bg-purple-50 text-purple-800 p-3 rounded-lg text-xs font-medium border border-purple-200 flex items-center">
+                <Info size={14} className="mr-1.5 shrink-0" />
+                {project.status === '완료'
+                  ? t('Buy-off 완료 후 AS(애프터서비스) 내역을 관리합니다.', 'After-sales service records.')
+                  : t('※ AS 관리는 Buy-off 완료 후 본격 활용됩니다. 현재 설치 중 AS도 등록 가능합니다.', 'AS management activates after Buy-off.')}
+              </div>
+
+              {/* AS 등록 폼 */}
+              {currentUser.role !== 'CUSTOMER' && (
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">{t('AS 유형', 'Type')}</label>
+                      <select className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newASForm.type} onChange={(e) => setNewASForm({...newASForm, type: e.target.value})}>
+                        <option value="정기점검">{t('정기점검', 'Regular')}</option>
+                        <option value="긴급출동">{t('긴급출동', 'Emergency')}</option>
+                        <option value="부품교체">{t('부품교체', 'Part Replace')}</option>
+                        <option value="불량수리">{t('불량수리', 'Defect Fix')}</option>
+                        <option value="보증수리">{t('보증수리', 'Warranty')}</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">{t('담당 엔지니어', 'Engineer')}</label>
+                      <input type="text" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newASForm.engineer} onChange={(e) => setNewASForm({...newASForm, engineer: e.target.value})} placeholder={t('이름 입력', 'Name')} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">{t('증상 / 요청 내용', 'Symptoms / Request')}</label>
+                    <textarea rows="2" className="w-full text-sm p-2 border border-slate-300 rounded-lg resize-none" value={newASForm.description} onChange={(e) => setNewASForm({...newASForm, description: e.target.value})} placeholder={t('고객이 신고한 증상', 'Reported symptoms')}></textarea>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">{t('조치 내용 (선택)', 'Resolution (Optional)')}</label>
+                    <textarea rows="2" className="w-full text-sm p-2 border border-slate-300 rounded-lg resize-none" value={newASForm.resolution} onChange={(e) => setNewASForm({...newASForm, resolution: e.target.value})} placeholder={t('출동 후 작성', 'Fill after visit')}></textarea>
+                  </div>
+                  <div className="flex justify-end">
+                    <button onClick={() => { if (newASForm.description.trim() && newASForm.engineer.trim()) { onAddAS(project.id, newASForm); setNewASForm({ type: '정기점검', engineer: '', description: '', resolution: '' }); } }} disabled={!newASForm.description.trim() || !newASForm.engineer.trim()} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-300 text-white text-sm font-bold rounded-lg transition-colors flex items-center"><LifeBuoy size={14} className="mr-1.5" />{t('AS 등록', 'Add AS')}</button>
+                  </div>
+                </div>
+              )}
+
+              {/* AS 목록 */}
+              {(!project.asRecords || project.asRecords.length === 0) ? (
+                <div className="text-center py-10 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl bg-white">{t('등록된 AS 내역이 없습니다.', 'No AS records.')}</div>
+              ) : (
+                <div className="space-y-3">
+                  {[...project.asRecords].reverse().map(as => {
+                    const statusColor = as.status === '완료' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : as.status === '출동' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-amber-50 text-amber-700 border-amber-200';
+                    const typeColor = as.type === '긴급출동' ? 'bg-red-100 text-red-700' : as.type === '정기점검' ? 'bg-blue-100 text-blue-700' : as.type === '부품교체' ? 'bg-amber-100 text-amber-700' : as.type === '보증수리' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-700';
+                    return (
+                      <div key={as.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex items-center flex-wrap gap-1.5">
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${typeColor}`}>{as.type}</span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${statusColor}`}>{as.status}</span>
+                            <span className="text-xs font-bold text-slate-700 ml-1"><User size={10} className="inline mr-0.5" />{as.engineer}</span>
+                          </div>
+                          <div className="flex items-center space-x-1 shrink-0">
+                            <span className="text-[10px] text-slate-400">{as.date}</span>
+                            {(currentUser.role === 'ADMIN' || currentUser.role === 'PM') && (
+                              <button onClick={() => onDeleteAS(project.id, as.id)} className="text-slate-300 hover:text-red-500 p-1"><Trash size={12} /></button>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+                            <div className="text-[10px] font-bold text-slate-500 mb-1">{t('증상', 'Symptoms')}</div>
+                            <p className="text-sm text-slate-800 whitespace-pre-wrap">{as.description}</p>
+                          </div>
+                          {as.resolution && (
+                            <div className="p-2 bg-emerald-50 rounded-lg border border-emerald-100">
+                              <div className="text-[10px] font-bold text-emerald-600 mb-1">{t('조치 내용', 'Resolution')}</div>
+                              <p className="text-sm text-slate-800 whitespace-pre-wrap">{as.resolution}</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {currentUser.role !== 'CUSTOMER' && (
+                          <div className="flex space-x-1 mt-3">
+                            {['접수', '출동', '완료'].map(s => (
+                              <button key={s} onClick={() => onUpdateAS(project.id, as.id, { status: s })} className={`text-[10px] px-2 py-1 rounded font-bold border transition-colors ${as.status === s ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>{s}</button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

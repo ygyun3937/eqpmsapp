@@ -171,28 +171,66 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, getSta
                         const gMinDate = new Date(pStartDate); gMinDate.setDate(1);
                         const gMaxDate = new Date(pDueDate); gMaxDate.setMonth(gMaxDate.getMonth() + 1, 0);
                         const fullDays = (gMaxDate - gMinDate) / (1000 * 60 * 60 * 24);
+
+                        // 월별 + 일별 눈금 (주 단위)
                         const months = [];
+                        const days = [];
                         const cursor = new Date(gMinDate);
                         while (cursor <= gMaxDate) {
                           const pos = ((cursor - gMinDate) / (1000 * 60 * 60 * 24) / fullDays) * 100;
                           months.push({ label: `${cursor.getFullYear()}.${String(cursor.getMonth() + 1).padStart(2, '0')}`, pos });
                           cursor.setMonth(cursor.getMonth() + 1);
                         }
+                        // 일 눈금: 전체 기간에 따라 간격 조정
+                        const dayStep = fullDays > 180 ? 14 : fullDays > 90 ? 7 : fullDays > 30 ? 3 : 1;
+                        const dCursor = new Date(gMinDate);
+                        while (dCursor <= gMaxDate) {
+                          const pos = ((dCursor - gMinDate) / (1000 * 60 * 60 * 24) / fullDays) * 100;
+                          days.push({ label: String(dCursor.getDate()).padStart(2, '0'), pos });
+                          dCursor.setDate(dCursor.getDate() + dayStep);
+                        }
+
                         const today = new Date();
                         const todayPercent = Math.max(0, Math.min(100, ((today - gMinDate) / (1000 * 60 * 60 * 24) / fullDays) * 100));
 
+                        // 경과/잔여 일자 계산
+                        const elapsedDays = Math.max(0, Math.floor((today - pStartDate) / (1000 * 60 * 60 * 24)));
+                        const remainingDays = Math.max(0, Math.floor((pDueDate - today) / (1000 * 60 * 60 * 24)));
+                        const totalDaysInt = Math.floor(totalDays);
+
                         return (
                           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-                            <h3 className="text-base font-bold text-slate-800 mb-1">{t('단계별 간트 차트', 'Phase Gantt Chart')}</h3>
-                            <p className="text-xs text-slate-500 mb-5">{prj.name}  ·  {prj.startDate} ~ {prj.dueDate}</p>
+                            <div className="flex justify-between items-start mb-4">
+                              <div>
+                                <h3 className="text-base font-bold text-slate-800 mb-1">{t('단계별 간트 차트', 'Phase Gantt Chart')}</h3>
+                                <p className="text-xs text-slate-500">{prj.name}  ·  {prj.startDate} ~ {prj.dueDate}  ({t('총', 'Total')} {totalDaysInt}{t('일', 'd')})</p>
+                              </div>
+                              <div className="flex space-x-2 text-xs">
+                                <div className="px-2.5 py-1.5 bg-blue-50 border border-blue-200 rounded">
+                                  <span className="text-slate-500">{t('경과', 'Elapsed')}</span> <strong className="text-blue-700 ml-1">{elapsedDays}{t('일', 'd')}</strong>
+                                </div>
+                                <div className="px-2.5 py-1.5 bg-orange-50 border border-orange-200 rounded">
+                                  <span className="text-slate-500">{t('잔여', 'Remaining')}</span> <strong className="text-orange-700 ml-1">{remainingDays}{t('일', 'd')}</strong>
+                                </div>
+                              </div>
+                            </div>
 
-                            {/* 월 헤더 */}
+                            {/* 월 헤더 + 일 눈금 */}
                             <div className="flex">
                               <div className="w-52 shrink-0"></div>
-                              <div className="flex-1 relative h-6">
-                                {months.map((m, i) => (
-                                  <div key={i} className="absolute text-xs font-medium text-slate-500" style={{ left: `${m.pos}%` }}>{m.label}</div>
-                                ))}
+                              <div className="flex-1 relative">
+                                {/* 월 행 */}
+                                <div className="relative h-5">
+                                  {months.map((m, i) => (
+                                    <div key={i} className="absolute text-xs font-bold text-slate-700 border-l-2 border-slate-300 pl-1" style={{ left: `${m.pos}%` }}>{m.label}</div>
+                                  ))}
+                                </div>
+                                {/* 일 행 */}
+                                <div className="relative h-4 border-b border-slate-200">
+                                  {days.map((d, i) => (
+                                    <div key={i} className="absolute text-[9px] text-slate-400 border-l border-slate-200 pl-0.5" style={{ left: `${d.pos}%` }}>{d.label}</div>
+                                  ))}
+                                </div>
                               </div>
                             </div>
 

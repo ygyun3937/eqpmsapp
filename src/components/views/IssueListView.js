@@ -1,16 +1,33 @@
 import React, { memo } from 'react';
-import { Plus, Kanban, User, Trash, MessageCircle } from 'lucide-react';
+import { Plus, Kanban, User, Trash, MessageCircle, Download } from 'lucide-react';
+import { exportToCSV } from '../../utils/export';
 
 const IssueListView = memo(function IssueListView({ issues, getStatusColor, onAddClick, onIssueClick, onDeleteIssue, currentUser, t }) {
+  const handleExport = () => {
+    exportToCSV(issues.map(i => ({
+      id: i.id, projectName: i.projectName, title: i.title, severity: i.severity, status: i.status,
+      author: i.author, date: i.date, comments: (i.comments || []).length
+    })), '이슈_리스트', [
+      { header: 'ID', key: 'id' }, { header: '프로젝트', key: 'projectName' }, { header: '이슈 제목', key: 'title' },
+      { header: '심각도', key: 'severity' }, { header: '상태', key: 'status' }, { header: '작성자', key: 'author' },
+      { header: '일자', key: 'date' }, { header: '코멘트 수', key: 'comments' }
+    ]);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-end">
         <div><h1 className="text-2xl font-bold">{t('이슈 및 펀치 관리', 'Issues & Punches')}</h1></div>
-        {currentUser.role !== 'CUSTOMER' && (
-          <button onClick={onAddClick} className="flex items-center bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors">
-            <Plus size={16} className="mr-1" /> {t('현장 이슈 등록', 'Report Issue')}
+        <div className="flex items-center space-x-3">
+          <button onClick={handleExport} className="flex items-center bg-slate-100 text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors shadow-sm">
+            <Download size={16} className="mr-1.5" /> CSV
           </button>
-        )}
+          {currentUser.role !== 'CUSTOMER' && (
+            <button onClick={onAddClick} className="flex items-center bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors">
+              <Plus size={16} className="mr-1" /> {t('현장 이슈 등록', 'Report Issue')}
+            </button>
+          )}
+        </div>
       </div>
       <div className="grid grid-cols-1 gap-4">
         {issues.map((issue) => (

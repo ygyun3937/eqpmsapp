@@ -1,7 +1,16 @@
 import React, { memo } from 'react';
-import { Plus, Edit, Trash, Cpu, Database, HardDrive, AlertTriangle, Info } from 'lucide-react';
+import { Plus, Edit, Trash, Cpu, Database, HardDrive, AlertTriangle, Info, Download } from 'lucide-react';
+import { exportToCSV } from '../../utils/export';
 
 const SiteListView = memo(function SiteListView({ sites, onAddClick, onEditClick, onDeleteClick, currentUser, t }) {
+  const handleExport = () => {
+    exportToCSV(sites, '사이트_리스트', [
+      { header: 'ID', key: 'id' }, { header: '고객사', key: 'customer' }, { header: 'Fab', key: 'fab' },
+      { header: '라인', key: 'line' }, { header: 'Power', key: 'power' }, { header: 'PCW', key: 'pcw' },
+      { header: 'Gas/CDA', key: 'gas' }, { header: '반입 제한', key: 'limit' }, { header: '특이사항', key: 'note' }, { header: '등록일', key: 'date' }
+    ]);
+  };
+
   return (
     <div className="space-y-6 animate-[fadeIn_0.3s_ease-in-out]">
       <div className="flex justify-between items-end">
@@ -9,9 +18,14 @@ const SiteListView = memo(function SiteListView({ sites, onAddClick, onEditClick
           <h1 className="text-2xl font-bold text-slate-800">{t('사이트/유틸리티 환경 정보 마스터', 'Site & Utility Master')}</h1>
           <p className="text-slate-500 mt-1">{t('고객사 팹(Fab)별 인프라 환경 스펙 및 반입 제약사항을 관리합니다.', 'Manage infrastructure specs and restrictions per Fab.')}</p>
         </div>
-        {currentUser.role === 'ADMIN' && (
-          <button onClick={onAddClick} className="flex items-center bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition-colors"><Plus size={16} className="mr-1" /> {t('새 사이트 등록', 'New Site')}</button>
-        )}
+        <div className="flex items-center space-x-3">
+          <button onClick={handleExport} className="flex items-center bg-slate-100 text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors shadow-sm">
+            <Download size={16} className="mr-1.5" /> CSV
+          </button>
+          {currentUser.role === 'ADMIN' && (
+            <button onClick={onAddClick} className="flex items-center bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition-colors"><Plus size={16} className="mr-1" /> {t('새 사이트 등록', 'New Site')}</button>
+          )}
+        </div>
       </div>
       <div className="grid grid-cols-1 gap-4">
         {sites.length === 0 ? (

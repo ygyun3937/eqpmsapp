@@ -33,10 +33,15 @@ export const saveToGoogleDB = async (action, data, retries = 3) => {
   console.error('구글 DB 저장 최종 실패');
 };
 
-export const notifyWebhook = async (message, type = 'INFO') => {
+export const notifyWebhook = async (message, type = 'INFO', meta = null) => {
   if (!WEBHOOK_URL) return;
   try {
-    await fetch(WEBHOOK_URL, { method: 'POST', body: JSON.stringify({ text: `[EQ-PMS 알림: ${type}]\n${message}` }) });
+    const payload = {
+      text: `[EQ-PMS 알림: ${type}]\n${message}`,
+      type,
+      meta
+    };
+    await fetch(WEBHOOK_URL, { method: 'POST', body: JSON.stringify(payload) });
   } catch (error) {
     console.error('Webhook failed', error);
   }

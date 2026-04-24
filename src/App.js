@@ -244,11 +244,15 @@ export default function App() {
     const selectedProject = projects.find(p => p.id === newIssue.projectId);
     const issueWithDetails = { ...newIssue, id: generateUniqueId('ISS'), projectName: selectedProject ? selectedProject.name : '알 수 없는 프로젝트', date: TODAY.toISOString().split('T')[0], status: '이슈 확인', comments: [] };
     syncIssues([issueWithDetails, ...issues]);
-    // 해당 프로젝트에 이슈 등록 이력 추가
     syncProjects(projects.map(p => p.id !== newIssue.projectId ? p : addLog(p, 'ISSUE_ADD', `이슈 등록: ${issueWithDetails.title} (${newIssue.severity})`)));
     setIsIssueModalOpen(false);
     const targetEmail = newIssue.alertEmail ? newIssue.alertEmail : '기본 담당자(default@company.com)';
-    notifyWebhook(`신규 이슈 등록: [${issueWithDetails.projectName}] ${issueWithDetails.title} (수신자: ${targetEmail})`, 'ISSUE');
+    // 이메일 제목용 구조화된 데이터 전송
+    notifyWebhook(
+      `신규 이슈 등록\n프로젝트: ${issueWithDetails.projectName}\n이슈: ${issueWithDetails.title}\n중요도: ${newIssue.severity}\n작성자: ${newIssue.author}\n수신자: ${targetEmail}`,
+      'ISSUE',
+      { projectName: issueWithDetails.projectName, issueTitle: issueWithDetails.title, severity: newIssue.severity, targetEmail }
+    );
     showToast(`이슈 등록 완료. [${targetEmail}]로 알림이 전송되었습니다.`);
   };
 
@@ -343,6 +347,55 @@ export default function App() {
     showToast(t('담당자가 변경되었습니다.', 'Manager changed.'));
   };
 
+  // === 고객 요청사항 핸들러 ===
+  const handleAddCustomerRequest = (projectId, data) => {
+    const request = { id: Date.now(), requester: data.requester, content: data.content, urgency: data.urgency, status: '접수', date: new Date().toLocaleString(), responses: [] };
+    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, customerRequests: [...(p.customerRequests || []), request] }, 'REQUEST_ADD', `고객 요청: ${data.requester} - ${data.content.substring(0, 30)}${data.content.length > 30 ? '...' : ''}`)));
+  };
+
+  const handleUpdateCustomerRequestStatus = (projectId, requestId, newStatus) => {
+    syncProjects(projects.map(p => {
+      if (p.id !== projectId) return p;
+      const updated = { ...p, customerRequests: (p.customerRequests || []).map(r => r.id === requestId ? { ...r, status: newStatus } : r) };
+      const req = p.customerRequests.find(r => r.id === requestId);
+      return addLog(updated, 'REQUEST_STATUS', `고객 요청 상태: ${req?.content.substring(0, 20) || ''} → ${newStatus}`);
+    }));
+  };
+
+  const handleAddCustomerResponse = (projectId, requestId, text) => {
+    const response = { author: currentUser.name, text, date: new Date().toLocaleString() };
+    syncProjects(projects.map(p => p.id !== projectId ? p : {
+      ...p,
+      customerRequests: (p.customerRequests || []).map(r => r.id === requestId ? { ...r, responses: [...(r.responses || []), response] } : r)
+    }));
+  };
+
+  const handleDeleteCustomerRequest = (projectId, requestId) => {
+    syncProjects(projects.map(p => p.id !== projectId ? p : { ...p, customerRequests: (p.customerRequests || []).filter(r => r.id !== requestId) }));
+  };
+
+  // === AS 핸들러 ===
+  const handleAddAS = (projectId, data) => {
+    const record = { id: Date.now(), type: data.type, engineer: data.engineer, description: data.description, resolution: data.resolution || '', status: '접수', date: new Date().toLocaleString() };
+    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, asRecords: [...(p.asRecords || []), record] }, 'AS_ADD', `AS 등록 (${data.type}): ${data.description.substring(0, 30)}${data.description.length > 30 ? '...' : ''}`)));
+  };
+
+  const handleUpdateAS = (projectId, asId, updates) => {
+    syncProjects(projects.map(p => {
+      if (p.id !== projectId) return p;
+      const updated = { ...p, asRecords: (p.asRecords || []).map(a => a.id === asId ? { ...a, ...updates } : a) };
+      if (updates.status) {
+        const as = p.asRecords.find(a => a.id === asId);
+        return addLog(updated, 'AS_UPDATE', `AS 상태: ${as?.type || ''} → ${updates.status}`);
+      }
+      return updated;
+    }));
+  };
+
+  const handleDeleteAS = (projectId, asId) => {
+    syncProjects(projects.map(p => p.id !== projectId ? p : { ...p, asRecords: (p.asRecords || []).filter(a => a.id !== asId) }));
+  };
+
   const handleUpdateVersion = (projectId, hwVersion, swVersion, fwVersion) => {
     syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, hwVersion, swVersion, fwVersion }, 'VERSION_CHANGE', `HW:${hwVersion} SW:${swVersion} FW:${fwVersion}`)));
     setIsVersionModalOpen(false);
@@ -388,6 +441,13 @@ export default function App() {
     onDeleteChecklistItem: handleDeleteChecklistItem,
     onUpdatePhase: handleUpdatePhase, onSignOff: handleSignOff,
     onAddNote: handleAddNote, onDeleteNote: handleDeleteNote,
+    onAddCustomerRequest: handleAddCustomerRequest,
+    onUpdateCustomerRequestStatus: handleUpdateCustomerRequestStatus,
+    onAddCustomerResponse: handleAddCustomerResponse,
+    onDeleteCustomerRequest: handleDeleteCustomerRequest,
+    onAddAS: handleAddAS,
+    onUpdateAS: handleUpdateAS,
+    onDeleteAS: handleDeleteAS,
     calcAct, currentUser, t
   };
 
