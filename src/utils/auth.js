@@ -31,15 +31,17 @@ export const hashPassword = async (plain) => {
 };
 
 export const verifyPassword = async (plain, hash) => {
-  if (!plain || !hash) return false;
+  if (!plain || hash === undefined || hash === null || hash === '') return false;
   const computed = await hashPassword(plain);
-  return computed === hash;
+  // Google Sheets가 숫자형 문자열(예: '1234')을 number로 자동 변환하는 케이스 방어
+  return computed === String(hash);
 };
 
 // 기존(평문) 비밀번호와의 호환을 위한 보조 비교
 // 시드/마이그레이션 단계에서만 사용. 평문 매치 시 true.
 export const matchPasswordCompat = async (plain, stored) => {
-  if (!stored) return false;
-  if (await verifyPassword(plain, stored)) return true;
-  return plain === stored;
+  if (stored === undefined || stored === null || stored === '') return false;
+  const storedStr = String(stored);
+  if (await verifyPassword(plain, storedStr)) return true;
+  return String(plain) === storedStr;
 };
