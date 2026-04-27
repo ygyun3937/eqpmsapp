@@ -38,8 +38,9 @@
 5. 고객사(CUSTOMER) 계정에 `접근 가능 프로젝트` 명시 부여
 
 ## 첫 실행
-1. **GAS 백엔드 갱신**: `docs/gas-backend.gs` 내용을 Apps Script 편집기에 붙여넣고 **새 버전으로 재배포**.
-   - `users` 시트가 자동으로 생성됨
+1. **GAS 백엔드 갱신**: 기존 GAS 코드에 두 줄만 추가하거나, `docs/gas-backend.gs` 통째로 교체 후 **새 버전으로 재배포**.
+   - 추가 필요: `doGet` 의 `users: readFromSheet("Users") || []` + `doPost` 의 `else if (action === 'UPDATE_USERS') { writeToSheet("Users", data); }`
+   - `Users` 시트는 첫 호출 시 자동 생성됨 (`writeToSheet` 헬퍼가 시트 없으면 `insertSheet` 함)
 2. 앱을 새로고침하면 `users` 시트가 비어있는 경우 모드별 시드 계정이 자동 생성됨
    - **TEST 모드**: `admin / pm / eng / client` (PW 모두 `1234`, 강제 변경 OFF)
    - **운영 모드**: `admin` (PW `admin1234`) — 첫 로그인 후 비밀번호 변경 강제
