@@ -18,8 +18,8 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
-    "build:test": "REACT_APP_TEST_MODE=true react-scripts build",
-    "build:prod": "REACT_APP_TEST_MODE=false react-scripts build",
+    "build:test": "cross-env REACT_APP_TEST_MODE=true react-scripts build",
+    "build:prod": "cross-env REACT_APP_TEST_MODE=false react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
@@ -42,6 +42,7 @@
     ]
   },
   "devDependencies": {
+    "cross-env": "^10.1.0",
     "tailwindcss": "^3.4.19"
   }
 }
