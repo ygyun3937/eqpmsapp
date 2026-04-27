@@ -10,6 +10,7 @@ const DeleteConfirmModal = memo(function DeleteConfirmModal({ type, item, onClos
   else if (type === 'engineer') { title = t('엔지니어 삭제', 'Delete Engineer'); itemName = item.name; desc = t('엔지니어 정보가 영구 삭제', 'Engineer information will be permanently deleted'); }
   else if (type === 'part') { title = t('자재 청구 삭제', 'Delete Part'); itemName = item.partName; desc = t('청구 기록이 영구 삭제', 'Part request history will be deleted'); }
   else if (type === 'site') { title = t('사이트 삭제', 'Delete Site'); itemName = item.fab; desc = t('제약사항 데이터가 영구 삭제', 'Infrastructure info will be permanently deleted'); }
+  else if (type === 'user') { title = t('사용자 삭제', 'Delete User'); itemName = `${item.name} (${item.id})`; desc = t('계정 및 접근 권한이 영구 삭제', 'Account and access will be permanently deleted'); }
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[200] p-4 animate-[fadeIn_0.2s_ease-in-out]">

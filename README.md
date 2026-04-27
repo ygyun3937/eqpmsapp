@@ -150,19 +150,140 @@ graph LR
 
 ---
 
-## 4. 사용자 역할 및 권한
+## 4. 사용자 역할 및 로그인 시스템
 
-4개 역할 기반 접근 제어 (RBAC). 로그인 시 역할에 따라 메뉴/버튼이 자동으로 제한됨.
+### 4-1. 로그인 모드 (TEST vs 운영)
 
-| 역할 | ID / PW | 설명 | 접근 범위 |
-|------|---------|------|-----------|
-| **ADMIN** | `admin` / `1234` | 본사 관리자 | 전체 메뉴 + 삭제 권한 |
-| **PM** | `pm` / `1234` | 프로젝트 매니저 | 전체 메뉴 (프로젝트 관리 중심) |
-| **ENGINEER** | `eng` / `1234` | 셋업 엔지니어 | 전체 메뉴 (업무 확인/이슈 등록 중심) |
-| **CUSTOMER** | `client` / `1234` | 고객사 담당자 (A전자) | 대시보드/프로젝트/이슈 열람 + Buy-off 서명만 가능 |
+빌드 타임 환경변수 `REACT_APP_TEST_MODE` 한 줄로 두 가지 모드가 분기됨. 인증 로직 자체는 동일하며 **시드 계정**과 **첫 로그인 UX**만 달라짐.
 
-- CUSTOMER 역할은 자재/사이트/인력/릴리즈 메뉴가 숨겨짐
-- CUSTOMER는 파이프라인 단계 변경 불가 (읽기 전용)
+```mermaid
+flowchart LR
+    BUILD{REACT_APP_TEST_MODE}
+    BUILD -- "true<br/>(npm run build:test)" --> TEST
+    BUILD -- "false / unset<br/>(npm run build:prod)" --> PROD
+
+    subgraph TEST [사내 테스트 모드]
+        T1[시드 계정 4종<br/>admin/pm/eng/client<br/>PW=1234]
+        T2[강제 비밀번호 변경 OFF]
+        T3[로그인 화면<br/>4계정 안내 박스 노출]
+        T4[client 계정<br/>PRJ-2026-001 자동 할당]
+    end
+
+    subgraph PROD [전사 운영 모드]
+        P1[시드 계정 1종<br/>admin / admin1234]
+        P2[강제 비밀번호 변경 ON<br/>첫 로그인 시 모달 강제]
+        P3[로그인 화면<br/>관리자 문의 안내]
+        P4[CUSTOMER 계정은<br/>관리자가 일일이 할당]
+    end
+
+    style TEST fill:#fef3c7,stroke:#f59e0b
+    style PROD fill:#dbeafe,stroke:#2563eb
+```
+
+| 항목 | 사내 테스트 (TEST) | 전사 운영 (PROD) |
+|---|---|---|
+| 시드 계정 | `admin/pm/eng/client` (PW `1234`) | `admin` (PW `admin1234`) |
+| 강제 비밀번호 변경 | OFF | ON |
+| 로그인 안내 박스 | 4계정 표시 | 비표시 |
+| 빌드 명령 | `npm run build:test` | `npm run build:prod` |
+| 환경 파일 | `.env.development` | `.env.production` |
+
+### 4-2. 로그인 플로우
+
+```mermaid
+flowchart TD
+    A[앱 시작] --> B{GAS users 시트<br/>로드}
+    B -- "데이터 있음" --> C[기존 사용자 목록 사용]
+    B -- "비어있음" --> D{TEST_MODE?}
+    D -- "true" --> E[4계정 자동 시드<br/>+ 시트 저장]
+    D -- "false" --> F[admin 1계정 시드<br/>+ 시트 저장]
+    C --> G[로그인 화면]
+    E --> G
+    F --> G
+
+    G --> H[ID/PW 입력]
+    H --> I{ID 존재?}
+    I -- "no" --> ERR1[아이디/비밀번호<br/>오류 메시지]
+    I -- "yes" --> J{active === false?}
+    J -- "yes" --> ERR2[비활성화된 계정]
+    J -- "no" --> K[입력 PW를 SHA-256 해시화]
+    K --> L{저장 해시와<br/>일치?}
+    L -- "no" --> M{시드 평문과<br/>일치?<br/>(호환 비교)}
+    M -- "no" --> ERR1
+    L -- "yes" --> N[로그인 성공]
+    M -- "yes" --> N
+
+    N --> O[lastLoginAt 갱신<br/>+ 시트 동기화]
+    O --> P{mustChangePassword<br/>=== true?}
+    P -- "yes" --> Q[비밀번호 변경 모달<br/>강제 표시 - 닫기 불가]
+    P -- "no" --> R[대시보드 진입]
+    Q --> S[새 PW 입력 → 해시 → 저장] --> R
+
+    ERR1 --> G
+    ERR2 --> G
+
+    style ERR1 fill:#fee2e2,stroke:#dc2626
+    style ERR2 fill:#fee2e2,stroke:#dc2626
+    style N fill:#d1fae5,stroke:#059669
+    style R fill:#d1fae5,stroke:#059669
+    style Q fill:#fef3c7,stroke:#d97706
+```
+
+### 4-3. 역할 (Role) 및 권한 매트릭스
+
+4개 역할 기반 접근 제어 (RBAC). 로그인 후 역할에 따라 메뉴/버튼/데이터가 자동으로 제한됨.
+
+| 역할 | 설명 | 메뉴 접근 | 데이터 범위 |
+|------|------|----------|-----------|
+| **ADMIN** | 본사 관리자 | 전체 + 사용자 관리 | 전체 |
+| **PM** | 프로젝트 매니저 | 전체 (사용자 관리 제외) | 전체 |
+| **ENGINEER** | 셋업 엔지니어 | 전체 (사용자 관리 제외) | 전체 |
+| **CUSTOMER** | 고객사 담당자 | 대시보드/프로젝트/이슈 + Buy-off 서명 | **`assignedProjectIds`에 명시된 프로젝트만** |
+
+| 메뉴 / 동작 | ADMIN | PM | ENGINEER | CUSTOMER |
+|---|:-:|:-:|:-:|:-:|
+| 대시보드 | ● | ● | ● | ● (할당분만) |
+| 프로젝트 관리 | ● | ● | ● | ● (할당분만, 읽기 전용) |
+| 이슈 관리 | ● | ● | ● | ● (할당분만) |
+| 자재/사이트/리소스 | ● | ● | ● | - |
+| 버전 릴리즈 | ● | ● | ● | - |
+| **사용자 관리** | ● | - | - | - |
+| 비밀번호 변경(자기) | ● | ● | ● | ● |
+| 고객 요청 등록 | ● | ● | ● | ● |
+| 고객 요청 상태 변경(처리 결과 기록) | ● | ● | ● | - |
+
+### 4-4. CUSTOMER 데이터 필터링
+
+CUSTOMER 계정은 `assignedProjectIds` 배열에 명시된 프로젝트만 보임. 사용자 관리에서 admin이 체크박스로 할당.
+
+```mermaid
+flowchart LR
+    LOGIN[CUSTOMER 로그인] --> USER[currentUser.assignedProjectIds]
+    USER --> DASH[대시보드]
+    USER --> PRJ[프로젝트 목록]
+    USER --> ISS[이슈 목록]
+
+    DASH --> F1[projects.filter<br/>assignedProjectIds.includes id]
+    PRJ --> F2[projects.filter<br/>assignedProjectIds.includes id]
+    ISS --> F3[issues.filter<br/>assignedProjectIds.includes projectId]
+
+    F1 --> VIEW[가시 데이터]
+    F2 --> VIEW
+    F3 --> VIEW
+
+    style LOGIN fill:#fef3c7,stroke:#f59e0b
+    style VIEW fill:#d1fae5,stroke:#059669
+```
+
+### 4-5. 사내 테스트 → 전사 배포 전환 체크리스트
+
+1. Google Sheets `users` 시트의 시드 4계정(`admin/pm/eng/client`) 삭제
+2. `npm run build:prod` 로 운영 빌드
+3. 시드 admin 계정의 비밀번호를 즉시 변경 (강제 모달)
+4. ADMIN 로그인 → **사용자 관리** 메뉴에서 실 사용자 등록
+5. CUSTOMER 계정마다 **접근 가능 프로젝트** 체크박스로 할당 부여
+
+> 자세한 적용 가이드는 [`docs/AUTH_README.md`](docs/AUTH_README.md) 참조
 
 ---
 

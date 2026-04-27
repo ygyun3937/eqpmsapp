@@ -13,8 +13,14 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
   const [editingTaskName, setEditingTaskName] = useState('');
   const [newChecklistCategory, setNewChecklistCategory] = useState('일반');
   const [newChecklistTask, setNewChecklistTask] = useState('');
-  const [newRequestForm, setNewRequestForm] = useState({ requester: '', content: '', urgency: 'Medium' });
+  const [newRequestForm, setNewRequestForm] = useState({
+    requester: currentUser.role === 'CUSTOMER' ? currentUser.name : '',
+    content: '',
+    urgency: 'Medium'
+  });
   const [responseText, setResponseText] = useState({});
+  // 처리결과 입력 폼: { id: requestId, status: '반영 완료'|'반려', text: '' }
+  const [resolvingRequest, setResolvingRequest] = useState(null);
   const [newASForm, setNewASForm] = useState({ type: '정기점검', engineer: '', description: '', resolution: '' });
 
   if (!project) return null;
@@ -276,30 +282,28 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                 {t('고객 요청사항을 체계적으로 관리합니다. 접수 → 검토 → 반영 완료/반려 단계로 추적됩니다.', 'Track customer requests: Received → Reviewing → Completed/Rejected')}
               </div>
 
-              {/* 새 요청 등록 폼 */}
-              {currentUser.role !== 'CUSTOMER' && (
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">{t('요청자 (고객사)', 'Requester')}</label>
-                      <input type="text" className="w-full text-sm p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-cyan-500" value={newRequestForm.requester} onChange={(e) => setNewRequestForm({...newRequestForm, requester: e.target.value})} placeholder={t('예: 홍길동 책임', 'Name')} />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">{t('긴급도', 'Urgency')}</label>
-                      <select className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newRequestForm.urgency} onChange={(e) => setNewRequestForm({...newRequestForm, urgency: e.target.value})}>
-                        <option value="High">High</option><option value="Medium">Medium</option><option value="Low">Low</option>
-                      </select>
-                    </div>
+              {/* 새 요청 등록 폼 (CUSTOMER 포함 모든 권한) */}
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">{t('요청자', 'Requester')}{currentUser.role === 'CUSTOMER' && currentUser.customer ? ` (${currentUser.customer})` : ''}</label>
+                    <input type="text" disabled={currentUser.role === 'CUSTOMER'} className="w-full text-sm p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-cyan-500 disabled:bg-slate-100 disabled:text-slate-600" value={newRequestForm.requester} onChange={(e) => setNewRequestForm({...newRequestForm, requester: e.target.value})} placeholder={t('예: 홍길동 책임', 'Name')} />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">{t('요청 내용', 'Content')}</label>
-                    <textarea rows="2" className="w-full text-sm p-2 border border-slate-300 rounded-lg resize-none focus:outline-none focus:border-cyan-500" value={newRequestForm.content} onChange={(e) => setNewRequestForm({...newRequestForm, content: e.target.value})} placeholder={t('고객이 요청한 내용을 입력하세요', 'Request content')}></textarea>
-                  </div>
-                  <div className="flex justify-end">
-                    <button onClick={() => { if (newRequestForm.content.trim() && newRequestForm.requester.trim()) { onAddCustomerRequest(project.id, newRequestForm); setNewRequestForm({ requester: '', content: '', urgency: 'Medium' }); } }} disabled={!newRequestForm.content.trim() || !newRequestForm.requester.trim()} className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-300 text-white text-sm font-bold rounded-lg transition-colors flex items-center"><MessageSquare size={14} className="mr-1.5" />{t('요청 등록', 'Submit')}</button>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">{t('긴급도', 'Urgency')}</label>
+                    <select className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newRequestForm.urgency} onChange={(e) => setNewRequestForm({...newRequestForm, urgency: e.target.value})}>
+                      <option value="High">High</option><option value="Medium">Medium</option><option value="Low">Low</option>
+                    </select>
                   </div>
                 </div>
-              )}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">{t('요청 내용', 'Content')}</label>
+                  <textarea rows="2" className="w-full text-sm p-2 border border-slate-300 rounded-lg resize-none focus:outline-none focus:border-cyan-500" value={newRequestForm.content} onChange={(e) => setNewRequestForm({...newRequestForm, content: e.target.value})} placeholder={currentUser.role === 'CUSTOMER' ? t('필요한 사항을 입력하세요', 'Describe what you need') : t('고객이 요청한 내용을 입력하세요', 'Request content')}></textarea>
+                </div>
+                <div className="flex justify-end">
+                  <button onClick={() => { if (newRequestForm.content.trim() && newRequestForm.requester.trim()) { onAddCustomerRequest(project.id, newRequestForm); setNewRequestForm({ requester: currentUser.role === 'CUSTOMER' ? currentUser.name : '', content: '', urgency: 'Medium' }); } }} disabled={!newRequestForm.content.trim() || !newRequestForm.requester.trim()} className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-300 text-white text-sm font-bold rounded-lg transition-colors flex items-center"><MessageSquare size={14} className="mr-1.5" />{t('요청 등록', 'Submit')}</button>
+                </div>
+              </div>
 
               {/* 요청 목록 */}
               {(!project.customerRequests || project.customerRequests.length === 0) ? (
@@ -329,12 +333,80 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                         {/* 요청 내용 */}
                         <p className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed mb-3 p-2 bg-slate-50 rounded-lg border border-slate-100">{req.content}</p>
 
-                        {/* 상태 변경 버튼 */}
+                        {/* 상태 변경 버튼 (내부 직원 전용) */}
                         {currentUser.role !== 'CUSTOMER' && (
-                          <div className="flex space-x-1 mb-2">
-                            {['접수', '검토중', '반영 완료', '반려'].map(s => (
-                              <button key={s} onClick={() => onUpdateCustomerRequestStatus(project.id, req.id, s)} className={`text-[10px] px-2 py-1 rounded font-bold border transition-colors ${req.status === s ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>{s}</button>
-                            ))}
+                          <>
+                            <div className="flex space-x-1 mb-2 flex-wrap gap-y-1">
+                              {['접수', '검토중', '반영 완료', '반려'].map(s => {
+                                const needsResolution = (s === '반영 완료' || s === '반려');
+                                return (
+                                  <button key={s} onClick={() => {
+                                    if (needsResolution) {
+                                      setResolvingRequest({ id: req.id, status: s, text: req.resolution || '' });
+                                    } else {
+                                      onUpdateCustomerRequestStatus(project.id, req.id, s);
+                                    }
+                                  }} className={`text-[10px] px-2 py-1 rounded font-bold border transition-colors ${req.status === s ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>{s}</button>
+                                );
+                              })}
+                            </div>
+
+                            {/* 처리 결과 입력 폼 */}
+                            {resolvingRequest && resolvingRequest.id === req.id && (
+                              <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-2.5 mb-2 space-y-2">
+                                <p className="text-[11px] font-bold text-cyan-800">
+                                  {resolvingRequest.status === '반영 완료'
+                                    ? t('처리 결과 입력 (예: 메일로 회신 완료, 차기 패치 반영, 전화 안내 완료)', 'Resolution note (e.g., Email sent, Patch in next release)')
+                                    : t('반려 사유 입력 (예: 범위 초과, 보류 사항)', 'Rejection reason (e.g., out of scope)')}
+                                </p>
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  className="w-full text-xs p-2 border border-cyan-300 rounded bg-white focus:outline-none focus:border-cyan-600"
+                                  value={resolvingRequest.text}
+                                  onChange={(e) => setResolvingRequest({ ...resolvingRequest, text: e.target.value })}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && resolvingRequest.text.trim()) {
+                                      onUpdateCustomerRequestStatus(project.id, req.id, resolvingRequest.status, resolvingRequest.text.trim());
+                                      setResolvingRequest(null);
+                                    } else if (e.key === 'Escape') {
+                                      setResolvingRequest(null);
+                                    }
+                                  }}
+                                  placeholder={t('처리 방법 / 사유를 입력하세요', 'Enter resolution / reason')}
+                                />
+                                <div className="flex justify-end space-x-1.5">
+                                  <button onClick={() => setResolvingRequest(null)} className="text-[10px] px-2.5 py-1 rounded bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold">{t('취소', 'Cancel')}</button>
+                                  <button
+                                    disabled={!resolvingRequest.text.trim()}
+                                    onClick={() => {
+                                      onUpdateCustomerRequestStatus(project.id, req.id, resolvingRequest.status, resolvingRequest.text.trim());
+                                      setResolvingRequest(null);
+                                    }}
+                                    className="text-[10px] px-2.5 py-1 rounded bg-cyan-600 text-white hover:bg-cyan-700 disabled:bg-slate-300 font-bold"
+                                  >{t('확정', 'Confirm')}</button>
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        )}
+
+                        {/* 처리 결과 표시 (반영 완료 / 반려 시) */}
+                        {req.resolution && (req.status === '반영 완료' || req.status === '반려') && (
+                          <div className={`mt-2 p-2.5 rounded-lg border text-xs ${req.status === '반영 완료' ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
+                            <div className="flex items-start">
+                              <CheckCircle size={12} className={`mr-1.5 mt-0.5 shrink-0 ${req.status === '반영 완료' ? 'text-emerald-600' : 'text-slate-500'}`} />
+                              <div className="flex-1 min-w-0">
+                                <div className={`font-bold mb-0.5 ${req.status === '반영 완료' ? 'text-emerald-800' : 'text-slate-700'}`}>{t('처리 결과', 'Resolution')}</div>
+                                <p className={`whitespace-pre-wrap leading-relaxed ${req.status === '반영 완료' ? 'text-emerald-900' : 'text-slate-700'}`}>{req.resolution}</p>
+                                {(req.resolvedBy || req.resolvedAt) && (
+                                  <div className="text-[10px] text-slate-500 mt-1">
+                                    {req.resolvedBy && <span className="mr-2">{t('처리자', 'By')}: {req.resolvedBy}</span>}
+                                    {req.resolvedAt && <span>{req.resolvedAt}</span>}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         )}
 
@@ -356,13 +428,11 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                           </div>
                         )}
 
-                        {/* 응답 입력 */}
-                        {currentUser.role !== 'CUSTOMER' && (
-                          <div className="flex gap-2 mt-2">
-                            <input type="text" placeholder={t('고객에게 답변 입력...', 'Response to customer...')} className="flex-1 text-xs p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-cyan-500" value={responseText[req.id] || ''} onChange={(e) => setResponseText({...responseText, [req.id]: e.target.value})} onKeyDown={(e) => { if (e.key === 'Enter' && responseText[req.id]?.trim()) { onAddCustomerResponse(project.id, req.id, responseText[req.id].trim()); setResponseText({...responseText, [req.id]: ''}); } }} />
-                            <button onClick={() => { if (responseText[req.id]?.trim()) { onAddCustomerResponse(project.id, req.id, responseText[req.id].trim()); setResponseText({...responseText, [req.id]: ''}); } }} disabled={!responseText[req.id]?.trim()} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white text-xs font-bold rounded-lg transition-colors"><Send size={12} /></button>
-                          </div>
-                        )}
+                        {/* 응답 입력 (CUSTOMER 포함) */}
+                        <div className="flex gap-2 mt-2">
+                          <input type="text" placeholder={currentUser.role === 'CUSTOMER' ? t('답변/추가 코멘트 입력...', 'Reply / comment...') : t('고객에게 답변 입력...', 'Response to customer...')} className="flex-1 text-xs p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-cyan-500" value={responseText[req.id] || ''} onChange={(e) => setResponseText({...responseText, [req.id]: e.target.value})} onKeyDown={(e) => { if (e.key === 'Enter' && responseText[req.id]?.trim()) { onAddCustomerResponse(project.id, req.id, responseText[req.id].trim()); setResponseText({...responseText, [req.id]: ''}); } }} />
+                          <button onClick={() => { if (responseText[req.id]?.trim()) { onAddCustomerResponse(project.id, req.id, responseText[req.id].trim()); setResponseText({...responseText, [req.id]: ''}); } }} disabled={!responseText[req.id]?.trim()} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white text-xs font-bold rounded-lg transition-colors"><Send size={12} /></button>
+                        </div>
                       </div>
                     );
                   })}

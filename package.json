@@ -18,6 +18,8 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
+    "build:test": "REACT_APP_TEST_MODE=true react-scripts build",
+    "build:prod": "REACT_APP_TEST_MODE=false react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },

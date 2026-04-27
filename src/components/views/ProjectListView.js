@@ -16,7 +16,10 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, getSta
 
   const filteredProjects = useMemo(() => {
     let result = projects;
-    if (currentUser.role === 'CUSTOMER') result = result.filter(p => p.customer === currentUser.customer);
+    if (currentUser.role === 'CUSTOMER') {
+      const allowed = Array.isArray(currentUser.assignedProjectIds) ? currentUser.assignedProjectIds : [];
+      result = result.filter(p => allowed.includes(p.id));
+    }
     if (filterManager !== 'all') result = result.filter(p => p.manager === filterManager);
     return result;
   }, [projects, filterManager, currentUser]);

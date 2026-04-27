@@ -6,7 +6,21 @@ import SimpleDonutChart from '../common/SimpleDonutChart';
 import SimpleBarChart from '../common/SimpleBarChart';
 import { exportToExcel } from '../../utils/export';
 
-const DashboardView = memo(function DashboardView({ projects, issues, engineers, getStatusColor, calcExp, calcAct, t }) {
+const DashboardView = memo(function DashboardView({ projects: rawProjects, issues: rawIssues, engineers, getStatusColor, calcExp, calcAct, currentUser, t }) {
+  const projects = useMemo(() => {
+    if (currentUser && currentUser.role === 'CUSTOMER') {
+      const allowed = Array.isArray(currentUser.assignedProjectIds) ? currentUser.assignedProjectIds : [];
+      return (rawProjects || []).filter(p => allowed.includes(p.id));
+    }
+    return rawProjects || [];
+  }, [rawProjects, currentUser]);
+  const issues = useMemo(() => {
+    if (currentUser && currentUser.role === 'CUSTOMER') {
+      const allowed = Array.isArray(currentUser.assignedProjectIds) ? currentUser.assignedProjectIds : [];
+      return (rawIssues || []).filter(i => allowed.includes(i.projectId));
+    }
+    return rawIssues || [];
+  }, [rawIssues, currentUser]);
   const activeProjectsCount = projects.filter(p => p.status !== '완료').length;
   const unresolvedIssuesCount = issues.filter(i => i.status !== '조치 완료').length;
 

@@ -1,12 +1,20 @@
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { Plus, Kanban, User, Trash, MessageCircle, Download } from 'lucide-react';
 import { exportToExcel } from '../../utils/export';
 
 const IssueListView = memo(function IssueListView({ issues, getStatusColor, onAddClick, onIssueClick, onDeleteIssue, currentUser, t }) {
+  const visibleIssues = useMemo(() => {
+    if (currentUser.role === 'CUSTOMER') {
+      const allowed = Array.isArray(currentUser.assignedProjectIds) ? currentUser.assignedProjectIds : [];
+      return (issues || []).filter(i => allowed.includes(i.projectId));
+    }
+    return issues || [];
+  }, [issues, currentUser]);
+
   const handleExport = () => {
     exportToExcel('이슈_리스트', [{
       name: '이슈 리스트',
-      rows: issues.map(i => ({
+      rows: visibleIssues.map(i => ({
         id: i.id, projectName: i.projectName, title: i.title, severity: i.severity, status: i.status,
         author: i.author, date: i.date, comments: (i.comments || []).length
       })),
@@ -34,7 +42,7 @@ const IssueListView = memo(function IssueListView({ issues, getStatusColor, onAd
         </div>
       </div>
       <div className="grid grid-cols-1 gap-4">
-        {issues.map((issue) => (
+        {visibleIssues.map((issue) => (
           <div key={issue.id} onClick={() => onIssueClick(issue)} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between cursor-pointer group hover:border-blue-300 transition-colors">
             <div className="flex-1">
               <div className="flex items-center space-x-3 mb-2">

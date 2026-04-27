@@ -2,18 +2,21 @@ import React, { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import {
   LayoutDashboard, Kanban, AlertTriangle, Wrench, Database, Users,
   GitCommit, Search, Globe, Smartphone, Monitor, LogOut,
-  Building, Camera, CheckSquare, Package, LayoutDashboard as Home
+  Building, Camera, CheckSquare, Package, LayoutDashboard as Home,
+  KeyRound, UserCog
 } from 'lucide-react';
 
 // Constants & Initial Data
 import {
-  TODAY, DOMAIN_TASKS, DOMAIN_CHECKLIST, PROJECT_PHASES
+  TODAY, DOMAIN_TASKS, DOMAIN_CHECKLIST, PROJECT_PHASES,
+  SEED_ADMIN, SEED_TEST_USERS, TEST_MODE
 } from './constants';
 
 // Utils
 import { getStatusColor } from './utils/status';
 import { calcExp, calcAct } from './utils/calc';
 import { loadFromGoogleDB, saveToGoogleDB, notifyWebhook } from './utils/api';
+import { hashPassword } from './utils/auth';
 
 // Common Components
 import NavItem from './components/common/NavItem';
@@ -26,6 +29,7 @@ const PartsListView = lazy(() => import('./components/views/PartsListView'));
 const SiteListView = lazy(() => import('./components/views/SiteListView'));
 const ResourceListView = lazy(() => import('./components/views/ResourceListView'));
 const VersionHistoryView = lazy(() => import('./components/views/VersionHistoryView'));
+const UserManagementView = lazy(() => import('./components/views/UserManagementView'));
 const LoginScreen = lazy(() => import('./components/views/LoginScreen'));
 
 // Lazy-loaded Modals
@@ -45,6 +49,8 @@ const DeleteConfirmModal = lazy(() => import('./components/modals/DeleteConfirmM
 const ManagerChangeModal = lazy(() => import('./components/modals/ManagerChangeModal'));
 const PhaseGanttModal = lazy(() => import('./components/modals/PhaseGanttModal'));
 const ProjectEditModal = lazy(() => import('./components/modals/ProjectEditModal'));
+const UserModal = lazy(() => import('./components/modals/UserModal'));
+const PasswordChangeModal = lazy(() => import('./components/modals/PasswordChangeModal'));
 
 const Loading = () => <div className="flex items-center justify-center h-32 text-slate-400 text-sm">Loading...</div>;
 
@@ -106,6 +112,14 @@ export default function App() {
   const [engineers, setEngineers] = useState([]);
   const [parts, setParts] = useState([]);
   const [sites, setSites] = useState([]);
+  const [users, setUsers] = useState([]);
+
+  // User management modal states
+  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [userEditTarget, setUserEditTarget] = useState(null);
+  const [userToDelete, setUserToDelete] = useState(null);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [forcePasswordChange, setForcePasswordChange] = useState(false);
 
   // 앱 시작 시 Google Sheets에서 데이터 불러오기
   useEffect(() => {
@@ -119,6 +133,24 @@ export default function App() {
         setEngineers(data.engineers || []);
         setParts(data.parts || []);
         setSites(data.sites || []);
+        const loadedUsers = Array.isArray(data.users) ? data.users : [];
+        if (loadedUsers.length === 0) {
+          // 시드: TEST_MODE면 4개 권한별 계정, 아니면 관리자 1명
+          const nowIso = new Date().toISOString();
+          const seed = TEST_MODE
+            ? SEED_TEST_USERS.map(u => ({ ...u, createdAt: nowIso }))
+            : [{ ...SEED_ADMIN, createdAt: nowIso }];
+          setUsers(seed);
+          saveToGoogleDB('UPDATE_USERS', seed);
+        } else {
+          setUsers(loadedUsers);
+        }
+      } else {
+        // GAS 미연결 / 로드 실패 시에도 시드 계정으로 진입은 가능하게
+        const nowIso = new Date().toISOString();
+        setUsers(TEST_MODE
+          ? SEED_TEST_USERS.map(u => ({ ...u, createdAt: nowIso }))
+          : [{ ...SEED_ADMIN, createdAt: nowIso }]);
       }
       setIsLoading(false);
     };
@@ -126,9 +158,21 @@ export default function App() {
   }, []);
 
   // Login guard
+  const handleLoginSuccess = (user) => {
+    const stamped = { ...user, lastLoginAt: new Date().toISOString() };
+    setCurrentUser(stamped);
+    const updatedList = users.map(u => u.id === stamped.id ? { ...u, lastLoginAt: stamped.lastLoginAt } : u);
+    setUsers(updatedList);
+    saveToGoogleDB('UPDATE_USERS', updatedList);
+    if (user.mustChangePassword) {
+      setForcePasswordChange(true);
+      setIsPasswordModalOpen(true);
+    }
+  };
+
   if (!currentUser) return (
     <Suspense fallback={<Loading />}>
-      <LoginScreen onLogin={setCurrentUser} lang={lang} setLang={setLang} t={t} />
+      <LoginScreen users={users} onLogin={handleLoginSuccess} lang={lang} setLang={setLang} t={t} />
     </Suspense>
   );
 
@@ -148,6 +192,56 @@ export default function App() {
   const syncEngineers = (updated) => { setEngineers(updated); saveToGoogleDB('UPDATE_ENGINEERS', updated); };
   const syncParts = (updated) => { setParts(updated); saveToGoogleDB('UPDATE_PARTS', updated); };
   const syncSites = (updated) => { setSites(updated); saveToGoogleDB('UPDATE_SITES', updated); };
+  const syncUsers = (updated) => { setUsers(updated); saveToGoogleDB('UPDATE_USERS', updated); };
+
+  // === 사용자 관리 핸들러 ===
+  const handleSubmitUser = (payload, isEdit) => {
+    if (isEdit) {
+      const updated = users.map(u => u.id === payload.id ? { ...u, ...payload } : u);
+      syncUsers(updated);
+      // 본인 계정 수정 시 currentUser 동기화
+      if (currentUser && currentUser.id === payload.id) {
+        setCurrentUser({ ...currentUser, ...payload });
+      }
+      showToast(t('사용자 정보가 수정되었습니다.', 'User updated.'));
+    } else {
+      syncUsers([...users, { ...payload, createdAt: payload.createdAt || new Date().toISOString() }]);
+      showToast(t('사용자가 추가되었습니다.', 'User added.'));
+    }
+    setIsUserModalOpen(false);
+    setUserEditTarget(null);
+  };
+
+  const handleResetUserPassword = async (user) => {
+    const tempPw = 'temp' + Math.floor(1000 + Math.random() * 9000);
+    const hashed = await hashPassword(tempPw);
+    const updated = users.map(u => u.id === user.id ? { ...u, pw: hashed, mustChangePassword: true } : u);
+    syncUsers(updated);
+    showToast(t(`${user.id}의 임시 비밀번호: ${tempPw} (사용자에게 전달 후 변경 안내)`, `Temp password for ${user.id}: ${tempPw}`));
+  };
+
+  const handleToggleUserActive = (user) => {
+    const updated = users.map(u => u.id === user.id ? { ...u, active: u.active === false } : u);
+    syncUsers(updated);
+    showToast(t('계정 상태가 변경되었습니다.', 'Account status changed.'));
+  };
+
+  const handleDeleteUser = () => {
+    if (!userToDelete) return;
+    if (currentUser && currentUser.id === userToDelete.id) { setUserToDelete(null); return; }
+    syncUsers(users.filter(u => u.id !== userToDelete.id));
+    setUserToDelete(null);
+    showToast(t('사용자가 삭제되었습니다.', 'User deleted.'));
+  };
+
+  const handleChangeMyPassword = (newHashedPw) => {
+    const updatedUser = { ...currentUser, pw: newHashedPw, mustChangePassword: false };
+    setCurrentUser(updatedUser);
+    syncUsers(users.map(u => u.id === currentUser.id ? { ...u, pw: newHashedPw, mustChangePassword: false } : u));
+    setIsPasswordModalOpen(false);
+    setForcePasswordChange(false);
+    showToast(t('비밀번호가 변경되었습니다.', 'Password updated.'));
+  };
 
   // === CRUD Handlers ===
 
@@ -360,12 +454,28 @@ export default function App() {
     syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, customerRequests: [...(p.customerRequests || []), request] }, 'REQUEST_ADD', `고객 요청: ${data.requester} - ${data.content.substring(0, 30)}${data.content.length > 30 ? '...' : ''}`)));
   };
 
-  const handleUpdateCustomerRequestStatus = (projectId, requestId, newStatus) => {
+  const handleUpdateCustomerRequestStatus = (projectId, requestId, newStatus, resolution) => {
+    const todayStr = new Date().toLocaleString();
     syncProjects(projects.map(p => {
       if (p.id !== projectId) return p;
-      const updated = { ...p, customerRequests: (p.customerRequests || []).map(r => r.id === requestId ? { ...r, status: newStatus } : r) };
+      const updated = {
+        ...p,
+        customerRequests: (p.customerRequests || []).map(r => {
+          if (r.id !== requestId) return r;
+          const next = { ...r, status: newStatus };
+          if (typeof resolution === 'string') {
+            next.resolution = resolution;
+            next.resolvedBy = currentUser.name;
+            next.resolvedAt = todayStr;
+          }
+          return next;
+        })
+      };
       const req = p.customerRequests.find(r => r.id === requestId);
-      return addLog(updated, 'REQUEST_STATUS', `고객 요청 상태: ${req?.content.substring(0, 20) || ''} → ${newStatus}`);
+      const detail = resolution
+        ? `고객 요청 상태: ${req?.content.substring(0, 20) || ''} → ${newStatus} (처리: ${resolution})`
+        : `고객 요청 상태: ${req?.content.substring(0, 20) || ''} → ${newStatus}`;
+      return addLog(updated, 'REQUEST_STATUS', detail);
     }));
   };
 
@@ -498,7 +608,15 @@ export default function App() {
                 <div>
                   <h2 className="text-sm font-bold text-slate-500 mb-3 ml-1">{t('나의 배정 현장 요약', 'My Assigned Projects')}</h2>
                   <div className="space-y-3">
-                    {projects.filter(p => p.status !== '��료').slice(0, 3).map(prj => (
+                    {projects
+                      .filter(p => {
+                        if (currentUser.role === 'CUSTOMER') {
+                          const allowed = Array.isArray(currentUser.assignedProjectIds) ? currentUser.assignedProjectIds : [];
+                          if (!allowed.includes(p.id)) return false;
+                        }
+                        return p.status !== '완료';
+                      })
+                      .slice(0, 3).map(prj => (
                       <div key={prj.id} onClick={() => { setActiveTab('projects'); setSelectedProjectId(prj.id); }} className="bg-white p-4 rounded-xl shadow-sm border active:bg-slate-50 transition-colors">
                         <div className="flex justify-between items-start mb-2"><span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${getStatusColor(prj.status)}`}>{prj.status}</span><span className="text-[10px] text-slate-400 flex items-center"><Building size={12} className="mr-1" />{prj.customer}</span></div>
                         <h3 className="font-bold text-slate-800 text-base leading-tight mb-1">{prj.name}</h3>
@@ -534,6 +652,9 @@ export default function App() {
           {isTaskModalOpen && <TaskModal {...taskModalProps} />}
           {isIssueDetailModalOpen && <IssueDetailModal issue={selectedIssue} issuesList={issues} onClose={() => setIsIssueDetailModalOpen(false)} onAddComment={handleAddComment} onUpdateIssueStatus={handleUpdateIssueStatus} getStatusColor={getStatusColor} t={t} />}
           {siteToDelete && <DeleteConfirmModal type="site" item={siteToDelete} onClose={() => setSiteToDelete(null)} onConfirm={handleDeleteSite} t={t} />}
+          {isPasswordModalOpen && (
+            <PasswordChangeModal user={currentUser} forced={forcePasswordChange} onClose={() => { if (!forcePasswordChange) setIsPasswordModalOpen(false); }} onSubmit={handleChangeMyPassword} t={t} />
+          )}
         </Suspense>
       </div>
     );
@@ -558,6 +679,9 @@ export default function App() {
                 <NavItem icon={<GitCommit size={20} />} label={t('버전 릴리즈 관리', 'Releases')} active={activeTab === 'versions'} onClick={() => setActiveTab('versions')} />
               </>
             )}
+            {currentUser.role === 'ADMIN' && (
+              <NavItem icon={<UserCog size={20} />} label={t('사용자 관리', 'User Management')} active={activeTab === 'users'} onClick={() => setActiveTab('users')} />
+            )}
           </nav>
         </aside>
 
@@ -570,20 +694,34 @@ export default function App() {
               <div className="flex items-center space-x-3 border-l border-slate-200 pl-4 ml-2">
                 <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold">{currentUser.name.charAt(0)}</div>
                 <div className="text-sm pr-2"><p className="font-semibold text-slate-700">{currentUser.name}</p><p className="text-[10px] text-slate-400">{currentUser.role}</p></div>
-                <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 p-1"><LogOut size={18}/></button>
+                <button onClick={() => { setForcePasswordChange(false); setIsPasswordModalOpen(true); }} title={t('비밀번호 변경', 'Change Password')} className="text-slate-400 hover:text-indigo-600 p-1"><KeyRound size={18}/></button>
+                <button onClick={handleLogout} title={t('로그아웃', 'Logout')} className="text-slate-400 hover:text-red-500 p-1"><LogOut size={18}/></button>
               </div>
             </div>
           </header>
 
           <div className="flex-1 overflow-auto p-8">
             <Suspense fallback={<Loading />}>
-              {activeTab === 'dashboard' && <DashboardView projects={projects} issues={issues} engineers={engineers} getStatusColor={getStatusColor} calcExp={calcExp} calcAct={calcAct} t={t} />}
+              {activeTab === 'dashboard' && <DashboardView projects={projects} issues={issues} engineers={engineers} getStatusColor={getStatusColor} calcExp={calcExp} calcAct={calcAct} currentUser={currentUser} t={t} />}
               {activeTab === 'projects' && <ProjectListView projects={projects} issues={issues} getStatusColor={getStatusColor} onAddClick={() => setIsProjectModalOpen(true)} onManageTasks={(id) => { setSelectedProjectId(id); setIsTaskModalOpen(true); }} onEditVersion={(prj) => { setVersionEditProject(prj); setIsVersionModalOpen(true); }} onChangeManager={(prj) => { setManagerEditProject(prj); setIsManagerModalOpen(true); }} onViewPhaseGantt={(prj) => { setPhaseGanttProject(prj); setIsPhaseGanttOpen(true); }} onEditProject={(prj) => { setProjectEditTarget(prj); setIsProjectEditOpen(true); }} onDeleteProject={(prj) => setProjectToDelete(prj)} onUpdatePhase={handleUpdatePhase} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} calcExp={calcExp} calcAct={calcAct} currentUser={currentUser} t={t} />}
               {activeTab === 'issues' && <IssueListView issues={issues} getStatusColor={getStatusColor} onAddClick={() => setIsIssueModalOpen(true)} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} onDeleteIssue={(issue) => setIssueToDelete(issue)} currentUser={currentUser} t={t} />}
               {activeTab === 'parts' && <PartsListView parts={parts} getStatusColor={getStatusColor} onUpdateStatus={handleUpdatePartStatus} onDeletePart={(part) => setPartToDelete(part)} onAddClick={() => setIsPartModalOpen(true)} currentUser={currentUser} t={t} />}
               {activeTab === 'sites' && <SiteListView sites={sites} onAddClick={() => { setSelectedSite(null); setIsSiteModalOpen(true); }} onEditClick={(site) => { setSelectedSite(site); setIsSiteModalOpen(true); }} onDeleteClick={(site) => setSiteToDelete(site)} currentUser={currentUser} t={t} />}
               {activeTab === 'resources' && <ResourceListView engineers={engineers} projects={projects} getStatusColor={getStatusColor} TODAY={TODAY} onAddClick={() => { setSelectedEngineer(null); setIsEngineerModalOpen(true); }} onEditClick={(eng) => { setSelectedEngineer(eng); setIsEngineerModalOpen(true); }} onDeleteClick={(eng) => setEngineerToDelete(eng)} currentUser={currentUser} t={t} />}
               {activeTab === 'versions' && <VersionHistoryView releases={releases} onAddClick={() => setIsReleaseModalOpen(true)} onDeleteRelease={(release) => setReleaseToDelete(release)} currentUser={currentUser} t={t} />}
+              {activeTab === 'users' && currentUser.role === 'ADMIN' && (
+                <UserManagementView
+                  users={users}
+                  projects={projects}
+                  currentUser={currentUser}
+                  onAdd={() => { setUserEditTarget(null); setIsUserModalOpen(true); }}
+                  onEdit={(u) => { setUserEditTarget(u); setIsUserModalOpen(true); }}
+                  onResetPassword={handleResetUserPassword}
+                  onToggleActive={handleToggleUserActive}
+                  onDelete={(u) => setUserToDelete(u)}
+                  t={t}
+                />
+              )}
             </Suspense>
           </div>
 
@@ -607,6 +745,14 @@ export default function App() {
             {engineerToDelete && <DeleteConfirmModal type="engineer" item={engineerToDelete} onClose={() => setEngineerToDelete(null)} onConfirm={handleDeleteEngineer} t={t} />}
             {partToDelete && <DeleteConfirmModal type="part" item={partToDelete} onClose={() => setPartToDelete(null)} onConfirm={handleDeletePart} t={t} />}
             {siteToDelete && <DeleteConfirmModal type="site" item={siteToDelete} onClose={() => setSiteToDelete(null)} onConfirm={handleDeleteSite} t={t} />}
+            {userToDelete && <DeleteConfirmModal type="user" item={userToDelete} onClose={() => setUserToDelete(null)} onConfirm={handleDeleteUser} t={t} />}
+
+            {isUserModalOpen && currentUser.role === 'ADMIN' && (
+              <UserModal user={userEditTarget} users={users} projects={projects} onClose={() => { setIsUserModalOpen(false); setUserEditTarget(null); }} onSubmit={handleSubmitUser} t={t} />
+            )}
+            {isPasswordModalOpen && (
+              <PasswordChangeModal user={currentUser} forced={forcePasswordChange} onClose={() => { if (!forcePasswordChange) setIsPasswordModalOpen(false); }} onSubmit={handleChangeMyPassword} t={t} />
+            )}
           </Suspense>
         </main>
       </div>
