@@ -3,12 +3,13 @@ import {
   LayoutDashboard, Kanban, AlertTriangle, Wrench, Database, Users,
   GitCommit, Search, Globe, Smartphone, Monitor, LogOut,
   Building, Camera, CheckSquare, Package, LayoutDashboard as Home,
-  KeyRound, UserCog
+  KeyRound, UserCog, LifeBuoy, HelpCircle, ChevronsLeft, ChevronsRight
 } from 'lucide-react';
 
 // Constants & Initial Data
 import {
   TODAY, DOMAIN_TASKS, DOMAIN_CHECKLIST, PROJECT_PHASES,
+  PHASE_COMPLETED_INDEX, PHASE_WARRANTY_INDEX,
   SEED_ADMIN, SEED_TEST_USERS, TEST_MODE
 } from './constants';
 
@@ -29,6 +30,7 @@ const PartsListView = lazy(() => import('./components/views/PartsListView'));
 const SiteListView = lazy(() => import('./components/views/SiteListView'));
 const ResourceListView = lazy(() => import('./components/views/ResourceListView'));
 const VersionHistoryView = lazy(() => import('./components/views/VersionHistoryView'));
+const ASManagementView = lazy(() => import('./components/views/ASManagementView'));
 const UserManagementView = lazy(() => import('./components/views/UserManagementView'));
 const LoginScreen = lazy(() => import('./components/views/LoginScreen'));
 
@@ -42,15 +44,19 @@ const IssueDetailModal = lazy(() => import('./components/modals/IssueDetailModal
 const VersionModal = lazy(() => import('./components/modals/VersionModal'));
 const ReleaseModal = lazy(() => import('./components/modals/ReleaseModal'));
 const EngineerModal = lazy(() => import('./components/modals/EngineerModal'));
+const EngineerCertificatesModal = lazy(() => import('./components/modals/EngineerCertificatesModal'));
 const DailyReportModal = lazy(() => import('./components/modals/DailyReportModal'));
 const MobileIssueModal = lazy(() => import('./components/modals/MobileIssueModal'));
 const MobilePartModal = lazy(() => import('./components/modals/MobilePartModal'));
 const DeleteConfirmModal = lazy(() => import('./components/modals/DeleteConfirmModal'));
-const ManagerChangeModal = lazy(() => import('./components/modals/ManagerChangeModal'));
+// ManagerChangeModal/TripScheduleModal은 ProjectTeamModal로 통합
 const PhaseGanttModal = lazy(() => import('./components/modals/PhaseGanttModal'));
 const ProjectEditModal = lazy(() => import('./components/modals/ProjectEditModal'));
+const ProjectTeamModal = lazy(() => import('./components/modals/ProjectTeamModal'));
+const PhaseEditModal = lazy(() => import('./components/modals/PhaseEditModal'));
 const UserModal = lazy(() => import('./components/modals/UserModal'));
 const PasswordChangeModal = lazy(() => import('./components/modals/PasswordChangeModal'));
+const HelpModal = lazy(() => import('./components/modals/HelpModal'));
 
 const Loading = () => <div className="flex items-center justify-center h-32 text-slate-400 text-sm">Loading...</div>;
 
@@ -61,6 +67,12 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isMobileMode, setIsMobileMode] = useState(() => window.innerWidth < 768);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem('eq_pms_sidebar_collapsed') === '1'; } catch (_) { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('eq_pms_sidebar_collapsed', sidebarCollapsed ? '1' : '0'); } catch (_) {}
+  }, [sidebarCollapsed]);
 
   // 화면 크기 변경 시 자동 모드 전환
   useEffect(() => {
@@ -70,6 +82,15 @@ export default function App() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // 모바일 모드는 dashboard/projects/issues/sites 만 지원 — 다른 탭이면 dashboard로 자동 폴백
+  const MOBILE_TABS = ['dashboard', 'projects', 'issues', 'sites'];
+  useEffect(() => {
+    if (isMobileMode && !MOBILE_TABS.includes(activeTab)) {
+      setActiveTab('dashboard');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMobileMode]);
 
   // Modal states
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
@@ -86,6 +107,8 @@ export default function App() {
   const [isDailyReportOpen, setIsDailyReportOpen] = useState(false);
   const [isEngineerModalOpen, setIsEngineerModalOpen] = useState(false);
   const [selectedEngineer, setSelectedEngineer] = useState(null);
+  const [isCertModalOpen, setIsCertModalOpen] = useState(false);
+  const [certEngineerId, setCertEngineerId] = useState(null);
   const [selectedSite, setSelectedSite] = useState(null);
   const [isManagerModalOpen, setIsManagerModalOpen] = useState(false);
   const [managerEditProject, setManagerEditProject] = useState(null);
@@ -93,6 +116,10 @@ export default function App() {
   const [phaseGanttProject, setPhaseGanttProject] = useState(null);
   const [isProjectEditOpen, setIsProjectEditOpen] = useState(false);
   const [projectEditTarget, setProjectEditTarget] = useState(null);
+  const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
+  const [teamEditProjectId, setTeamEditProjectId] = useState(null);
+  const [isPhaseEditOpen, setIsPhaseEditOpen] = useState(false);
+  const [phaseEditProjectId, setPhaseEditProjectId] = useState(null);
 
   // Delete confirm states
   const [engineerToDelete, setEngineerToDelete] = useState(null);
@@ -120,6 +147,7 @@ export default function App() {
   const [userToDelete, setUserToDelete] = useState(null);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [forcePasswordChange, setForcePasswordChange] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
 
   // 앱 시작 시 Google Sheets에서 데이터 불러오기
   useEffect(() => {
@@ -127,10 +155,76 @@ export default function App() {
       setIsLoading(true);
       const data = await loadFromGoogleDB();
       if (data) {
-        setProjects(data.projects || []);
-        setIssues(data.issues || []);
+        // GAS에서 빈 셀/문자열로 와도 forEach 가능하도록 배열 필드 정규화
+        const ensureArr = (v) => {
+          if (Array.isArray(v)) return v;
+          if (typeof v === 'string' && v.trim().startsWith('[')) {
+            try { const parsed = JSON.parse(v); return Array.isArray(parsed) ? parsed : []; } catch (_) {}
+          }
+          return [];
+        };
+        const PROJECT_ARRAYS = ['tasks', 'checklist', 'activityLog', 'managerHistory', 'trips', 'extraTasks', 'asRecords', 'customerRequests', 'notes', 'versions', 'phases'];
+        const sanitizeProject = (p) => {
+          const next = { ...p };
+          PROJECT_ARRAYS.forEach(f => { next[f] = ensureArr(next[f]); });
+          return next;
+        };
+        // 마이그레이션 + 배열 정규화
+        const migratedProjects = (data.projects || []).map(p => {
+          const sp = sanitizeProject(p);
+          // phase 마이그레이션
+          if (sp.status === '완료' && (typeof sp.phaseIndex !== 'number' || sp.phaseIndex === 6)) {
+            sp.phaseIndex = PHASE_COMPLETED_INDEX;
+          }
+          // 버전 마이그레이션: 기존 hw/sw/fwVersion 단일 필드 → versions 배열
+          if (sp.versions.length === 0) {
+            const seeds = [];
+            if (p.hwVersion) seeds.push({ id: Date.now() + Math.random(), category: 'HW', version: p.hwVersion, releaseDate: '', note: '(마이그레이션)', author: '' });
+            if (p.swVersion) seeds.push({ id: Date.now() + Math.random() + 1, category: 'SW', version: p.swVersion, releaseDate: '', note: '(마이그레이션)', author: '' });
+            if (p.fwVersion) seeds.push({ id: Date.now() + Math.random() + 2, category: 'FW', version: p.fwVersion, releaseDate: '', note: '(마이그레이션)', author: '' });
+            sp.versions = seeds;
+          }
+          // phases 마이그레이션: phaseIndex (숫자) → phases 배열 + currentPhaseId
+          if (sp.phases.length === 0) {
+            sp.phases = PROJECT_PHASES.map((name, idx) => ({ id: `p${idx}`, name }));
+          }
+          // currentPhaseId가 없으면 phaseIndex 기준으로 매핑
+          if (!sp.currentPhaseId) {
+            const idx = typeof sp.phaseIndex === 'number' ? sp.phaseIndex : 0;
+            sp.currentPhaseId = (sp.phases[idx] || sp.phases[0]).id;
+          }
+          return sp;
+        });
+        setProjects(migratedProjects);
+        // 이슈 comments 정규화
+        // (아래 setIssues 호출 직전에 처리)
+        setIssues((data.issues || []).map(i => ({ ...i, comments: ensureArr(i.comments) })));
         setReleases(data.releases || []);
-        setEngineers(data.engineers || []);
+        // 엔지니어 자격 데이터 마이그레이션 (단일 필드 → 배열) + 배열 정규화
+        const ENG_ARRAYS = ['badges', 'safetyTrainings', 'visas', 'assignedProjectIds'];
+        const migratedEngineers = (data.engineers || []).map(e => {
+          const next = { ...e };
+          ENG_ARRAYS.forEach(f => { next[f] = ensureArr(next[f]); });
+          // 빈 배열일 때만 단일 필드 → 배열 마이그레이션
+          if (next.badges.length === 0 && e.accessExpiry) {
+            next.badges = [{ id: Date.now() + Math.random(), issuer: '출입증', expiry: e.accessExpiry, note: '' }];
+          }
+          if (next.safetyTrainings.length === 0 && e.safetyExpiry) {
+            next.safetyTrainings = [{ id: Date.now() + Math.random(), issuer: '기본 안전교육', expiry: e.safetyExpiry, note: '' }];
+          }
+          if (next.visas.length === 0 && (e.visaType || e.visaExpiry || (e.visaStatus && e.visaStatus !== '미해당'))) {
+            next.visas = [{
+              id: Date.now() + Math.random(),
+              country: '',
+              type: e.visaType || '',
+              status: e.visaStatus || '미해당',
+              expiry: e.visaExpiry || '',
+              note: ''
+            }];
+          }
+          return next;
+        });
+        setEngineers(migratedEngineers);
         setParts(data.parts || []);
         setSites(data.sites || []);
         const loadedUsers = Array.isArray(data.users) ? data.users : [];
@@ -178,6 +272,12 @@ export default function App() {
 
   // Helpers
   const handleLogout = () => { setCurrentUser(null); setActiveTab('dashboard'); };
+  // 프로젝트 클릭 → 프로젝트 관리 탭으로 이동 + 상세 모달 오픈
+  const openProjectDetail = (projectId) => {
+    setSelectedProjectId(projectId);
+    setActiveTab('projects');
+    setIsTaskModalOpen(true);
+  };
   const generateUniqueId = (prefix) => `${prefix}-${Date.now().toString().slice(-6)}`;
   const showToast = (msg) => { setToastMessage(msg); setTimeout(() => setToastMessage(''), 3000); };
   const addLog = (project, type, detail) => ({
@@ -250,7 +350,14 @@ export default function App() {
     const domainChecklist = DOMAIN_CHECKLIST[newProject.domain] || DOMAIN_CHECKLIST['반도체'];
     const tasks = JSON.parse(JSON.stringify(domainTasks));
     const checklist = domainChecklist.map((item, idx) => ({ ...item, id: Date.now() + idx }));
-    const newData = addLog({ ...newProject, id: generateUniqueId('PRJ'), tasks, checklist, signOff: null, activityLog: [], managerHistory: [] }, 'PROJECT_CREATE', `프로젝트 생성: ${newProject.name}`);
+    const newData = addLog({
+      ...newProject,
+      id: generateUniqueId('PRJ'),
+      tasks, checklist,
+      signOff: null,
+      activityLog: [], managerHistory: [],
+      trips: [], extraTasks: [], asRecords: [], customerRequests: [], notes: []
+    }, 'PROJECT_CREATE', `프로젝트 생성: ${newProject.name}`);
     syncProjects([newData, ...projects]);
     setIsProjectModalOpen(false);
     showToast('프로젝트가 추가되었습니다.');
@@ -259,9 +366,33 @@ export default function App() {
   const handleUpdatePhase = (projectId, newPhaseIndex) => {
     syncProjects(projects.map(p => {
       if (p.id !== projectId) return p;
-      const fromPhase = PROJECT_PHASES[p.phaseIndex || 0];
-      const toPhase = PROJECT_PHASES[newPhaseIndex];
-      return addLog({ ...p, phaseIndex: newPhaseIndex, status: newPhaseIndex === 6 ? '완료' : '진행중' }, 'PHASE_CHANGE', `${fromPhase} → ${toPhase}`);
+      const phases = (p.phases && p.phases.length > 0) ? p.phases : PROJECT_PHASES.map((name, idx) => ({ id: `p${idx}`, name }));
+      const targetIdx = Math.max(0, Math.min(newPhaseIndex, phases.length - 1));
+      const fromIdx = typeof p.phaseIndex === 'number' ? p.phaseIndex : 0;
+      const fromName = (phases[fromIdx] || phases[0]).name;
+      const toName = phases[targetIdx].name;
+      // 진짜 완료 = 마지막 단계
+      const isLast = targetIdx === phases.length - 1;
+      const newStatus = isLast ? '완료' : '진행중';
+      return addLog({ ...p, phases, phaseIndex: targetIdx, currentPhaseId: phases[targetIdx].id, status: newStatus }, 'PHASE_CHANGE', `${fromName} → ${toName}`);
+    }));
+  };
+
+  // 프로젝트 단계 정의 자체 편집 (이름 변경/추가/삭제/순서)
+  const handleSetProjectPhases = (projectId, nextPhases) => {
+    syncProjects(projects.map(p => {
+      if (p.id !== projectId) return p;
+      // currentPhaseId가 없어진 경우 안전 처리
+      let curIdx = nextPhases.findIndex(ph => ph.id === p.currentPhaseId);
+      if (curIdx < 0) curIdx = Math.min(p.phaseIndex || 0, nextPhases.length - 1);
+      const isLast = curIdx === nextPhases.length - 1;
+      return addLog({
+        ...p,
+        phases: nextPhases,
+        phaseIndex: curIdx,
+        currentPhaseId: nextPhases[curIdx]?.id || null,
+        status: isLast ? '완료' : (p.status === '완료' ? '진행중' : p.status)
+      }, 'PHASE_DEFINE', `단계 정의 변경: ${nextPhases.map(x => x.name).join(' → ')}`);
     }));
   };
 
@@ -337,8 +468,65 @@ export default function App() {
 
   const handleSignOff = (projectId, customerName, signatureData) => {
     const todayStr = new Date().toISOString().split('T')[0];
-    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, status: '완료', phaseIndex: 6, signOff: { signed: true, customerName, signatureData, date: todayStr } }, 'SIGN_OFF', `고객 서명 완료: ${customerName}`)));
-    showToast('최종 검수 및 서명이 완료되었습니다!');
+    syncProjects(projects.map(p => {
+      if (p.id !== projectId) return p;
+      const phases = (p.phases && p.phases.length > 0) ? p.phases : PROJECT_PHASES.map((name, idx) => ({ id: `p${idx}`, name }));
+      // 워런티 단계 = 마지막 직전 (없으면 마지막 -1, 그래도 없으면 마지막)
+      const warrantyIdx = Math.max(0, phases.length - 2);
+      return addLog({ ...p, status: '진행중', phaseIndex: warrantyIdx, currentPhaseId: phases[warrantyIdx]?.id, signOff: { signed: true, customerName, signatureData, date: todayStr } }, 'SIGN_OFF', `고객 서명 완료: ${customerName} (${phases[warrantyIdx]?.name || ''} 단계 진입)`);
+    }));
+    showToast('최종 검수 서명 완료. 워런티 단계로 진입했습니다.');
+  };
+
+  // 사인 취소 (ADMIN 전용)
+  const handleCancelSignOff = (projectId) => {
+    syncProjects(projects.map(p => {
+      if (p.id !== projectId) return p;
+      const prev = p.signOff;
+      const phases = (p.phases && p.phases.length > 0) ? p.phases : PROJECT_PHASES.map((name, idx) => ({ id: `p${idx}`, name }));
+      // 워런티/완료 단계였다면 그 직전(현장 셋업)으로 복귀, 그 외엔 유지
+      const warrantyIdx = Math.max(0, phases.length - 2);
+      const rollbackIdx = (typeof p.phaseIndex === 'number' && p.phaseIndex >= warrantyIdx) ? Math.max(0, warrantyIdx - 1) : p.phaseIndex;
+      return addLog({ ...p, signOff: null, status: '진행중', phaseIndex: rollbackIdx, currentPhaseId: phases[rollbackIdx]?.id }, 'SIGN_CANCEL', `검수 사인 취소 (이전 검수자: ${prev?.customerName || '-'})`);
+    }));
+    showToast('검수 사인이 취소되었습니다.');
+  };
+
+  // === 추가 대응 작업 (검수 후 고객 요청 기반) 핸들러 ===
+  const handleAddExtraTask = (projectId, payload) => {
+    const task = {
+      id: Date.now(),
+      name: payload.name,
+      requester: payload.requester || '',
+      type: payload.type || '기능 추가',
+      status: '대기',
+      startDate: payload.startDate || '',
+      endDate: payload.endDate || '',
+      note: payload.note || '',
+      createdAt: new Date().toLocaleString(),
+      createdBy: currentUser.name
+    };
+    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, extraTasks: [...(p.extraTasks || []), task] }, 'EXTRA_ADD', `추가 작업 등록: ${task.name} (${task.type})`)));
+  };
+
+  const handleUpdateExtraTask = (projectId, taskId, updates) => {
+    syncProjects(projects.map(p => {
+      if (p.id !== projectId) return p;
+      const updated = { ...p, extraTasks: (p.extraTasks || []).map(t => t.id === taskId ? { ...t, ...updates } : t) };
+      if (updates.status) {
+        const task = (p.extraTasks || []).find(t => t.id === taskId);
+        return addLog(updated, 'EXTRA_UPDATE', `추가 작업 상태: ${task?.name || ''} → ${updates.status}`);
+      }
+      return updated;
+    }));
+  };
+
+  const handleDeleteExtraTask = (projectId, taskId) => {
+    syncProjects(projects.map(p => {
+      if (p.id !== projectId) return p;
+      const task = (p.extraTasks || []).find(t => t.id === taskId);
+      return addLog({ ...p, extraTasks: (p.extraTasks || []).filter(t => t.id !== taskId) }, 'EXTRA_DELETE', `추가 작업 삭제: ${task?.name || ''}`);
+    }));
   };
 
   const handleAddIssue = (newIssue) => {
@@ -491,6 +679,68 @@ export default function App() {
     syncProjects(projects.map(p => p.id !== projectId ? p : { ...p, customerRequests: (p.customerRequests || []).filter(r => r.id !== requestId) }));
   };
 
+  // === 엔지니어 자격(출입증/안전교육/비자) 핸들러 ===
+  // category: 'badges' | 'safetyTrainings' | 'visas'
+  const handleAddCertificate = (engineerId, category, payload) => {
+    syncEngineers(engineers.map(e => {
+      if (e.id !== engineerId) return e;
+      const list = Array.isArray(e[category]) ? e[category] : [];
+      const item = { id: Date.now(), ...payload };
+      return { ...e, [category]: [...list, item] };
+    }));
+  };
+  const handleUpdateCertificate = (engineerId, category, itemId, updates) => {
+    syncEngineers(engineers.map(e => {
+      if (e.id !== engineerId) return e;
+      const list = Array.isArray(e[category]) ? e[category] : [];
+      return { ...e, [category]: list.map(it => it.id === itemId ? { ...it, ...updates } : it) };
+    }));
+  };
+  const handleDeleteCertificate = (engineerId, category, itemId) => {
+    syncEngineers(engineers.map(e => {
+      if (e.id !== engineerId) return e;
+      const list = Array.isArray(e[category]) ? e[category] : [];
+      return { ...e, [category]: list.filter(it => it.id !== itemId) };
+    }));
+  };
+
+  // === 엔지니어 ↔ 프로젝트 배정 토글 ===
+  const handleToggleEngineerAssignment = (engineerId, projectId) => {
+    syncEngineers(engineers.map(e => {
+      if (e.id !== engineerId) return e;
+      const ids = Array.isArray(e.assignedProjectIds) ? e.assignedProjectIds : [];
+      const next = ids.includes(projectId) ? ids.filter(x => x !== projectId) : [...ids, projectId];
+      return { ...e, assignedProjectIds: next };
+    }));
+  };
+
+  // === 출장 일정 핸들러 ===
+  const handleAddTrip = (projectId, payload) => {
+    const trip = {
+      id: Date.now(),
+      engineerId: payload.engineerId,
+      engineerName: (engineers.find(e => e.id === payload.engineerId) || {}).name || '',
+      departureDate: payload.departureDate,
+      returnDate: payload.returnDate,
+      note: payload.note || '',
+      createdAt: new Date().toLocaleString(),
+      createdBy: currentUser.name
+    };
+    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, trips: [...(p.trips || []), trip] }, 'TRIP_ADD', `출장 등록: ${trip.engineerName} (${trip.departureDate}~${trip.returnDate})`)));
+  };
+
+  const handleUpdateTrip = (projectId, tripId, updates) => {
+    syncProjects(projects.map(p => p.id !== projectId ? p : { ...p, trips: (p.trips || []).map(tr => tr.id === tripId ? { ...tr, ...updates } : tr) }));
+  };
+
+  const handleDeleteTrip = (projectId, tripId) => {
+    syncProjects(projects.map(p => {
+      if (p.id !== projectId) return p;
+      const trip = (p.trips || []).find(tr => tr.id === tripId);
+      return addLog({ ...p, trips: (p.trips || []).filter(tr => tr.id !== tripId) }, 'TRIP_DELETE', `출장 삭제: ${trip?.engineerName || ''} (${trip?.departureDate || ''}~${trip?.returnDate || ''})`);
+    }));
+  };
+
   // === AS 핸들러 ===
   const handleAddAS = (projectId, data) => {
     const record = { id: Date.now(), type: data.type, engineer: data.engineer, description: data.description, resolution: data.resolution || '', status: '접수', date: new Date().toLocaleString() };
@@ -529,10 +779,27 @@ export default function App() {
     showToast(t('프로젝트 정보가 수정되었습니다.', 'Project updated.'));
   };
 
-  const handleUpdateVersion = (projectId, hwVersion, swVersion, fwVersion) => {
-    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, hwVersion, swVersion, fwVersion }, 'VERSION_CHANGE', `HW:${hwVersion} SW:${swVersion} FW:${fwVersion}`)));
-    setIsVersionModalOpen(false);
-    showToast(t('버전이 업데이트되었습니다.', 'Version updated.'));
+  // === 새 다중 버전 핸들러 ===
+  const handleAddVersion = (projectId, payload) => {
+    const entry = {
+      id: Date.now(),
+      category: payload.category,
+      version: payload.version,
+      releaseDate: payload.releaseDate || new Date().toISOString().split('T')[0],
+      note: payload.note || '',
+      author: currentUser.name
+    };
+    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, versions: [...(p.versions || []), entry] }, 'VERSION_CHANGE', `[${entry.category}] ${entry.version}${entry.note ? ` — ${entry.note}` : ''}`)));
+  };
+  const handleUpdateVersion = (projectId, versionId, updates) => {
+    syncProjects(projects.map(p => p.id !== projectId ? p : { ...p, versions: (p.versions || []).map(v => v.id === versionId ? { ...v, ...updates } : v) }));
+  };
+  const handleDeleteVersion = (projectId, versionId) => {
+    syncProjects(projects.map(p => {
+      if (p.id !== projectId) return p;
+      const v = (p.versions || []).find(x => x.id === versionId);
+      return addLog({ ...p, versions: (p.versions || []).filter(x => x.id !== versionId) }, 'VERSION_DELETE', `[${v?.category || ''}] ${v?.version || ''} 삭제`);
+    }));
   };
 
   const handleAddNote = (projectId, text) => {
@@ -573,7 +840,11 @@ export default function App() {
     onLoadDefaultChecklist: handleLoadDefaultChecklist,
     onAddChecklistItem: handleAddChecklistItem,
     onDeleteChecklistItem: handleDeleteChecklistItem,
-    onUpdatePhase: handleUpdatePhase, onSignOff: handleSignOff,
+    onUpdatePhase: handleUpdatePhase,
+    onEditPhases: (prjId) => { setPhaseEditProjectId(prjId); setIsPhaseEditOpen(true); },
+    onSignOff: handleSignOff,
+    onCancelSignOff: handleCancelSignOff,
+    onAddExtraTask: handleAddExtraTask, onUpdateExtraTask: handleUpdateExtraTask, onDeleteExtraTask: handleDeleteExtraTask,
     onAddNote: handleAddNote, onDeleteNote: handleDeleteNote,
     onAddCustomerRequest: handleAddCustomerRequest,
     onUpdateCustomerRequestStatus: handleUpdateCustomerRequestStatus,
@@ -592,7 +863,10 @@ export default function App() {
         {renderToast()}
         <div className="bg-slate-900 text-white p-4 shadow-md flex justify-between items-center sticky top-0 z-20 shrink-0">
           <div className="flex items-center space-x-2"><div className="w-8 h-8 bg-blue-500 rounded flex items-center justify-center font-bold text-lg">E</div><div><h1 className="font-bold text-sm leading-tight">EQ-PMS</h1><p className="text-[10px] text-blue-300">{t('모바일 모드', 'Mobile Mode')}</p></div></div>
-          <button onClick={() => setIsMobileMode(false)} className="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-full border border-slate-600 transition-colors shadow-sm flex items-center"><Monitor size={14} className="mr-1" /> PC화면</button>
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => setIsHelpOpen(true)} className="text-xs bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 rounded-full border border-indigo-700 transition-colors shadow-sm flex items-center" title="도움말"><HelpCircle size={14} /></button>
+            <button onClick={() => setIsMobileMode(false)} className="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-full border border-slate-600 transition-colors shadow-sm flex items-center"><Monitor size={14} className="mr-1" /> PC화면</button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto scroll-smooth p-4 pb-24 space-y-4">
@@ -603,32 +877,49 @@ export default function App() {
                   <button onClick={() => setIsIssueModalOpen(true)} className="bg-red-500 hover:bg-red-600 text-white rounded-2xl p-4 flex flex-col items-center justify-center shadow-md active:scale-95"><Camera size={24} className="mb-2" /><span className="font-bold text-sm">{t('이슈 등록', 'Add Issue')}</span></button>
                   <button onClick={() => setIsDailyReportOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white rounded-2xl p-4 flex flex-col items-center justify-center shadow-md active:scale-95"><CheckSquare size={24} className="mb-2" /><span className="font-bold text-sm">{t('일일 보고', 'Daily Report')}</span></button>
                   <button onClick={() => setIsPartModalOpen(true)} className="bg-amber-500 hover:bg-amber-600 text-white rounded-2xl p-4 flex flex-col items-center justify-center shadow-md active:scale-95"><Package size={24} className="mb-2" /><span className="font-bold text-sm">{t('자재 청구', 'Part Request')}</span></button>
-                  <button onClick={() => setActiveTab('sites')} className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl p-4 flex flex-col items-center justify-center shadow-md active:scale-95"><Database size={24} className="mb-2" /><span className="font-bold text-sm">{t('���경 정보', 'Site Info')}</span></button>
+                  <button onClick={() => setActiveTab('sites')} className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl p-4 flex flex-col items-center justify-center shadow-md active:scale-95"><Database size={24} className="mb-2" /><span className="font-bold text-sm">{t('환경 정보', 'Site Info')}</span></button>
                 </div>
                 <div>
                   <h2 className="text-sm font-bold text-slate-500 mb-3 ml-1">{t('나의 배정 현장 요약', 'My Assigned Projects')}</h2>
                   <div className="space-y-3">
-                    {projects
-                      .filter(p => {
+                    {(() => {
+                      const visible = projects.filter(p => {
                         if (currentUser.role === 'CUSTOMER') {
                           const allowed = Array.isArray(currentUser.assignedProjectIds) ? currentUser.assignedProjectIds : [];
                           if (!allowed.includes(p.id)) return false;
                         }
                         return p.status !== '완료';
-                      })
-                      .slice(0, 3).map(prj => (
-                      <div key={prj.id} onClick={() => { setActiveTab('projects'); setSelectedProjectId(prj.id); }} className="bg-white p-4 rounded-xl shadow-sm border active:bg-slate-50 transition-colors">
-                        <div className="flex justify-between items-start mb-2"><span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${getStatusColor(prj.status)}`}>{prj.status}</span><span className="text-[10px] text-slate-400 flex items-center"><Building size={12} className="mr-1" />{prj.customer}</span></div>
-                        <h3 className="font-bold text-slate-800 text-base leading-tight mb-1">{prj.name}</h3>
-                        <div className="flex justify-between items-center text-xs mt-3"><span className="font-medium text-slate-500">{t('셋업 진척도', 'Progress')}</span><span className="font-bold text-blue-600">{calcAct(prj.tasks)}%</span></div>
-                        <div className="w-full bg-slate-100 rounded-full h-1.5 mt-1.5 overflow-hidden"><div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${calcAct(prj.tasks)}%` }}></div></div>
-                      </div>
-                    ))}
+                      });
+                      if (isLoading) {
+                        return (
+                          <div className="bg-white border border-slate-200 rounded-xl p-6 text-center text-sm text-slate-400">
+                            {t('데이터 불러오는 중...', 'Loading...')}
+                          </div>
+                        );
+                      }
+                      if (visible.length === 0) {
+                        return (
+                          <div className="bg-white border border-dashed border-slate-300 rounded-xl p-6 text-center">
+                            <Building size={28} className="mx-auto mb-2 text-slate-300" />
+                            <p className="text-sm font-bold text-slate-500 mb-1">{t('배정된 진행중 프로젝트가 없습니다', 'No active assignments')}</p>
+                            <p className="text-xs text-slate-400">{t('아래 빠른 입력 버튼으로 이슈/자재/일일 보고를 등록할 수 있습니다.', 'Use the quick buttons above to log issues/parts/reports.')}</p>
+                          </div>
+                        );
+                      }
+                      return visible.slice(0, 3).map(prj => (
+                        <div key={prj.id} onClick={() => { setActiveTab('projects'); setSelectedProjectId(prj.id); }} className="bg-white p-4 rounded-xl shadow-sm border active:bg-slate-50 transition-colors">
+                          <div className="flex justify-between items-start mb-2"><span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${getStatusColor(prj.status)}`}>{prj.status}</span><span className="text-[10px] text-slate-400 flex items-center"><Building size={12} className="mr-1" />{prj.customer}</span></div>
+                          <h3 className="font-bold text-slate-800 text-base leading-tight mb-1">{prj.name}</h3>
+                          <div className="flex justify-between items-center text-xs mt-3"><span className="font-medium text-slate-500">{t('셋업 진척도', 'Progress')}</span><span className="font-bold text-blue-600">{calcAct(prj.tasks)}%</span></div>
+                          <div className="w-full bg-slate-100 rounded-full h-1.5 mt-1.5 overflow-hidden"><div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${calcAct(prj.tasks)}%` }}></div></div>
+                        </div>
+                      ));
+                    })()}
                   </div>
                 </div>
               </div>
             )}
-            {activeTab === 'projects' && <ProjectListView projects={projects} issues={issues} getStatusColor={getStatusColor} onAddClick={() => setIsProjectModalOpen(true)} onManageTasks={(id) => { setSelectedProjectId(id); setIsTaskModalOpen(true); }} onEditVersion={(prj) => { setVersionEditProject(prj); setIsVersionModalOpen(true); }} onChangeManager={(prj) => { setManagerEditProject(prj); setIsManagerModalOpen(true); }} onViewPhaseGantt={(prj) => { setPhaseGanttProject(prj); setIsPhaseGanttOpen(true); }} onEditProject={(prj) => { setProjectEditTarget(prj); setIsProjectEditOpen(true); }} onDeleteProject={(prj) => setProjectToDelete(prj)} onUpdatePhase={handleUpdatePhase} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} calcExp={calcExp} calcAct={calcAct} currentUser={currentUser} t={t} />}
+            {activeTab === 'projects' && <ProjectListView projects={projects} issues={issues} engineers={engineers} getStatusColor={getStatusColor} onAddClick={() => setIsProjectModalOpen(true)} onManageTasks={(id) => { setSelectedProjectId(id); setIsTaskModalOpen(true); }} onEditVersion={(prj) => { setVersionEditProject(prj); setIsVersionModalOpen(true); }} onChangeManager={(prj) => { setTeamEditProjectId(prj.id); setIsTeamModalOpen(true); }} onManageTeam={(prj) => { setTeamEditProjectId(prj.id); setIsTeamModalOpen(true); }} onViewPhaseGantt={(prj) => { setPhaseGanttProject(prj); setIsPhaseGanttOpen(true); }} onEditProject={(prj) => { setProjectEditTarget(prj); setIsProjectEditOpen(true); }} onDeleteProject={(prj) => setProjectToDelete(prj)} onUpdatePhase={handleUpdatePhase} onEditPhases={(prjId) => { setPhaseEditProjectId(prjId); setIsPhaseEditOpen(true); }} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} calcExp={calcExp} calcAct={calcAct} currentUser={currentUser} t={t} />}
             {activeTab === 'issues' && <IssueListView issues={issues} getStatusColor={getStatusColor} onAddClick={() => setIsIssueModalOpen(true)} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} onDeleteIssue={(issue) => setIssueToDelete(issue)} currentUser={currentUser} t={t} />}
             {activeTab === 'sites' && <SiteListView sites={sites} onAddClick={() => { setSelectedSite(null); setIsSiteModalOpen(true); }} onEditClick={(site) => { setSelectedSite(site); setIsSiteModalOpen(true); }} onDeleteClick={(site) => setSiteToDelete(site)} currentUser={currentUser} t={t} />}
           </Suspense>
@@ -639,12 +930,12 @@ export default function App() {
           <button onClick={() => setActiveTab('projects')} className={`flex flex-col items-center flex-1 py-1 transition-colors ${activeTab === 'projects' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}><Kanban size={20} className="mb-1" /><span className="text-[9px] font-bold">{t('프로젝트', 'Projects')}</span></button>
           <button onClick={() => setActiveTab('issues')} className={`flex flex-col items-center flex-1 py-1 transition-colors ${activeTab === 'issues' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}><AlertTriangle size={20} className="mb-1" /><span className="text-[9px] font-bold">{t('이슈', 'Issues')}</span></button>
           {currentUser.role !== 'CUSTOMER' && (
-            <button onClick={() => setActiveTab('sites')} className={`flex flex-col items-center flex-1 py-1 transition-colors ${activeTab === 'sites' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}><Database size={20} className="mb-1" /><span className="text-[9px] font-bold">{t('��프라', 'Sites')}</span></button>
+            <button onClick={() => setActiveTab('sites')} className={`flex flex-col items-center flex-1 py-1 transition-colors ${activeTab === 'sites' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}><Database size={20} className="mb-1" /><span className="text-[9px] font-bold">{t('인프라', 'Sites')}</span></button>
           )}
         </div>
 
         <Suspense fallback={null}>
-          {isProjectModalOpen && <ProjectModal onClose={() => setIsProjectModalOpen(false)} onSubmit={handleAddProject} t={t} />}
+          {isProjectModalOpen && <ProjectModal engineers={engineers} onClose={() => setIsProjectModalOpen(false)} onSubmit={handleAddProject} t={t} />}
           {isIssueModalOpen && <MobileIssueModal projects={projects} onClose={() => setIsIssueModalOpen(false)} onSubmit={handleAddIssue} t={t} />}
           {isPartModalOpen && <MobilePartModal projects={projects} onClose={() => setIsPartModalOpen(false)} onSubmit={handleAddPart} t={t} />}
           {isDailyReportOpen && <DailyReportModal projects={projects} onClose={() => setIsDailyReportOpen(false)} onSubmit={handleAddDailyReport} t={t} />}
@@ -655,6 +946,7 @@ export default function App() {
           {isPasswordModalOpen && (
             <PasswordChangeModal user={currentUser} forced={forcePasswordChange} onClose={() => { if (!forcePasswordChange) setIsPasswordModalOpen(false); }} onSubmit={handleChangeMyPassword} t={t} />
           )}
+          {isHelpOpen && <HelpModal onClose={() => setIsHelpOpen(false)} t={t} />}
         </Suspense>
       </div>
     );
@@ -665,32 +957,45 @@ export default function App() {
     <div className="flex flex-col h-screen font-sans relative animate-[fadeIn_0.3s_ease-in-out] bg-slate-50">
       {renderToast()}
       <div className="flex flex-1 overflow-hidden">
-        <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col shrink-0">
-          <div className="h-16 flex items-center px-6 border-b border-slate-800 shrink-0"><div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center mr-3"><span className="text-white font-bold text-lg">E</span></div><span className="text-white font-bold text-lg tracking-wider">EQ-PMS</span></div>
-          <nav className="flex-1 py-6 px-4 space-y-2 overflow-y-auto">
-            <NavItem icon={<LayoutDashboard size={20} />} label={t('대시보드', 'Dashboard')} active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
-            <NavItem icon={<Kanban size={20} />} label={t('프로젝트 관리', 'Projects')} active={activeTab === 'projects'} onClick={() => setActiveTab('projects')} />
-            <NavItem icon={<AlertTriangle size={20} />} label={t('이슈/펀치 관리', 'Issues')} active={activeTab === 'issues'} onClick={() => setActiveTab('issues')} />
+        <aside className={`${sidebarCollapsed ? 'w-16' : 'w-64'} bg-slate-900 text-slate-300 flex flex-col shrink-0 transition-all duration-200`}>
+          <div className={`h-16 flex items-center border-b border-slate-800 shrink-0 ${sidebarCollapsed ? 'justify-center px-2' : 'px-6'}`}>
+            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center shrink-0"><span className="text-white font-bold text-lg">E</span></div>
+            {!sidebarCollapsed && <span className="text-white font-bold text-lg tracking-wider ml-3 truncate">EQ-PMS</span>}
+          </div>
+          <nav className={`flex-1 py-4 ${sidebarCollapsed ? 'px-2' : 'px-4'} space-y-1.5 overflow-y-auto`}>
+            <NavItem icon={<LayoutDashboard size={20} />} label={t('대시보드', 'Dashboard')} active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} collapsed={sidebarCollapsed} />
+            <NavItem icon={<Kanban size={20} />} label={t('프로젝트 관리', 'Projects')} active={activeTab === 'projects'} onClick={() => setActiveTab('projects')} collapsed={sidebarCollapsed} />
+            <NavItem icon={<AlertTriangle size={20} />} label={t('이슈/펀치 관리', 'Issues')} active={activeTab === 'issues'} onClick={() => setActiveTab('issues')} collapsed={sidebarCollapsed} />
             {currentUser.role !== 'CUSTOMER' && (
               <>
-                <NavItem icon={<Wrench size={20} />} label={t('자재/스페어 파트', 'Parts')} active={activeTab === 'parts'} onClick={() => setActiveTab('parts')} />
-                <NavItem icon={<Database size={20} />} label={t('사이트/유틸 마스터', 'Site Master')} active={activeTab === 'sites'} onClick={() => setActiveTab('sites')} />
-                <NavItem icon={<Users size={20} />} label={t('인력/리소스 관리', 'Resources')} active={activeTab === 'resources'} onClick={() => setActiveTab('resources')} />
-                <NavItem icon={<GitCommit size={20} />} label={t('버전 릴리즈 관리', 'Releases')} active={activeTab === 'versions'} onClick={() => setActiveTab('versions')} />
+                <NavItem icon={<Wrench size={20} />} label={t('자재/스페어 파트', 'Parts')} active={activeTab === 'parts'} onClick={() => setActiveTab('parts')} collapsed={sidebarCollapsed} />
+                <NavItem icon={<Database size={20} />} label={t('사이트/유틸 마스터', 'Site Master')} active={activeTab === 'sites'} onClick={() => setActiveTab('sites')} collapsed={sidebarCollapsed} />
+                <NavItem icon={<Users size={20} />} label={t('인력/리소스 관리', 'Resources')} active={activeTab === 'resources'} onClick={() => setActiveTab('resources')} collapsed={sidebarCollapsed} />
+                <NavItem icon={<LifeBuoy size={20} />} label={t('AS 통합 관리', 'AS Management')} active={activeTab === 'as'} onClick={() => setActiveTab('as')} collapsed={sidebarCollapsed} />
+                <NavItem icon={<GitCommit size={20} />} label={t('버전 릴리즈 관리', 'Releases')} active={activeTab === 'versions'} onClick={() => setActiveTab('versions')} collapsed={sidebarCollapsed} />
               </>
             )}
             {currentUser.role === 'ADMIN' && (
-              <NavItem icon={<UserCog size={20} />} label={t('사용자 관리', 'User Management')} active={activeTab === 'users'} onClick={() => setActiveTab('users')} />
+              <NavItem icon={<UserCog size={20} />} label={t('사용자 관리', 'User Management')} active={activeTab === 'users'} onClick={() => setActiveTab('users')} collapsed={sidebarCollapsed} />
             )}
           </nav>
+          {/* 펼치기/접기 토글 */}
+          <button
+            onClick={() => setSidebarCollapsed(v => !v)}
+            className="mx-2 mb-3 mt-1 px-2 py-2 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-colors flex items-center justify-center text-xs font-bold border-t border-slate-800 pt-3"
+            title={sidebarCollapsed ? t('메뉴 펼치기', 'Expand menu') : t('메뉴 접기', 'Collapse menu')}
+          >
+            {sidebarCollapsed ? <ChevronsRight size={18} /> : (<><ChevronsLeft size={16} className="mr-1.5" />{t('메뉴 접기', 'Collapse')}</>)}
+          </button>
         </aside>
 
         <main className="flex-1 flex flex-col overflow-hidden relative min-w-0">
           <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 z-10 shadow-sm shrink-0">
             <div className="flex items-center text-slate-500 bg-slate-100 px-4 py-2 rounded-lg w-96"><Search size={18} className="mr-2" /><input type="text" placeholder={t("검색...", "Search...")} className="bg-transparent border-none outline-none w-full text-sm" /></div>
             <div className="flex items-center space-x-4">
+              <button onClick={() => setIsHelpOpen(true)} className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-3 py-1.5 rounded-full text-xs font-bold transition-colors flex items-center shadow-sm border border-indigo-200" title={t('사용자 가이드', 'User Guide')}><HelpCircle size={14} className="mr-1.5" /> {t('도움말', 'Help')}</button>
               <button onClick={() => setLang(lang === 'ko' ? 'en' : 'ko')} className="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-full text-xs font-bold transition-colors flex items-center shadow-sm hover:bg-slate-200"><Globe size={14} className="mr-1.5" /> {lang === 'ko' ? 'EN' : 'KO'}</button>
-              <button onClick={() => setIsMobileMode(true)} className="bg-slate-800 hover:bg-slate-700 text-white text-xs px-4 py-2 rounded-lg font-bold transition-colors flex items-center shadow-sm"><Smartphone size={16} className="mr-2" /> {t('모바일 현장 모드', 'Mobile Mode')}</button>
+              <button onClick={() => { setActiveTab('dashboard'); setIsMobileMode(true); }} className="bg-slate-800 hover:bg-slate-700 text-white text-xs px-4 py-2 rounded-lg font-bold transition-colors flex items-center shadow-sm"><Smartphone size={16} className="mr-2" /> {t('모바일 현장 모드', 'Mobile Mode')}</button>
               <div className="flex items-center space-x-3 border-l border-slate-200 pl-4 ml-2">
                 <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold">{currentUser.name.charAt(0)}</div>
                 <div className="text-sm pr-2"><p className="font-semibold text-slate-700">{currentUser.name}</p><p className="text-[10px] text-slate-400">{currentUser.role}</p></div>
@@ -702,13 +1007,16 @@ export default function App() {
 
           <div className="flex-1 overflow-auto p-8">
             <Suspense fallback={<Loading />}>
-              {activeTab === 'dashboard' && <DashboardView projects={projects} issues={issues} engineers={engineers} getStatusColor={getStatusColor} calcExp={calcExp} calcAct={calcAct} currentUser={currentUser} t={t} />}
-              {activeTab === 'projects' && <ProjectListView projects={projects} issues={issues} getStatusColor={getStatusColor} onAddClick={() => setIsProjectModalOpen(true)} onManageTasks={(id) => { setSelectedProjectId(id); setIsTaskModalOpen(true); }} onEditVersion={(prj) => { setVersionEditProject(prj); setIsVersionModalOpen(true); }} onChangeManager={(prj) => { setManagerEditProject(prj); setIsManagerModalOpen(true); }} onViewPhaseGantt={(prj) => { setPhaseGanttProject(prj); setIsPhaseGanttOpen(true); }} onEditProject={(prj) => { setProjectEditTarget(prj); setIsProjectEditOpen(true); }} onDeleteProject={(prj) => setProjectToDelete(prj)} onUpdatePhase={handleUpdatePhase} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} calcExp={calcExp} calcAct={calcAct} currentUser={currentUser} t={t} />}
+              {activeTab === 'dashboard' && <DashboardView projects={projects} issues={issues} engineers={engineers} getStatusColor={getStatusColor} calcExp={calcExp} calcAct={calcAct} onProjectClick={openProjectDetail} currentUser={currentUser} t={t} />}
+              {activeTab === 'projects' && <ProjectListView projects={projects} issues={issues} engineers={engineers} getStatusColor={getStatusColor} onAddClick={() => setIsProjectModalOpen(true)} onManageTasks={(id) => { setSelectedProjectId(id); setIsTaskModalOpen(true); }} onEditVersion={(prj) => { setVersionEditProject(prj); setIsVersionModalOpen(true); }} onChangeManager={(prj) => { setTeamEditProjectId(prj.id); setIsTeamModalOpen(true); }} onManageTeam={(prj) => { setTeamEditProjectId(prj.id); setIsTeamModalOpen(true); }} onViewPhaseGantt={(prj) => { setPhaseGanttProject(prj); setIsPhaseGanttOpen(true); }} onEditProject={(prj) => { setProjectEditTarget(prj); setIsProjectEditOpen(true); }} onDeleteProject={(prj) => setProjectToDelete(prj)} onUpdatePhase={handleUpdatePhase} onEditPhases={(prjId) => { setPhaseEditProjectId(prjId); setIsPhaseEditOpen(true); }} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} calcExp={calcExp} calcAct={calcAct} currentUser={currentUser} t={t} />}
               {activeTab === 'issues' && <IssueListView issues={issues} getStatusColor={getStatusColor} onAddClick={() => setIsIssueModalOpen(true)} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} onDeleteIssue={(issue) => setIssueToDelete(issue)} currentUser={currentUser} t={t} />}
               {activeTab === 'parts' && <PartsListView parts={parts} getStatusColor={getStatusColor} onUpdateStatus={handleUpdatePartStatus} onDeletePart={(part) => setPartToDelete(part)} onAddClick={() => setIsPartModalOpen(true)} currentUser={currentUser} t={t} />}
               {activeTab === 'sites' && <SiteListView sites={sites} onAddClick={() => { setSelectedSite(null); setIsSiteModalOpen(true); }} onEditClick={(site) => { setSelectedSite(site); setIsSiteModalOpen(true); }} onDeleteClick={(site) => setSiteToDelete(site)} currentUser={currentUser} t={t} />}
-              {activeTab === 'resources' && <ResourceListView engineers={engineers} projects={projects} getStatusColor={getStatusColor} TODAY={TODAY} onAddClick={() => { setSelectedEngineer(null); setIsEngineerModalOpen(true); }} onEditClick={(eng) => { setSelectedEngineer(eng); setIsEngineerModalOpen(true); }} onDeleteClick={(eng) => setEngineerToDelete(eng)} currentUser={currentUser} t={t} />}
-              {activeTab === 'versions' && <VersionHistoryView releases={releases} onAddClick={() => setIsReleaseModalOpen(true)} onDeleteRelease={(release) => setReleaseToDelete(release)} currentUser={currentUser} t={t} />}
+              {activeTab === 'resources' && <ResourceListView engineers={engineers} projects={projects} getStatusColor={getStatusColor} TODAY={TODAY} onAddClick={() => { setSelectedEngineer(null); setIsEngineerModalOpen(true); }} onEditClick={(eng) => { setSelectedEngineer(eng); setIsEngineerModalOpen(true); }} onManageCertificates={(eng) => { setCertEngineerId(eng.id); setIsCertModalOpen(true); }} onDeleteClick={(eng) => setEngineerToDelete(eng)} currentUser={currentUser} t={t} />}
+              {activeTab === 'as' && currentUser.role !== 'CUSTOMER' && (
+                <ASManagementView projects={projects} onProjectClick={openProjectDetail} onUpdateAS={handleUpdateAS} currentUser={currentUser} t={t} />
+              )}
+              {activeTab === 'versions' && <VersionHistoryView projects={projects} releases={releases} onAddClick={() => setIsReleaseModalOpen(true)} onDeleteRelease={(release) => setReleaseToDelete(release)} currentUser={currentUser} t={t} />}
               {activeTab === 'users' && currentUser.role === 'ADMIN' && (
                 <UserManagementView
                   users={users}
@@ -726,18 +1034,36 @@ export default function App() {
           </div>
 
           <Suspense fallback={null}>
-            {isProjectModalOpen && <ProjectModal onClose={() => setIsProjectModalOpen(false)} onSubmit={handleAddProject} t={t} />}
+            {isProjectModalOpen && <ProjectModal engineers={engineers} onClose={() => setIsProjectModalOpen(false)} onSubmit={handleAddProject} t={t} />}
             {isIssueModalOpen && <IssueModal projects={projects} onClose={() => setIsIssueModalOpen(false)} onSubmit={handleAddIssue} t={t} />}
             {isPartModalOpen && <PartModal projects={projects} onClose={() => setIsPartModalOpen(false)} onSubmit={handleAddPart} t={t} />}
             {isSiteModalOpen && <SiteModal site={selectedSite} onClose={() => setIsSiteModalOpen(false)} onSubmit={handleAddSite} t={t} />}
             {isTaskModalOpen && <TaskModal {...taskModalProps} />}
             {isIssueDetailModalOpen && <IssueDetailModal issue={selectedIssue} issuesList={issues} onClose={() => setIsIssueDetailModalOpen(false)} onAddComment={handleAddComment} onUpdateIssueStatus={handleUpdateIssueStatus} getStatusColor={getStatusColor} t={t} />}
-            {isVersionModalOpen && <VersionModal project={versionEditProject} onClose={() => setIsVersionModalOpen(false)} onSubmit={handleUpdateVersion} t={t} />}
-            {isManagerModalOpen && <ManagerChangeModal project={managerEditProject} onClose={() => setIsManagerModalOpen(false)} onSubmit={handleChangeManager} t={t} />}
+            {isVersionModalOpen && versionEditProject && (() => {
+              const liveProject = projects.find(p => p.id === versionEditProject.id);
+              if (!liveProject) return null;
+              return <VersionModal project={liveProject} onClose={() => setIsVersionModalOpen(false)} onAdd={handleAddVersion} onUpdate={handleUpdateVersion} onDelete={handleDeleteVersion} t={t} />;
+            })()}
             {isPhaseGanttOpen && <PhaseGanttModal project={phaseGanttProject} onClose={() => setIsPhaseGanttOpen(false)} t={t} />}
-            {isProjectEditOpen && <ProjectEditModal project={projectEditTarget} onClose={() => setIsProjectEditOpen(false)} onSubmit={handleEditProject} t={t} />}
+            {isProjectEditOpen && <ProjectEditModal project={projectEditTarget} engineers={engineers} onClose={() => setIsProjectEditOpen(false)} onSubmit={handleEditProject} t={t} />}
+            {isPhaseEditOpen && phaseEditProjectId && (() => {
+              const lp = projects.find(p => p.id === phaseEditProjectId);
+              if (!lp) return null;
+              return <PhaseEditModal project={lp} onClose={() => { setIsPhaseEditOpen(false); setPhaseEditProjectId(null); }} onSubmit={handleSetProjectPhases} t={t} />;
+            })()}
+            {isTeamModalOpen && teamEditProjectId && (() => {
+              const liveProject = projects.find(p => p.id === teamEditProjectId);
+              if (!liveProject) return null;
+              return <ProjectTeamModal project={liveProject} engineers={engineers} onClose={() => { setIsTeamModalOpen(false); setTeamEditProjectId(null); }} onChangeManager={handleChangeManager} onToggleAssignment={handleToggleEngineerAssignment} onAddTrip={handleAddTrip} onDeleteTrip={handleDeleteTrip} t={t} />;
+            })()}
             {isReleaseModalOpen && <ReleaseModal onClose={() => setIsReleaseModalOpen(false)} onSubmit={handleAddRelease} t={t} />}
-            {isEngineerModalOpen && <EngineerModal engineer={selectedEngineer} onClose={() => setIsEngineerModalOpen(false)} onSubmit={handleAddEngineer} t={t} />}
+            {isEngineerModalOpen && <EngineerModal engineer={selectedEngineer} projects={projects} onClose={() => setIsEngineerModalOpen(false)} onSubmit={handleAddEngineer} t={t} />}
+            {isCertModalOpen && certEngineerId && (() => {
+              const eng = engineers.find(e => e.id === certEngineerId);
+              if (!eng) return null;
+              return <EngineerCertificatesModal engineer={eng} projects={projects} onClose={() => { setIsCertModalOpen(false); setCertEngineerId(null); }} onAdd={handleAddCertificate} onUpdate={handleUpdateCertificate} onDelete={handleDeleteCertificate} t={t} />;
+            })()}
 
             {projectToDelete && <DeleteConfirmModal type="project" item={projectToDelete} onClose={() => setProjectToDelete(null)} onConfirm={handleDeleteProject} t={t} />}
             {issueToDelete && <DeleteConfirmModal type="issue" item={issueToDelete} onClose={() => setIssueToDelete(null)} onConfirm={handleDeleteIssue} t={t} />}
@@ -753,6 +1079,7 @@ export default function App() {
             {isPasswordModalOpen && (
               <PasswordChangeModal user={currentUser} forced={forcePasswordChange} onClose={() => { if (!forcePasswordChange) setIsPasswordModalOpen(false); }} onSubmit={handleChangeMyPassword} t={t} />
             )}
+            {isHelpOpen && <HelpModal onClose={() => setIsHelpOpen(false)} t={t} />}
           </Suspense>
         </main>
       </div>

@@ -1,12 +1,14 @@
 import React, { useMemo, memo } from 'react';
-import { Kanban, AlertCircle, CheckCircle, AlertTriangle, PieChart, BarChart3, Clock, Wrench, Download, CalendarDays, User, Building, TrendingUp, Users, Zap, MessageSquare } from 'lucide-react';
+import { Kanban, AlertCircle, CheckCircle, AlertTriangle, PieChart, BarChart3, Clock, Wrench, Download, CalendarDays, User, Building, TrendingUp, Users, Zap, MessageSquare, LifeBuoy, ExternalLink, MapPin, HardHat, ShieldAlert, Plane, UserCircle, XCircle, Calendar, Home } from 'lucide-react';
+import { TODAY } from '../../constants';
+import { getCurrentTrip } from '../../utils/calc';
 import { PROJECT_PHASES } from '../../constants';
 import StatCard from '../common/StatCard';
 import SimpleDonutChart from '../common/SimpleDonutChart';
 import SimpleBarChart from '../common/SimpleBarChart';
 import { exportToExcel } from '../../utils/export';
 
-const DashboardView = memo(function DashboardView({ projects: rawProjects, issues: rawIssues, engineers, getStatusColor, calcExp, calcAct, currentUser, t }) {
+const DashboardView = memo(function DashboardView({ projects: rawProjects, issues: rawIssues, engineers, getStatusColor, calcExp, calcAct, onProjectClick, currentUser, t }) {
   const projects = useMemo(() => {
     if (currentUser && currentUser.role === 'CUSTOMER') {
       const allowed = Array.isArray(currentUser.assignedProjectIds) ? currentUser.assignedProjectIds : [];
@@ -122,8 +124,12 @@ const DashboardView = memo(function DashboardView({ projects: rawProjects, issue
     });
 
     // 9. 엔지니어 현황
+    const fmtCerts = (list) => (list || []).map(c => `${c.issuer || c.country || ''}${c.type ? `(${c.type})` : ''}${c.expiry ? ` ~${c.expiry}` : ''}${c.status ? ` [${c.status}]` : ''}`).join(' / ') || '-';
     const engRows = engineers.map(e => ({
-      id: e.id, name: e.name, dept: e.dept, role: e.role, status: e.status, currentSite: e.currentSite, accessExpiry: e.accessExpiry
+      id: e.id, name: e.name, grade: e.grade || '-', dept: e.dept, status: e.status, currentSite: e.currentSite || '-',
+      badges: fmtCerts(e.badges),
+      safety: fmtCerts(e.safetyTrainings),
+      visas: fmtCerts(e.visas)
     }));
 
     // 10. 최근 활동 이력 (전체 프로젝트 통합, 최근 50건)
@@ -206,8 +212,9 @@ const DashboardView = memo(function DashboardView({ projects: rawProjects, issue
         name: '9.엔지니어 현황',
         rows: engRows,
         columns: [
-          { header: 'ID', key: 'id' }, { header: '이름', key: 'name' }, { header: '부서', key: 'dept' }, { header: '역할', key: 'role' },
-          { header: '상태', key: 'status' }, { header: '현재 위치', key: 'currentSite' }, { header: '출입증 만료일', key: 'accessExpiry' }
+          { header: 'ID', key: 'id' }, { header: '이름', key: 'name' }, { header: '직급', key: 'grade' }, { header: '부서', key: 'dept' },
+          { header: '수동 상태', key: 'status' }, { header: '현재 위치', key: 'currentSite' },
+          { header: '출입증', key: 'badges' }, { header: '안전교육', key: 'safety' }, { header: '비자', key: 'visas' }
         ]
       },
       {
@@ -258,6 +265,246 @@ const DashboardView = memo(function DashboardView({ projects: rawProjects, issue
           <div className="flex-1 flex items-end"><SimpleBarChart data={projectStats} /></div>
         </div>
       </div>
+
+      {/* ============ 인력/리소스 요약 섹션 ============ */}
+      {currentUser.role !== 'CUSTOMER' && (engineers || []).length > 0 && (() => {
+        const engs = engineers || [];
+
+        // 만료/위험 체크
+        const checkExp = (dateStr) => {
+          if (!dateStr) return { state: 'none', daysLeft: null };
+          const d = new Date(dateStr);
+          if (isNaN(d)) return { state: 'none', daysLeft: null };
+          const diff = Math.floor((d - TODAY) / (1000 * 60 * 60 * 24));
+          if (diff < 0) return { state: 'expired', daysLeft: diff };
+          if (diff <= 30) return { state: 'warning', daysLeft: diff };
+          return { state: 'ok', daysLeft: diff };
+        };
+
+        // 명시된 출장 일정만 사용 (자동 추론 X)
+        const tripMap = {};
+        engs.forEach(e => { tripMap[e.id] = getCurrentTrip(e, projects); });
+
+        const onsiteEngs = engs.filter(e => tripMap[e.id] && tripMap[e.id].state === 'onsite');
+        const scheduledEngs = engs.filter(e => tripMap[e.id] && tripMap[e.id].state === 'scheduled');
+        const noTripEngs = engs.filter(e => !tripMap[e.id]);
+
+        // 자격 이슈 모음 (출입증/안전교육 만료/임박)
+        const certIssuesByEng = engs.map(e => {
+          const issues = [];
+          [['badges', '출입증'], ['safetyTrainings', '안전교육']].forEach(([key, label]) => {
+            (e[key] || []).forEach(item => {
+              const st = checkExp(item.expiry);
+              if (st.state === 'expired') issues.push({ kind: `${label} 만료`, name: item.issuer || item.country || '', expired: true, days: st.daysLeft });
+              else if (st.state === 'warning') issues.push({ kind: `${label} 임박`, name: item.issuer || item.country || '', expired: false, days: st.daysLeft });
+            });
+          });
+          return { eng: e, issues };
+        }).filter(x => x.issues.length > 0);
+
+        const expiringEngs = certIssuesByEng.map(x => x.eng);
+        // 비자 이슈
+        const visaIssueEngs = engs.filter(e => (e.visas || []).some(v => v.status === '필요' || v.status === '만료'));
+
+        // 사이트별 그룹 (등록된 출장 진행 중인 엔지니어만)
+        const siteGroups = {};
+        onsiteEngs.forEach(e => {
+          const site = tripMap[e.id].site || '미지정';
+          if (!siteGroups[site]) siteGroups[site] = [];
+          siteGroups[site].push({ eng: e, trip: tripMap[e.id] });
+        });
+        const siteEntries = Object.entries(siteGroups).sort((a, b) => b[1].length - a[1].length);
+
+        const scheduledSorted = [...scheduledEngs].sort((a, b) => tripMap[a.id].daysUntil - tripMap[b.id].daysUntil);
+        const returningSoon = [...onsiteEngs]
+          .filter(e => tripMap[e.id].daysLeft <= 30)
+          .sort((a, b) => tripMap[a.id].daysLeft - tripMap[b.id].daysLeft);
+
+        return (
+          <div className="space-y-4 pt-2">
+            <div className="flex items-center">
+              <Users size={20} className="text-indigo-500 mr-2" />
+              <h2 className="text-lg font-bold text-slate-800">{t('인력/리소스 현황', 'Resource Overview')}</h2>
+              <span className="ml-2 text-xs text-slate-400">{t('현장 배치, 자격 만료, 비자 이슈를 한눈에', 'Field deployment, expiring credentials, visa issues')}</span>
+            </div>
+
+            {/* 통계 카드 5개 */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <StatCard title={t('전체 엔지니어', 'Total')} value={engs.length} icon={<Users size={22} className="text-indigo-500" />} />
+              <StatCard title={t('현장 파견 중', 'On Trip')} value={onsiteEngs.length} icon={<HardHat size={22} className="text-purple-500" />} color={onsiteEngs.length > 0 ? 'border-purple-200 bg-purple-50' : ''} />
+              <StatCard title={t('출장 예정', 'Scheduled')} value={scheduledEngs.length} icon={<Calendar size={22} className="text-blue-500" />} color={scheduledEngs.length > 0 ? 'border-blue-200 bg-blue-50' : ''} />
+              <StatCard title={t('일정 미등록', 'No Trip')} value={noTripEngs.length} icon={<Home size={22} className="text-emerald-500" />} />
+              <StatCard title={t('자격/비자 이슈', 'Issues')} value={expiringEngs.length + visaIssueEngs.length} icon={<AlertTriangle size={22} className="text-red-500" />} color={(expiringEngs.length + visaIssueEngs.length) > 0 ? 'border-red-200 bg-red-50' : ''} />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* 현장별 인력 배치 (자동 추론 + 일정 정보) */}
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                <h3 className="text-base font-bold text-slate-800 mb-3 flex items-center">
+                  <MapPin size={16} className="mr-2 text-purple-500" />
+                  {t('현장별 인력 배치', 'By Site')}
+                  <span className="ml-auto text-xs text-slate-500">{onsiteEngs.length}{t('명 파견 중', ' on-site')}</span>
+                </h3>
+                {siteEntries.length === 0 ? (
+                  <div className="text-center py-6 text-slate-400 text-sm">
+                    <Building size={28} className="mx-auto mb-2 text-slate-300" />
+                    {t('현장 파견 인력이 없습니다.', 'No field dispatched.')}
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {siteEntries.map(([site, list]) => (
+                      <div key={site} className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-sm font-bold text-slate-800 flex items-center">
+                            <MapPin size={12} className="mr-1 text-purple-400" />{site}
+                          </span>
+                          <span className="text-xs font-bold text-purple-600 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full">{list.length}{t('명', '')}</span>
+                        </div>
+                        <div className="space-y-1">
+                          {list.map(({ eng, trip }) => (
+                            <div key={eng.id} className="flex items-center justify-between text-[11px]">
+                              <span className="font-bold text-slate-700">
+                                {eng.name}{eng.grade ? ` ${eng.grade}` : ''}
+                              </span>
+                              <span className="text-slate-500">~{trip.returnDate} <span className="text-purple-600 font-bold">{t(`복귀 ${trip.daysLeft}일 전`, `Return in ${trip.daysLeft}d`)}</span></span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 출장 일정 (예정 + 복귀 임박) */}
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                <h3 className="text-base font-bold text-slate-800 mb-3 flex items-center">
+                  <Calendar size={16} className="mr-2 text-blue-500" />
+                  {t('출장 일정', 'Trip Schedule')}
+                </h3>
+                {(scheduledSorted.length === 0 && returningSoon.length === 0) ? (
+                  <div className="text-center py-6 text-slate-400 text-sm">
+                    <Calendar size={28} className="mx-auto mb-2 text-slate-300" />
+                    {t('예정/복귀 임박 일정이 없습니다.', 'No upcoming trips or returns.')}
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                    {scheduledSorted.length > 0 && (
+                      <div>
+                        <div className="text-[10px] font-bold text-blue-600 uppercase mb-1.5 flex items-center">
+                          <Plane size={11} className="mr-1" />{t('출장 예정', 'Scheduled')} ({scheduledSorted.length})
+                        </div>
+                        <div className="space-y-1.5">
+                          {scheduledSorted.map(e => {
+                            const tr = tripMap[e.id];
+                            const urgent = tr.daysUntil <= 7;
+                            return (
+                              <div key={e.id} className={`p-2 rounded-lg border ${urgent ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-slate-100'}`}>
+                                <div className="flex justify-between items-center text-xs">
+                                  <span className="font-bold text-slate-800">
+                                    {e.name}{e.grade ? ` ${e.grade}` : ''}
+                                  </span>
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${urgent ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-600'}`}>
+                                    {t(`출발 ${tr.daysUntil}일 전`, `Departs in ${tr.daysUntil}d`)}
+                                  </span>
+                                </div>
+                                <div className="text-[10px] text-slate-500 mt-0.5 flex items-center">
+                                  <MapPin size={9} className="mr-0.5" />{tr.site || '-'} · {tr.departureDate}부터
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {returningSoon.length > 0 && (
+                      <div>
+                        <div className="text-[10px] font-bold text-emerald-600 uppercase mb-1.5 flex items-center">
+                          <Home size={11} className="mr-1" />{t('복귀 임박 (30일 이내)', 'Returning Soon')} ({returningSoon.length})
+                        </div>
+                        <div className="space-y-1.5">
+                          {returningSoon.map(e => {
+                            const tr = tripMap[e.id];
+                            const urgent = tr.daysLeft <= 7;
+                            return (
+                              <div key={e.id} className={`p-2 rounded-lg border ${urgent ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-100'}`}>
+                                <div className="flex justify-between items-center text-xs">
+                                  <span className="font-bold text-slate-800">
+                                    {e.name}{e.grade ? ` ${e.grade}` : ''}
+                                  </span>
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${urgent ? 'bg-emerald-600 text-white' : 'bg-white border border-slate-200 text-slate-600'}`}>
+                                    {t(`복귀 ${tr.daysLeft}일 전`, `Returns in ${tr.daysLeft}d`)}
+                                  </span>
+                                </div>
+                                <div className="text-[10px] text-slate-500 mt-0.5 flex items-center">
+                                  <MapPin size={9} className="mr-0.5" />{tr.site || '-'} · {tr.returnDate}까지
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* 자격 만료 / 비자 이슈 알림 */}
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                <h3 className="text-base font-bold text-slate-800 mb-3 flex items-center">
+                  <AlertTriangle size={16} className="mr-2 text-red-500" />
+                  {t('인력 알림', 'Alerts')}
+                </h3>
+                {(expiringEngs.length === 0 && visaIssueEngs.length === 0) ? (
+                  <div className="text-center py-6 text-emerald-600 text-sm font-medium">
+                    <CheckCircle size={28} className="mx-auto mb-2 text-emerald-500" />
+                    {t('모든 인력이 정상 상태입니다.', 'All engineers in good standing.')}
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {certIssuesByEng.map(({ eng: e, issues }) => {
+                      const worstExpired = issues.some(i => i.expired);
+                      return (
+                        <div key={`exp-${e.id}`} className={`p-2.5 rounded-lg border flex items-center gap-2 ${worstExpired ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
+                          {worstExpired ? <XCircle size={16} className="text-red-500 shrink-0" /> : <AlertTriangle size={16} className="text-amber-500 shrink-0" />}
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-bold text-slate-800">{e.name}{e.grade ? ` ${e.grade}` : ''} <span className="text-xs font-medium text-slate-500">· {e.dept}</span></div>
+                            <div className="text-[11px] text-slate-600 flex flex-wrap gap-x-2">
+                              {issues.map((it, i) => (
+                                <span key={i} className={it.expired ? 'text-red-700 font-bold' : 'text-amber-700 font-bold'}>
+                                  {it.kind}{it.name ? `(${it.name})` : ''} {it.expired ? `${Math.abs(it.days)}일 경과` : `D-${it.days}`}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {visaIssueEngs.map(e => {
+                      const visaIssues = (e.visas || []).filter(v => v.status === '필요' || v.status === '만료');
+                      return (
+                        <div key={`visa-${e.id}`} className="p-2.5 rounded-lg border border-amber-200 bg-amber-50 flex items-center gap-2">
+                          <Plane size={16} className="text-amber-500 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-bold text-slate-800">{e.name}{e.grade ? ` ${e.grade}` : ''}</div>
+                            <div className="text-[11px] text-amber-700 font-bold">
+                              {visaIssues.map((v, i) => (
+                                <span key={i} className="mr-2">
+                                  {t('비자', 'Visa')}: {v.country || ''}{v.type ? ` ${v.type}` : ''} ({v.status}){v.expiry ? ` · ${v.expiry}` : ''}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 전체 프로젝트 일정 타임라인 */}
       {projects.length > 0 && (() => {
@@ -329,12 +576,18 @@ const DashboardView = memo(function DashboardView({ projects: rawProjects, issue
                     const progressColor = isCompleted ? 'text-emerald-600' : isDelayed ? 'text-orange-600' : 'text-teal-600';
 
                     return (
-                      <div key={prj.id} className="flex items-center h-10 group hover:bg-slate-50/50 transition-colors">
+                      <div
+                        key={prj.id}
+                        onClick={() => onProjectClick && onProjectClick(prj.id)}
+                        className={`flex items-center h-10 group transition-colors rounded ${onProjectClick ? 'cursor-pointer hover:bg-indigo-50' : 'hover:bg-slate-50/50'}`}
+                        title={onProjectClick ? t('클릭하여 상세 보기', 'Click to view details') : ''}
+                      >
                         {/* 왼쪽: 프로젝트 정보 (4열) */}
                         <div className="flex items-center min-w-0" style={{ width: chartLeft }}>
                           <div style={{ width: '40%' }} className="flex items-center min-w-0 pl-1">
                             <span className={`w-2.5 h-2.5 rounded-full mr-2 shrink-0 ${dotColor}`}></span>
-                            <span className="text-sm font-semibold text-slate-800 truncate">{prj.name}</span>
+                            <span className="text-sm font-semibold text-slate-800 truncate group-hover:text-indigo-700">{prj.name}</span>
+                            {onProjectClick && <ExternalLink size={11} className="ml-1 text-slate-300 opacity-0 group-hover:opacity-100 shrink-0" />}
                           </div>
                           <div style={{ width: '20%' }} className="text-xs text-slate-600 text-center truncate px-1">
                             {phase}
@@ -443,6 +696,22 @@ const DashboardView = memo(function DashboardView({ projects: rawProjects, issue
         pendingRequests.sort((a, b) => {
           const urgencyOrder = { High: 0, Medium: 1, Low: 2 };
           return (urgencyOrder[a.urgency] ?? 3) - (urgencyOrder[b.urgency] ?? 3);
+        });
+
+        // 6. 진행중 AS (접수 + 출동)
+        const pendingAS = [];
+        projects.forEach(p => {
+          (p.asRecords || []).forEach(a => {
+            if (a.status !== '완료') {
+              pendingAS.push({ ...a, projectId: p.id, projectName: p.name, customer: p.customer });
+            }
+          });
+        });
+        pendingAS.sort((a, b) => {
+          // 긴급출동 우선
+          if (a.type === '긴급출동' && b.type !== '긴급출동') return -1;
+          if (b.type === '긴급출동' && a.type !== '긴급출동') return 1;
+          return new Date(b.date) - new Date(a.date);
         });
 
         return (
@@ -574,6 +843,54 @@ const DashboardView = memo(function DashboardView({ projects: rawProjects, issue
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* 진행중 AS */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+              <h3 className="text-base font-bold text-slate-800 mb-4 flex items-center">
+                <LifeBuoy size={16} className="mr-2 text-purple-500" />
+                {t('진행중 AS 내역', 'Active AS')}
+                <span className="ml-auto text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-bold border border-purple-200">{pendingAS.length}{t('건', '')}</span>
+              </h3>
+              {pendingAS.length === 0 ? (
+                <div className="text-center py-8 text-emerald-600 text-sm font-medium">
+                  <CheckCircle size={28} className="mx-auto mb-2 text-emerald-500" />
+                  {t('진행중인 AS가 없습니다', 'No active AS')}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-72 overflow-y-auto">
+                  {pendingAS.map(a => {
+                    const typeColor = a.type === '긴급출동' ? 'bg-red-100 text-red-700 border-red-200'
+                      : a.type === '정기점검' ? 'bg-blue-100 text-blue-700 border-blue-200'
+                        : a.type === '부품교체' ? 'bg-amber-100 text-amber-700 border-amber-200'
+                          : a.type === '보증수리' ? 'bg-indigo-100 text-indigo-700 border-indigo-200'
+                            : 'bg-slate-100 text-slate-700 border-slate-200';
+                    const statusColor = a.status === '출동' ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-amber-100 text-amber-700 border-amber-200';
+                    return (
+                      <button
+                        key={`${a.projectId}-${a.id}`}
+                        onClick={() => onProjectClick && onProjectClick(a.projectId)}
+                        className="text-left p-3 bg-purple-50 border border-purple-100 rounded-lg hover:border-purple-300 hover:bg-purple-100/50 transition-colors group"
+                      >
+                        <div className="flex items-center flex-wrap gap-1.5 mb-2">
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${typeColor}`}>{a.type}</span>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${statusColor}`}>{a.status}</span>
+                          <span className="text-[10px] text-slate-500 ml-auto">{a.date}</span>
+                        </div>
+                        <div className="text-sm font-bold text-slate-800 truncate mb-1 group-hover:text-purple-700 flex items-center">
+                          {a.projectName}
+                          {onProjectClick && <ExternalLink size={11} className="ml-1 text-slate-300 opacity-0 group-hover:opacity-100" />}
+                        </div>
+                        <div className="text-xs text-slate-500 mb-2 flex items-center gap-2">
+                          <span className="flex items-center"><Building size={10} className="mr-1" />{a.customer}</span>
+                          <span className="flex items-center"><User size={10} className="mr-1" />{a.engineer}</span>
+                        </div>
+                        <p className="text-xs text-slate-700 line-clamp-2 whitespace-pre-wrap">{a.description}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* 진행중 고객 요청 */}
