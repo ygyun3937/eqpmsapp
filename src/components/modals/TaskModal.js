@@ -1,11 +1,11 @@
 import React, { useState, memo } from 'react';
-import { X, ListTodo, CheckSquare, AlertTriangle, CheckCircle, User, Edit, Trash, PenTool, Info, ShieldCheck, FileText, ImageIcon, History, GitCommit as TimelineIcon, Package, Wrench, HardDrive, MessageSquare, Send, LifeBuoy } from 'lucide-react';
+import { X, ListTodo, CheckSquare, AlertTriangle, CheckCircle, User, Edit, Trash, PenTool, Info, ShieldCheck, FileText, ImageIcon, History, GitCommit as TimelineIcon, Package, Wrench, HardDrive, MessageSquare, Send, LifeBuoy, Plus, ShieldOff, Sparkles } from 'lucide-react';
 import { PROJECT_PHASES } from '../../constants';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
 import SignaturePad from '../common/SignaturePad';
 import { generatePDF } from '../../utils/export';
 
-const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusColor, onClose, onToggleTask, onAddTask, onEditTaskName, onDeleteTask, onUpdateDelayReason, onUpdateTaskDates, onUpdateChecklistItem, onLoadDefaultChecklist, onAddChecklistItem, onDeleteChecklistItem, onUpdatePhase, onSignOff, onAddNote, onDeleteNote, onAddCustomerRequest, onUpdateCustomerRequestStatus, onAddCustomerResponse, onDeleteCustomerRequest, onAddAS, onUpdateAS, onDeleteAS, calcAct, currentUser, t }) {
+const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusColor, onClose, onToggleTask, onAddTask, onEditTaskName, onDeleteTask, onUpdateDelayReason, onUpdateTaskDates, onUpdateChecklistItem, onLoadDefaultChecklist, onAddChecklistItem, onDeleteChecklistItem, onUpdatePhase, onEditPhases, onSignOff, onCancelSignOff, onAddExtraTask, onUpdateExtraTask, onDeleteExtraTask, onAddNote, onDeleteNote, onAddCustomerRequest, onUpdateCustomerRequestStatus, onAddCustomerResponse, onDeleteCustomerRequest, onAddAS, onUpdateAS, onDeleteAS, calcAct, currentUser, t }) {
   const [activeModalTab, setActiveModalTab] = useState('tasks');
   const [newTaskName, setNewTaskName] = useState('');
   const [newNoteText, setNewNoteText] = useState('');
@@ -22,6 +22,9 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
   // 처리결과 입력 폼: { id: requestId, status: '반영 완료'|'반려', text: '' }
   const [resolvingRequest, setResolvingRequest] = useState(null);
   const [newASForm, setNewASForm] = useState({ type: '정기점검', engineer: '', description: '', resolution: '' });
+  const [historyFilter, setHistoryFilter] = useState('all');
+  const [newExtraForm, setNewExtraForm] = useState({ name: '', requester: '', type: '기능 추가', startDate: '', endDate: '', note: '' });
+  const [confirmCancelSignOff, setConfirmCancelSignOff] = useState(false);
 
   if (!project) return null;
 
@@ -29,6 +32,8 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
   const checklistCount = project.checklist ? project.checklist.length : 0;
   const checklistCompleted = project.checklist ? project.checklist.filter(c => c.status === 'OK').length : 0;
   const isReadyToSign = checklistCount > 0 && checklistCompleted === checklistCount;
+  // ADMIN은 Buy-off 후에도 검수표 수정 가능
+  const isLockedForChecklist = project.signOff?.signed && currentUser.role !== 'ADMIN';
 
   return (
     <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-2 md:p-4 animate-[fadeIn_0.2s_ease-in-out]">
@@ -40,9 +45,10 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
           </div>
           <button onClick={onClose} className="text-blue-400 hover:text-blue-600 p-2 shrink-0"><X size={20} /></button>
         </div>
-        <div className="grid grid-cols-7 border-b border-slate-200 bg-white shrink-0">
-          <button onClick={() => setActiveModalTab('tasks')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'tasks' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><ListTodo size={16} className="mb-0.5" /><span>{t('세부 일정', 'Tasks')}</span></button>
+        <div className="grid grid-cols-4 md:grid-cols-8 border-b border-slate-200 bg-white shrink-0">
+          <button onClick={() => setActiveModalTab('tasks')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'tasks' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><ListTodo size={16} className="mb-0.5" /><span>{t('셋업 일정', 'Setup Tasks')}</span></button>
           <button onClick={() => setActiveModalTab('checklist')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'checklist' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><CheckSquare size={16} className="mb-0.5" /><span>{t('검수표', 'Checklist')} ({checklistCompleted}/{checklistCount})</span></button>
+          <button onClick={() => setActiveModalTab('extras')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'extras' ? 'border-pink-600 text-pink-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><Sparkles size={16} className="mb-0.5" /><span>{t('추가 대응', 'Extras')} ({(project.extraTasks || []).length})</span></button>
           <button onClick={() => setActiveModalTab('issues')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'issues' ? 'border-red-600 text-red-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><AlertTriangle size={16} className="mb-0.5" /><span>{t('이슈', 'Issues')} ({projectIssues.length})</span></button>
           <button onClick={() => setActiveModalTab('history')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'history' ? 'border-slate-600 text-slate-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><History size={16} className="mb-0.5" /><span>{t('이력', 'History')} ({(project.activityLog || []).length})</span></button>
           <button onClick={() => setActiveModalTab('notes')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'notes' ? 'border-amber-600 text-amber-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><FileText size={16} className="mb-0.5" /><span>{t('노트', 'Notes')} ({(project.notes || []).length})</span></button>
@@ -55,7 +61,7 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
               <div className="flex justify-between items-center mb-2"><span className="text-sm font-bold text-slate-700">{t('현재 실적 진척도', 'Actual Progress')}</span><span className="text-2xl font-black text-blue-600">{actualProgress}%</span></div>
               <div className="mb-4 p-3 bg-indigo-50 border border-indigo-100 rounded-lg">
                 <span className="text-xs font-bold text-slate-500 mb-2 flex items-center">{t('현재 업무 단계:', 'Current Phase:')} <span className="ml-1 text-indigo-600 bg-white px-1.5 py-0.5 border border-indigo-200 rounded">{PROJECT_PHASES[project.phaseIndex || 0]}</span></span>
-                <div className="overflow-x-auto pb-1 scroll-smooth"><ProjectPipelineStepper currentPhase={project.phaseIndex || 0} onUpdatePhase={onUpdatePhase} projectId={project.id} role={currentUser.role} /></div>
+                <div className="overflow-x-auto pb-1 scroll-smooth"><ProjectPipelineStepper phases={project.phases} currentPhase={project.phaseIndex || 0} onUpdatePhase={onUpdatePhase} projectId={project.id} role={currentUser.role} onEditPhases={onEditPhases} /></div>
               </div>
               <div className="space-y-3">
                 {project.tasks.map((task, index) => (
@@ -129,21 +135,21 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                         <span className="inline-block bg-slate-100 text-slate-500 text-[10px] font-bold px-1.5 py-0.5 rounded mb-1">{item.category}</span>
                         <div className="flex items-start justify-between">
                           <p className="text-sm font-bold text-slate-800">{item.task}</p>
-                          {!project.signOff?.signed && currentUser.role !== 'CUSTOMER' && (<button onClick={() => onDeleteChecklistItem(project.id, item.id)} className="text-slate-300 hover:text-red-500 p-1 ml-2 transition-colors shrink-0"><Trash size={14} /></button>)}
+                          {!isLockedForChecklist && currentUser.role !== 'CUSTOMER' && (<button onClick={() => onDeleteChecklistItem(project.id, item.id)} className="text-slate-300 hover:text-red-500 p-1 ml-2 transition-colors shrink-0"><Trash size={14} /></button>)}
                         </div>
                       </div>
                       <div className="flex space-x-1 shrink-0 mt-2 md:mt-0">
-                        <button disabled={project.signOff?.signed || currentUser.role === 'CUSTOMER'} onClick={() => onUpdateChecklistItem(project.id, item.id, 'Pending')} className={`px-2 py-1 text-xs font-bold rounded border transition-colors ${item.status === 'Pending' ? 'bg-slate-200 text-slate-700 border-slate-300' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'} disabled:opacity-50`}>{t('대기', 'Wait')}</button>
-                        <button disabled={project.signOff?.signed || currentUser.role === 'CUSTOMER'} onClick={() => onUpdateChecklistItem(project.id, item.id, 'OK')} className={`px-2 py-1 text-xs font-bold rounded border transition-colors ${item.status === 'OK' ? 'bg-emerald-50 text-emerald-700 border-emerald-300 ring-1 ring-emerald-400 shadow-sm' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'} disabled:opacity-50`}>OK</button>
-                        <button disabled={project.signOff?.signed || currentUser.role === 'CUSTOMER'} onClick={() => onUpdateChecklistItem(project.id, item.id, 'NG')} className={`px-2 py-1 text-xs font-bold rounded border transition-colors ${item.status === 'NG' ? 'bg-red-50 text-red-700 border-red-300 ring-1 ring-red-400 shadow-sm' : 'bg-white text-red-600 border-red-200 hover:bg-red-50'} disabled:opacity-50`}>NG</button>
+                        <button disabled={isLockedForChecklist || currentUser.role === 'CUSTOMER'} onClick={() => onUpdateChecklistItem(project.id, item.id, 'Pending')} className={`px-2 py-1 text-xs font-bold rounded border transition-colors ${item.status === 'Pending' ? 'bg-slate-200 text-slate-700 border-slate-300' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'} disabled:opacity-50`}>{t('대기', 'Wait')}</button>
+                        <button disabled={isLockedForChecklist || currentUser.role === 'CUSTOMER'} onClick={() => onUpdateChecklistItem(project.id, item.id, 'OK')} className={`px-2 py-1 text-xs font-bold rounded border transition-colors ${item.status === 'OK' ? 'bg-emerald-50 text-emerald-700 border-emerald-300 ring-1 ring-emerald-400 shadow-sm' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'} disabled:opacity-50`}>OK</button>
+                        <button disabled={isLockedForChecklist || currentUser.role === 'CUSTOMER'} onClick={() => onUpdateChecklistItem(project.id, item.id, 'NG')} className={`px-2 py-1 text-xs font-bold rounded border transition-colors ${item.status === 'NG' ? 'bg-red-50 text-red-700 border-red-300 ring-1 ring-red-400 shadow-sm' : 'bg-white text-red-600 border-red-200 hover:bg-red-50'} disabled:opacity-50`}>NG</button>
                       </div>
                     </div>
-                    {item.status !== 'OK' && !project.signOff?.signed && currentUser.role !== 'CUSTOMER' && (<input type="text" placeholder={t("점검 결과 특이사항 입력...", "Result note...")} className="mt-2 w-full text-xs p-1.5 border border-slate-200 rounded bg-white text-slate-700 focus:outline-none focus:border-indigo-400" value={item.note || ''} onChange={(e) => onUpdateChecklistItem(project.id, item.id, item.status, e.target.value)} />)}
+                    {item.status !== 'OK' && !isLockedForChecklist && currentUser.role !== 'CUSTOMER' && (<input type="text" placeholder={t("점검 결과 특이사항 입력...", "Result note...")} className="mt-2 w-full text-xs p-1.5 border border-slate-200 rounded bg-white text-slate-700 focus:outline-none focus:border-indigo-400" value={item.note || ''} onChange={(e) => onUpdateChecklistItem(project.id, item.id, item.status, e.target.value)} />)}
                     {item.note && (<p className="mt-1.5 text-xs text-slate-500 bg-slate-100 p-1.5 rounded flex items-center"><PenTool size={12} className="mr-1" /> {item.note}</p>)}
                   </div>
                 ))}
               </div>
-              {!project.signOff?.signed && currentUser.role !== 'CUSTOMER' && (
+              {!isLockedForChecklist && currentUser.role !== 'CUSTOMER' && (
                 <div className="mt-4 flex gap-2 items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm">
                   <select className="w-24 text-xs md:text-sm p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-indigo-500" value={newChecklistCategory} onChange={(e) => setNewChecklistCategory(e.target.value)}>
                     <option value="일반">일반</option><option value="기구/반입">기구</option><option value="유틸리티">유틸</option><option value="소프트웨어">S/W</option><option value="공정/통신">공정</option>
@@ -159,8 +165,32 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                     <h4 className="font-bold text-emerald-800 mb-1">{t('고객사 검수 및 최종 승인 완료', 'Buy-off Completed & Signed')}</h4>
                     <p className="text-xs text-emerald-600 mb-3">{t('검수자:', 'By:')} <strong>{project.signOff.customerName}</strong> | {t('승인일자:', 'Date:')} {project.signOff.date}</p>
                     <div className="bg-white border border-slate-200 rounded-lg p-2 inline-block mb-4"><img src={project.signOff.signatureData} alt="전자서명" className="h-16 object-contain" /></div>
-                    <div><button onClick={() => generatePDF(project, projectIssues)} className="inline-flex items-center px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold rounded-lg shadow-md transition-colors"><FileText size={16} className="mr-2"/> {t('최종 완료 보고서 (PDF) 인쇄/저장', 'Print/Save Buy-off Report (PDF)')}</button></div>
+                    <div className="flex justify-center gap-2 flex-wrap">
+                      <button onClick={() => generatePDF(project, projectIssues)} className="inline-flex items-center px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold rounded-lg shadow-md transition-colors"><FileText size={16} className="mr-2"/> {t('최종 완료 보고서 (PDF) 인쇄/저장', 'Print/Save Buy-off Report (PDF)')}</button>
+                      {currentUser.role === 'ADMIN' && (
+                        <button onClick={() => setConfirmCancelSignOff(true)} className="inline-flex items-center px-4 py-2 bg-white hover:bg-rose-50 text-rose-600 border border-rose-300 text-sm font-bold rounded-lg transition-colors">
+                          <ShieldOff size={16} className="mr-2" /> {t('사인 취소', 'Cancel Sign-off')}
+                        </button>
+                      )}
+                    </div>
                   </div>
+                  {currentUser.role === 'ADMIN' && (
+                    <div className="mt-3 bg-rose-50 border border-rose-200 p-3 rounded-lg flex items-start">
+                      <ShieldCheck size={16} className="text-rose-500 mr-2 mt-0.5 shrink-0" />
+                      <p className="text-xs text-rose-700"><strong>{t('관리자 모드:', 'Admin mode:')}</strong> {t('Buy-off 완료 후에도 검수 항목을 수정하거나 사인을 취소할 수 있습니다. 변경 시 활동 이력에 기록됩니다.', 'You can edit checklist or cancel sign-off after Buy-off. Changes are logged.')}</p>
+                    </div>
+                  )}
+                  {/* 사인 취소 확인 다이얼로그 */}
+                  {confirmCancelSignOff && (
+                    <div className="mt-3 bg-rose-50 border-2 border-rose-300 p-4 rounded-lg">
+                      <p className="text-sm font-bold text-rose-800 mb-1">{t('정말 검수 사인을 취소하시겠습니까?', 'Cancel sign-off?')}</p>
+                      <p className="text-xs text-rose-700 mb-3">{t('서명 데이터가 삭제되고, 프로젝트 단계가 "현장 셋업"으로 되돌아갑니다. 이 작업은 활동 이력에 기록됩니다.', 'Signature is removed and phase rolls back to "현장 셋업". This action is logged.')}</p>
+                      <div className="flex justify-end gap-2">
+                        <button onClick={() => setConfirmCancelSignOff(false)} className="px-3 py-1.5 text-xs font-bold bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50">{t('취소', 'Back')}</button>
+                        <button onClick={() => { onCancelSignOff && onCancelSignOff(project.id); setConfirmCancelSignOff(false); }} className="px-3 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg">{t('확정 — 사인 취소', 'Confirm — Cancel')}</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : isReadyToSign && (currentUser.role === 'CUSTOMER' || currentUser.role === 'ADMIN') ? (
                 <SignaturePad onSign={(name, data) => onSignOff(project.id, name, data)} t={t} />
@@ -194,17 +224,72 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
             </div>
           )}
           {activeModalTab === 'history' && (
-            <div className="space-y-1">
+            <div className="space-y-3">
+              {/* 그룹 필터 */}
+              {(project.activityLog || []).length > 0 && (() => {
+                const HISTORY_GROUPS = [
+                  { key: 'all', label: t('전체', 'All'), types: null },
+                  { key: 'project', label: t('프로젝트', 'Project'), types: ['PROJECT_CREATE', 'PROJECT_EDIT', 'PHASE_CHANGE', 'PHASE_DEFINE', 'MANAGER_CHANGE', 'VERSION_CHANGE', 'VERSION_DELETE', 'SIGN_OFF', 'SIGN_CANCEL', 'TRIP_ADD', 'TRIP_DELETE'] },
+                  { key: 'task', label: t('셋업 일정', 'Setup'), types: ['TASK_ADD', 'TASK_COMPLETE', 'TASK_DELETE'] },
+                  { key: 'extra', label: t('추가 대응', 'Extras'), types: ['EXTRA_ADD', 'EXTRA_UPDATE', 'EXTRA_DELETE'] },
+                  { key: 'checklist', label: t('검수', 'Checklist'), types: ['CHECKLIST_CHANGE'] },
+                  { key: 'issue', label: t('이슈', 'Issues'), types: ['ISSUE_ADD'] },
+                  { key: 'request', label: t('고객요청', 'Requests'), types: ['REQUEST_ADD', 'REQUEST_STATUS'] },
+                  { key: 'as', label: t('AS', 'AS'), types: ['AS_ADD', 'AS_UPDATE'] },
+                  { key: 'note', label: t('노트', 'Notes'), types: ['NOTE_ADD'] },
+                  { key: 'part', label: t('자재', 'Parts'), types: ['PART_ADD'] },
+                ];
+                const counts = {};
+                (project.activityLog || []).forEach(log => {
+                  HISTORY_GROUPS.forEach(g => {
+                    if (g.key === 'all') return;
+                    if (g.types.includes(log.type)) counts[g.key] = (counts[g.key] || 0) + 1;
+                  });
+                });
+                return (
+                  <div className="bg-white border border-slate-200 rounded-xl p-2 shadow-sm flex flex-wrap gap-1">
+                    {HISTORY_GROUPS.map(g => {
+                      const count = g.key === 'all' ? (project.activityLog || []).length : (counts[g.key] || 0);
+                      if (g.key !== 'all' && count === 0) return null;
+                      const active = historyFilter === g.key;
+                      return (
+                        <button key={g.key} onClick={() => setHistoryFilter(g.key)} className={`text-[11px] px-2.5 py-1 rounded-lg font-bold border transition-colors ${active ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
+                          {g.label} <span className={`ml-1 px-1 rounded ${active ? 'bg-white/20' : 'bg-slate-100'}`}>{count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
               {(!project.activityLog || project.activityLog.length === 0) ? (
                 <div className="text-center py-10 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl bg-white">{t('활동 이력이 없습니다.', 'No activity history.')}</div>
-              ) : (
+              ) : (() => {
+                const HISTORY_GROUPS = {
+                  project: ['PROJECT_CREATE', 'PROJECT_EDIT', 'PHASE_CHANGE', 'PHASE_DEFINE', 'MANAGER_CHANGE', 'VERSION_CHANGE', 'VERSION_DELETE', 'SIGN_OFF', 'SIGN_CANCEL', 'TRIP_ADD', 'TRIP_DELETE'],
+                  task: ['TASK_ADD', 'TASK_COMPLETE', 'TASK_DELETE'],
+                  extra: ['EXTRA_ADD', 'EXTRA_UPDATE', 'EXTRA_DELETE'],
+                  checklist: ['CHECKLIST_CHANGE'],
+                  issue: ['ISSUE_ADD'],
+                  request: ['REQUEST_ADD', 'REQUEST_STATUS'],
+                  as: ['AS_ADD', 'AS_UPDATE'],
+                  note: ['NOTE_ADD'],
+                  part: ['PART_ADD']
+                };
+                const filtered = historyFilter === 'all'
+                  ? project.activityLog
+                  : project.activityLog.filter(log => (HISTORY_GROUPS[historyFilter] || []).includes(log.type));
+                if (filtered.length === 0) {
+                  return <div className="text-center py-10 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl bg-white">{t('해당 그룹의 이력이 없습니다.', 'No history in this group.')}</div>;
+                }
+                return (
                 <div className="relative">
                   <div className="absolute left-4 top-2 bottom-2 w-0.5 bg-slate-200"></div>
                   <div className="space-y-3">
-                    {[...project.activityLog].reverse().map((log, i) => {
+                    {[...filtered].reverse().map((log, i) => {
                       const typeConfig = {
                         PROJECT_CREATE: { icon: <TimelineIcon size={14}/>, color: 'bg-blue-100 text-blue-600 border-blue-200', label: t('프로젝트 생성', 'Created') },
                         PHASE_CHANGE: { icon: <TimelineIcon size={14}/>, color: 'bg-purple-100 text-purple-600 border-purple-200', label: t('단계 변경', 'Phase') },
+                        PHASE_DEFINE: { icon: <TimelineIcon size={14}/>, color: 'bg-purple-100 text-purple-700 border-purple-200', label: t('단계 정의', 'Phase Def') },
                         MANAGER_CHANGE: { icon: <User size={14}/>, color: 'bg-orange-100 text-orange-600 border-orange-200', label: t('담당자 변경', 'Manager') },
                         TASK_COMPLETE: { icon: <CheckCircle size={14}/>, color: 'bg-emerald-100 text-emerald-600 border-emerald-200', label: t('태스크 완료', 'Task Done') },
                         TASK_ADD: { icon: <ListTodo size={14}/>, color: 'bg-slate-100 text-slate-600 border-slate-200', label: t('태스크 추가', 'Task Add') },
@@ -212,13 +297,20 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                         ISSUE_ADD: { icon: <AlertTriangle size={14}/>, color: 'bg-red-100 text-red-600 border-red-200', label: t('이슈 등록', 'Issue') },
                         PART_ADD: { icon: <Package size={14}/>, color: 'bg-amber-100 text-amber-600 border-amber-200', label: t('자재 청구', 'Part') },
                         CHECKLIST_CHANGE: { icon: <CheckSquare size={14}/>, color: 'bg-indigo-100 text-indigo-600 border-indigo-200', label: t('체크리스트', 'Checklist') },
-                        VERSION_CHANGE: { icon: <HardDrive size={14}/>, color: 'bg-slate-100 text-slate-600 border-slate-200', label: t('버전 변경', 'Version') },
+                        VERSION_CHANGE: { icon: <HardDrive size={14}/>, color: 'bg-slate-100 text-slate-600 border-slate-200', label: t('버전 등록', 'Version') },
+                        VERSION_DELETE: { icon: <HardDrive size={14}/>, color: 'bg-slate-100 text-slate-500 border-slate-200', label: t('버전 삭제', 'Version Del') },
                         SIGN_OFF: { icon: <ShieldCheck size={14}/>, color: 'bg-emerald-100 text-emerald-700 border-emerald-300', label: t('Buy-off 서명', 'Sign-off') },
                         NOTE_ADD: { icon: <FileText size={14}/>, color: 'bg-amber-100 text-amber-600 border-amber-200', label: t('공유 노트', 'Note') },
                         REQUEST_ADD: { icon: <MessageSquare size={14}/>, color: 'bg-cyan-100 text-cyan-600 border-cyan-200', label: t('고객 요청', 'Request') },
                         REQUEST_STATUS: { icon: <MessageSquare size={14}/>, color: 'bg-cyan-100 text-cyan-600 border-cyan-200', label: t('요청 처리', 'Req Status') },
                         AS_ADD: { icon: <LifeBuoy size={14}/>, color: 'bg-purple-100 text-purple-600 border-purple-200', label: t('AS 등록', 'AS') },
                         AS_UPDATE: { icon: <LifeBuoy size={14}/>, color: 'bg-purple-100 text-purple-600 border-purple-200', label: t('AS 처리', 'AS Update') },
+                        SIGN_CANCEL: { icon: <ShieldOff size={14}/>, color: 'bg-rose-100 text-rose-600 border-rose-200', label: t('사인 취소', 'Sign Cancel') },
+                        TRIP_ADD: { icon: <Info size={14}/>, color: 'bg-blue-100 text-blue-600 border-blue-200', label: t('출장 등록', 'Trip Add') },
+                        TRIP_DELETE: { icon: <Info size={14}/>, color: 'bg-slate-100 text-slate-500 border-slate-200', label: t('출장 삭제', 'Trip Del') },
+                        EXTRA_ADD: { icon: <Sparkles size={14}/>, color: 'bg-pink-100 text-pink-600 border-pink-200', label: t('추가 대응 등록', 'Extra Add') },
+                        EXTRA_UPDATE: { icon: <Sparkles size={14}/>, color: 'bg-pink-100 text-pink-600 border-pink-200', label: t('추가 대응 변경', 'Extra Update') },
+                        EXTRA_DELETE: { icon: <Sparkles size={14}/>, color: 'bg-slate-100 text-slate-500 border-slate-200', label: t('추가 대응 삭제', 'Extra Delete') },
                       };
                       const cfg = typeConfig[log.type] || { icon: <Info size={14}/>, color: 'bg-slate-100 text-slate-600 border-slate-200', label: log.type };
                       return (
@@ -237,7 +329,8 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                     })}
                   </div>
                 </div>
-              )}
+                );
+              })()}
             </div>
           )}
           {activeModalTab === 'notes' && (
@@ -523,6 +616,125 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                           <div className="flex space-x-1 mt-3">
                             {['접수', '출동', '완료'].map(s => (
                               <button key={s} onClick={() => onUpdateAS(project.id, as.id, { status: s })} className={`text-[10px] px-2 py-1 rounded font-bold border transition-colors ${as.status === s ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>{s}</button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+          {activeModalTab === 'extras' && (
+            <div className="space-y-4">
+              <div className="bg-pink-50 text-pink-800 p-3 rounded-lg text-xs font-medium border border-pink-200 flex items-start">
+                <Info size={14} className="mr-1.5 shrink-0 mt-0.5" />
+                <span>{t('검수 완료 후 고객사 요청에 의한 추가 개발/기능 추가 작업을 별도로 관리합니다. 셋업 일정과 분리되어, 워런티 단계에서 진행되는 변경 사항을 추적합니다.', 'Track post-Buy-off enhancements and customer-requested development separately from setup tasks.')}</span>
+              </div>
+
+              {/* 등록 폼 */}
+              {currentUser.role !== 'CUSTOMER' && (
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">{t('작업 유형', 'Type')}</label>
+                      <select className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newExtraForm.type} onChange={(e) => setNewExtraForm({...newExtraForm, type: e.target.value})}>
+                        <option value="기능 추가">{t('기능 추가', 'Feature')}</option>
+                        <option value="기능 개선">{t('기능 개선', 'Improvement')}</option>
+                        <option value="버그 수정">{t('버그 수정', 'Bugfix')}</option>
+                        <option value="UI 변경">{t('UI 변경', 'UI Change')}</option>
+                        <option value="공정 튜닝">{t('공정 튜닝', 'Process Tuning')}</option>
+                        <option value="기타">{t('기타', 'Other')}</option>
+                      </select>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs font-bold text-slate-700 mb-1">{t('요청자 / 부서', 'Requester / Dept')}</label>
+                      <input type="text" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newExtraForm.requester} onChange={(e) => setNewExtraForm({...newExtraForm, requester: e.target.value})} placeholder={t('예: A전자 공정팀 박과장', 'e.g. A전자 - 박과장')} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">{t('작업 내용', 'Task Description')}</label>
+                    <input type="text" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newExtraForm.name} onChange={(e) => setNewExtraForm({...newExtraForm, name: e.target.value})} placeholder={t('예: HMI에 OEE 실시간 그래프 추가', 'e.g. Add real-time OEE chart to HMI')} />
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">{t('시작 예정일', 'Start')}</label>
+                      <input type="date" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newExtraForm.startDate} onChange={(e) => setNewExtraForm({...newExtraForm, startDate: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">{t('종료 예정일', 'End')}</label>
+                      <input type="date" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newExtraForm.endDate} onChange={(e) => setNewExtraForm({...newExtraForm, endDate: e.target.value})} />
+                    </div>
+                    <div className="flex items-end">
+                      <button onClick={() => {
+                        if (newExtraForm.name.trim()) {
+                          onAddExtraTask(project.id, { ...newExtraForm, name: newExtraForm.name.trim(), requester: newExtraForm.requester.trim(), note: newExtraForm.note.trim() });
+                          setNewExtraForm({ name: '', requester: '', type: '기능 추가', startDate: '', endDate: '', note: '' });
+                        }
+                      }} disabled={!newExtraForm.name.trim()} className="w-full px-4 py-2 bg-pink-600 hover:bg-pink-700 disabled:bg-slate-300 text-white text-sm font-bold rounded-lg transition-colors flex items-center justify-center"><Plus size={14} className="mr-1" />{t('등록', 'Add')}</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 목록 */}
+              {(!project.extraTasks || project.extraTasks.length === 0) ? (
+                <div className="text-center py-10 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl bg-white">
+                  <Sparkles size={28} className="mx-auto mb-2 text-slate-300" />
+                  {t('등록된 추가 대응 작업이 없습니다.', 'No extra tasks recorded.')}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {[...project.extraTasks].reverse().map(task => {
+                    const typeColor = task.type === '기능 추가' ? 'bg-pink-100 text-pink-700 border-pink-200'
+                      : task.type === '기능 개선' ? 'bg-indigo-100 text-indigo-700 border-indigo-200'
+                        : task.type === '버그 수정' ? 'bg-red-100 text-red-700 border-red-200'
+                          : task.type === 'UI 변경' ? 'bg-blue-100 text-blue-700 border-blue-200'
+                            : task.type === '공정 튜닝' ? 'bg-amber-100 text-amber-700 border-amber-200'
+                              : 'bg-slate-100 text-slate-700 border-slate-200';
+                    const statusColor = task.status === '완료' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : task.status === '진행중' ? 'bg-blue-50 text-blue-700 border-blue-200'
+                        : task.status === '검토중' ? 'bg-purple-50 text-purple-700 border-purple-200'
+                          : task.status === '반려' ? 'bg-slate-50 text-slate-500 border-slate-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200';
+                    return (
+                      <div key={task.id} className={`bg-white p-3 rounded-xl border shadow-sm ${task.status === '완료' ? 'border-emerald-200 bg-emerald-50/30' : 'border-slate-200'}`}>
+                        <div className="flex justify-between items-start mb-2 gap-2">
+                          <div className="flex items-center flex-wrap gap-1.5 min-w-0">
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${typeColor}`}>{task.type}</span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${statusColor}`}>{task.status}</span>
+                          </div>
+                          {(currentUser.role === 'ADMIN' || currentUser.role === 'PM') && (
+                            <button onClick={() => onDeleteExtraTask(project.id, task.id)} className="text-slate-300 hover:text-red-500 p-1 shrink-0"><Trash size={12} /></button>
+                          )}
+                        </div>
+                        <p className={`text-sm font-bold ${task.status === '완료' ? 'text-slate-500 line-through' : 'text-slate-800'}`}>{task.name}</p>
+                        <div className="text-[10px] text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                          {task.requester && <span><User size={9} className="inline mr-0.5" />{task.requester}</span>}
+                          {(task.startDate || task.endDate) && <span>{task.startDate || '?'} ~ {task.endDate || '?'}</span>}
+                          {task.createdBy && <span>등록: {task.createdBy} · {task.createdAt}</span>}
+                        </div>
+
+                        {/* 메모 입력 (진행 중 / 작업자 외에는 read-only) */}
+                        {currentUser.role !== 'CUSTOMER' && (
+                          <input
+                            type="text"
+                            placeholder={t('메모 / 진행 상황', 'Note / progress')}
+                            className="mt-2 w-full text-xs p-1.5 border border-slate-200 rounded bg-slate-50 focus:outline-none focus:bg-white focus:border-pink-400"
+                            value={task.note || ''}
+                            onChange={(e) => onUpdateExtraTask(project.id, task.id, { note: e.target.value })}
+                          />
+                        )}
+                        {task.note && currentUser.role === 'CUSTOMER' && (
+                          <p className="mt-2 text-xs text-slate-600 bg-slate-50 p-1.5 rounded">{task.note}</p>
+                        )}
+
+                        {/* 상태 변경 */}
+                        {currentUser.role !== 'CUSTOMER' && (
+                          <div className="flex flex-wrap gap-1 mt-3">
+                            {['대기', '검토중', '진행중', '완료', '반려'].map(s => (
+                              <button key={s} onClick={() => onUpdateExtraTask(project.id, task.id, { status: s })} className={`text-[10px] px-2 py-1 rounded font-bold border transition-colors ${task.status === s ? 'bg-pink-600 text-white border-pink-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>{s}</button>
                             ))}
                           </div>
                         )}
