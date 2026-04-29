@@ -755,3 +755,247 @@ sequenceDiagram
 | **4순위** | PWA 오프라인 지원 | 중 (manifest + Service Worker) | 현장 접근성 향상 |
 | **5순위** | AI 기반 예측 분석 | 높 (데이터 축적 후 가능) | 위험 사전 감지 / 자동 분류 |
 
+---
+
+## 14. v1.0 베타 신규 기능 (2026.04)
+
+기존 시스템 위에 **사용자 피드백 + 운영 효율 + 보고 자동화**를 강화한 대규모 업데이트입니다.
+모든 변경은 **데이터 손실 없이 자동 마이그레이션**되며, GAS 백엔드 재배포는 불필요합니다.
+
+### 14-1. 신규 기능 한눈에 보기
+
+```mermaid
+mindmap
+  root((v1.0 베타))
+    보고 자동화
+      exceljs 보고용 스타일링
+      종합 리포트 10시트
+      Buy-off PDF
+    프로젝트 관리
+      워런티 단계 추가
+      단계 자유 편집
+      추가 대응 작업
+      검수 ADMIN 사후 수정
+      사인 취소
+    인력/리소스
+      자격 다중 관리
+      출장 일정
+      직급/비자
+      담당자 콤보박스
+    AS/이슈
+      AS 통합 메뉴
+      활동 이력 그룹 필터
+    버전
+      다중 카테고리
+      이력 누적
+      전사 통합 뷰
+    UX
+      사용자 가이드 모달
+      사이드바 토글
+      모바일 안정화
+```
+
+### 14-2. 신규 메뉴 구조 (사이드바)
+
+```mermaid
+graph LR
+  Sidebar([좌측 사이드바<br/>펼치기/접기]) --> A[대시보드]
+  Sidebar --> B[프로젝트 관리]
+  Sidebar --> C[이슈/펀치 관리]
+  Sidebar --> D[자재/스페어]
+  Sidebar --> E[사이트/유틸]
+  Sidebar --> F[인력/리소스]
+  Sidebar --> G((AS 통합 관리<br/>NEW))
+  Sidebar --> H[버전 릴리즈]
+  Sidebar --> I[사용자 관리]
+  Header([헤더 우상단]) --> Help((도움말<br/>NEW))
+
+  classDef new fill:#e0e7ff,stroke:#4f46e5,stroke-width:2px,color:#1e1b4b;
+  class G,Help new;
+```
+
+### 14-3. 프로젝트 라이프사이클 업데이트 (8단계)
+
+기존 7단계에 **워런티** 단계가 신설되어 검수 후 사후 추적이 가능합니다.
+
+```mermaid
+flowchart LR
+  A[영업/수주] --> B[설계] --> C[구매/자재] --> D[제조/조립]
+  D --> E[출하] --> F[현장 셋업]
+  F -- 검수 사인 --> G((워런티<br/>NEW))
+  G -- 워런티 종료 --> H([완료])
+
+  F -. ADMIN 사인 취소 .-> F
+  G -. 추가 대응 작업 누적 .-> G
+
+  classDef new fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f;
+  classDef done fill:#d1fae5,stroke:#059669,stroke-width:2px,color:#064e3b;
+  class G new;
+  class H done;
+```
+
+> **단계 자유 편집** (PM 이상): 프로젝트마다 단계 이름·추가·삭제·순서를 자유롭게 구성 가능. 마지막 단계가 자동으로 "완료" 처리 단계로 인식됩니다.
+
+### 14-4. 데이터 모델 확장 (자격/출장/버전)
+
+```mermaid
+erDiagram
+  PROJECT ||--o{ TRIP : "프로젝트별 출장 일정"
+  PROJECT ||--o{ EXTRA_TASK : "검수 후 추가 대응"
+  PROJECT ||--o{ VERSION : "다중 카테고리 버전 이력"
+  PROJECT ||--o{ PHASE : "프로젝트별 단계 정의"
+  ENGINEER ||--o{ BADGE : "출입증 다중"
+  ENGINEER ||--o{ SAFETY : "안전교육 다중"
+  ENGINEER ||--o{ VISA : "비자 다중"
+  ENGINEER }o--o{ PROJECT : "멀티 배정 (assignedProjectIds)"
+
+  PROJECT {
+    string id
+    string name
+    array phases "이름·순서 자유 편집"
+    string currentPhaseId
+    object signOff "고객 전자 서명"
+  }
+  TRIP {
+    string engineerId
+    date departureDate
+    date returnDate
+    string note "셋업 1차, Buy-off 입회 등"
+  }
+  VERSION {
+    string category "HW/SW/충방전기 FW/인터페이스 FW + 자유"
+    string version
+    date releaseDate
+    string note "변경 내용 (필수)"
+  }
+  EXTRA_TASK {
+    string type "기능 추가/개선/버그/UI/공정 튜닝"
+    string status "대기/검토중/진행중/완료/반려"
+    string requester
+  }
+  BADGE {
+    string issuer "고객사명"
+    date expiry "30일 이내 자동 알림"
+  }
+  VISA {
+    string country
+    string type "B1/B2, H-1B 등"
+    string status "필요/신청중/취득/만료"
+  }
+```
+
+### 14-5. 핵심 워크플로 — 출장 일정 자동 표시
+
+프로젝트에 등록한 출장 일정이 **인력 화면·대시보드에 자동으로 D-Day로 표시**됩니다.
+
+```mermaid
+sequenceDiagram
+  actor PM
+  participant ProjectList as 프로젝트 리스트
+  participant TeamModal as 담당자/팀/출장 통합 모달
+  participant DB as Google Sheets (project.trips)
+  participant Dashboard as 대시보드/인력 화면
+
+  PM->>ProjectList: 담당자 셀 클릭
+  ProjectList->>TeamModal: 통합 모달 오픈 (3탭)
+  PM->>TeamModal: 출장 일정 탭 → 인력·출발/복귀일·메모 입력
+  TeamModal->>DB: project.trips 배열에 추가
+  Note over DB: 한 사람 다회 등록 가능
+  Dashboard->>DB: 페이지 진입 시 조회
+  DB-->>Dashboard: 모든 trips 평탄화 → 자동 매핑
+  Dashboard-->>PM: "출발 N일 전 / 복귀 N일 전" 자동 표시
+```
+
+### 14-6. 버전 관리 (다중 카테고리)
+
+기존 `hw/sw/fwVersion` 단일 필드 → **카테고리별 이력 누적** 배열로 확장.
+
+```mermaid
+flowchart TB
+  subgraph 프로젝트 ["📁 프로젝트 (예: SK ON ESS PILOT)"]
+    direction TB
+    HW[HW Rev.A → Rev.B]
+    SW[SW v1.0 → v1.1 → v2.0]
+    CFW[충방전기 FW 1.0.0 → 1.0.1]
+    IFW[인터페이스 FW 0.9 → 1.0]
+  end
+  프로젝트 --> Modal[VersionModal<br/>인라인 수정/삭제<br/>변경 노트 필수]
+  프로젝트 --> Global([전사 메뉴<br/>모든 프로젝트 통합 타임라인])
+
+  classDef cat fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b;
+  class HW,SW,CFW,IFW cat;
+```
+
+> **변경 내용 노트 필수** — 버전 등록 시 무엇이 바뀌었는지 반드시 입력 (이력 추적성 보장).
+
+### 14-7. 권한별 신규 기능 매트릭스
+
+| 신규 기능 | ADMIN | PM | ENGINEER | CUSTOMER |
+|---|:---:|:---:|:---:|:---:|
+| 단계 자유 편집 | ✅ | ✅ | ❌ | ❌ |
+| 검수표 사후 수정 | ✅ | ❌ | ❌ | ❌ |
+| 사인 취소 | ✅ | ❌ | ❌ | ❌ |
+| 담당자/팀/출장 통합 모달 | ✅ | ✅ | ❌ | ❌ |
+| 자격(출입증/안전/비자) 다중 관리 | ✅ | ✅ | ❌ | ❌ |
+| 추가 대응 작업 | ✅ | ✅ | ✅ | ❌ |
+| AS 통합 관리 메뉴 | ✅ | ✅ | ✅ | ❌ |
+| 버전 다중 카테고리 등록 | ✅ | ✅ | ✅ | ❌ |
+| 전사 버전 통합 뷰 | ✅ | ✅ | ✅ | ❌ |
+| 사용자 가이드 모달 | ✅ | ✅ | ✅ | ✅ |
+
+### 14-8. 자동 마이그레이션
+
+앱이 첫 로드 시 자동으로 다음을 처리합니다 — **사용자가 별도 작업할 것 없음**.
+
+```mermaid
+flowchart LR
+  Old["📦 기존 데이터<br/>(GAS Sheets)"] --> Load[앱 로드]
+  Load --> M1{phaseIndex<br/>존재?}
+  Load --> M2{accessExpiry<br/>존재?}
+  Load --> M3{hwVersion<br/>존재?}
+
+  M1 -- Yes --> P1[phases 배열 + currentPhaseId 자동 생성<br/>완료=phaseIndex 6 → 7로 매핑]
+  M2 -- Yes --> P2[badges/safetyTrainings/visas 배열로 변환]
+  M3 -- Yes --> P3[versions 배열로 변환<br/>note: 마이그레이션 표시]
+
+  P1 --> New[v1.0 베타 데이터 모델]
+  P2 --> New
+  P3 --> New
+
+  classDef new fill:#d1fae5,stroke:#059669,color:#064e3b;
+  class New new;
+```
+
+또한 GAS 백엔드의 컬럼 헤더 한정 이슈(첫 객체 키만 사용)는 `utils/api.js`에서 **저장 직전 키 정규화**로 해결 — 신규 필드(`trips`, `versions`, `phases` 등) 누락 없이 영속화됩니다.
+
+### 14-9. 베타 vs 정식 운영 모드
+
+```mermaid
+flowchart LR
+  subgraph 베타 ["🧪 베타 (build:test)"]
+    B1[admin/pm/eng/client<br/>4계정 자동 시드]
+    B2[비번 1234]
+    B3[비번 변경 강제 OFF]
+  end
+  subgraph 정식 ["🚀 정식 (build:prod)"]
+    P1[admin 1명만 시드]
+    P2[비번 admin1234]
+    P3[첫 로그인 시 강제 변경]
+  end
+  베타 -- "Users 시트 클리어<br/>+ build:prod 재빌드" --> 정식
+  정식 -- "ADMIN이 부서별<br/>개인 계정 발급" --> Final[1인 1계정 운영]
+```
+
+**전환 시 코드 변경 0** — `npm run build:test` ↔ `npm run build:prod` 명령만 다릅니다.
+
+### 14-10. 변경 파일 요약
+
+| 분류 | 신규 파일 | 주요 수정 파일 |
+|---|---|---|
+| 모달 | EngineerCertificatesModal, ProjectTeamModal, TripScheduleModal, PhaseEditModal, HelpModal | TaskModal, VersionModal, EngineerModal, ProjectModal, ProjectEditModal, ManagerChangeModal |
+| 뷰 | ASManagementView | DashboardView, ProjectListView, ResourceListView, VersionHistoryView |
+| 유틸 | — | utils/calc.js (`getEngineerTrips/getCurrentTrip`), utils/api.js (`normalizeArrayKeys`), utils/export.js (exceljs 전환) |
+| 공통 | — | NavItem (collapsed prop), ProjectPipelineStepper (phases prop) |
+| 상수 | — | constants/index.js (워런티 단계, 도메인별 카테고리, 직급, TODAY 실시간) |
+| 의존성 | — | package.json (exceljs ^4.4.0 추가) |
+
