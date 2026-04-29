@@ -1,4 +1,7 @@
-export const PROJECT_PHASES = ['영업/수주', '설계', '구매/자재', '제조/조립', '출하', '현장 셋업', '완료'];
+export const PROJECT_PHASES = ['영업/수주', '설계', '구매/자재', '제조/조립', '출하', '현장 셋업', '워런티', '완료'];
+// 기존 7단계 (완료=6) → 신 8단계 (완료=7) 호환을 위한 마이그레이션 인덱스
+export const PHASE_COMPLETED_INDEX = 7;
+export const PHASE_WARRANTY_INDEX = 6;
 export const ISSUE_PHASES = ['이슈 확인', '조치 진행 중', '조치 완료'];
 export const PART_PHASES = ['청구', '발주', '입고', '교체완료'];
 export const DOMAINS = ['반도체', '디스플레이', '2차전지 사이클러', '2차전지 EOL'];
@@ -39,6 +42,20 @@ export const ROLE_OPTIONS = [
   { value: 'ENGINEER', label: '엔지니어' },
   { value: 'CUSTOMER', label: '고객사' }
 ];
+
+// 엔지니어 직급 추천 옵션 (회사마다 다를 수 있어 datalist로 자유 입력 가능)
+export const ENGINEER_GRADES = [
+  '사원', '주임', '대리', '선임', '책임', '수석', '과장', '차장', '부장', '이사'
+];
+
+// 도메인별 버전 카테고리 추천 (자유 추가 가능)
+export const DOMAIN_VERSION_CATEGORIES = {
+  '2차전지 사이클러': ['HW', 'SW', '충방전기 FW', '인터페이스 FW'],
+  '2차전지 EOL': ['HW', 'SW', '충방전기 FW', '인터페이스 FW'],
+  '반도체': ['HW', 'SW', 'FW'],
+  '디스플레이': ['HW', 'SW', 'FW']
+};
+export const DEFAULT_VERSION_CATEGORIES = ['HW', 'SW', 'FW'];
 
 export const DOMAIN_TASKS = {
   '반도체': [
@@ -108,7 +125,8 @@ export const DOMAIN_CHECKLIST = {
   ],
 };
 
-export const TODAY = new Date('2026-04-03');
+// 실시간 오늘 날짜 — 시간 부분은 0시로 정규화 (D-Day 계산 정확도)
+export const TODAY = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })();
 
 export const GAS_URL = "https://script.google.com/macros/s/AKfycbwVargrc_T8Gw-GJeqv1WtsmiRv5i62lhqJ60ut8aOjhAkBtDR8Ztl7cVfoHtmn4mfh3g/exec";
 export const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwVargrc_T8Gw-GJeqv1WtsmiRv5i62lhqJ60ut8aOjhAkBtDR8Ztl7cVfoHtmn4mfh3g/exec";
