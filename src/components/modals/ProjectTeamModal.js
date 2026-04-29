@@ -16,22 +16,26 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
   const [tripForm, setTripForm] = useState({ engineerId: '', departureDate: '', returnDate: '', note: '' });
   const [tripError, setTripError] = useState('');
 
-  if (!project) return null;
   const list = engineers || [];
 
   // 추가 인력 상태 (이 프로젝트가 assignedProjectIds에 포함된 엔지니어)
-  const assignedSet = useMemo(() => new Set(list.filter(e => Array.isArray(e.assignedProjectIds) && e.assignedProjectIds.includes(project.id)).map(e => e.id)), [list, project.id]);
+  const assignedSet = useMemo(() => {
+    if (!project) return new Set();
+    return new Set(list.filter(e => Array.isArray(e.assignedProjectIds) && e.assignedProjectIds.includes(project.id)).map(e => e.id));
+  }, [list, project]);
 
   // 출장 인력 풀 = 메인 PM (이름 매칭) + assignedProjectIds로 배정된 엔지니어
   const tripPool = useMemo(() => {
+    if (!project) return [];
     const map = new Map();
     list.forEach(e => {
       if (assignedSet.has(e.id)) map.set(e.id, e);
       if (project.manager && e.name === project.manager) map.set(e.id, e);
     });
     return Array.from(map.values());
-  }, [list, project.manager, assignedSet]);
+  }, [list, project, assignedSet]);
 
+  if (!project) return null;
   const trips = (project.trips || []).slice().sort((a, b) => new Date(a.departureDate || 0) - new Date(b.departureDate || 0));
   const engineerById = (id) => list.find(e => e.id === id);
 

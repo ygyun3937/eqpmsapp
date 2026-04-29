@@ -9,19 +9,19 @@ const VersionModal = memo(function VersionModal({ project, onClose, onAdd, onUpd
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState({ category: '', version: '', releaseDate: '', note: '' });
 
-  if (!project) return null;
-
   const versions = useMemo(() => {
+    if (!project) return [];
     const list = (project.versions || []).slice();
     list.sort((a, b) => new Date(b.releaseDate || 0) - new Date(a.releaseDate || 0) || (b.id - a.id));
     return list;
-  }, [project.versions]);
+  }, [project]);
 
   const suggestedCategories = useMemo(() => {
+    if (!project) return [];
     const recommended = DOMAIN_VERSION_CATEGORIES[project.domain] || DEFAULT_VERSION_CATEGORIES;
     const used = new Set(versions.map(v => v.category).filter(Boolean));
     return Array.from(new Set([...recommended, ...used]));
-  }, [project.domain, versions]);
+  }, [project, versions]);
 
   const latestByCategory = useMemo(() => {
     const map = {};
@@ -35,6 +35,8 @@ const VersionModal = memo(function VersionModal({ project, onClose, onAdd, onUpd
     });
     return map;
   }, [versions]);
+
+  if (!project) return null;
 
   const filteredVersions = filterCategory === '전체' ? versions : versions.filter(v => v.category === filterCategory);
   const allCategories = ['전체', ...Array.from(new Set([...suggestedCategories, ...versions.map(v => v.category).filter(Boolean)]))];
