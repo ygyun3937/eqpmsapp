@@ -2,11 +2,12 @@ import React, { useState, memo } from 'react';
 import { User, History } from 'lucide-react';
 import ModalWrapper from '../common/ModalWrapper';
 
-const ManagerChangeModal = memo(function ManagerChangeModal({ project, onClose, onSubmit, t }) {
+const ManagerChangeModal = memo(function ManagerChangeModal({ project, engineers, onClose, onSubmit, t }) {
   const [newManager, setNewManager] = useState('');
   const [reason, setReason] = useState('');
 
   if (!project) return null;
+  const list = engineers || [];
 
   return (
     <ModalWrapper
@@ -28,7 +29,18 @@ const ManagerChangeModal = memo(function ManagerChangeModal({ project, onClose, 
       </div>
       <div>
         <label className="block text-sm font-bold text-slate-700 mb-1">{t('새 담당자', 'New Manager')}</label>
-        <input required className="w-full p-2.5 border rounded-lg text-sm focus:outline-none focus:border-blue-500" value={newManager} onChange={e => setNewManager(e.target.value)} placeholder={t('새 담당자 이름 입력', 'Enter new manager name')} />
+        {list.length === 0 ? (
+          <input required className="w-full p-2.5 border rounded-lg text-sm focus:outline-none focus:border-blue-500" value={newManager} onChange={e => setNewManager(e.target.value)} placeholder={t('등록된 인력이 없어 직접 입력', 'No engineers — type name')} />
+        ) : (
+          <select required className="w-full p-2.5 border rounded-lg text-sm focus:outline-none focus:border-blue-500" value={newManager} onChange={e => setNewManager(e.target.value)}>
+            <option value="">{t('-- 인력에서 선택 --', '-- Select engineer --')}</option>
+            {list.filter(eng => eng.name !== project.manager).map(eng => (
+              <option key={eng.id} value={eng.name}>
+                {eng.name}{eng.dept ? ` · ${eng.dept}` : ''}{eng.role ? ` · ${eng.role}` : ''}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
       <div>
         <label className="block text-sm font-bold text-slate-700 mb-1">{t('변경 사유', 'Reason')}</label>

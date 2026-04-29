@@ -2,17 +2,21 @@ import React, { useState, memo } from 'react';
 import { Edit } from 'lucide-react';
 import ModalWrapper from '../common/ModalWrapper';
 
-const ProjectEditModal = memo(function ProjectEditModal({ project, onClose, onSubmit, t }) {
+const ProjectEditModal = memo(function ProjectEditModal({ project, engineers, onClose, onSubmit, t }) {
   const [data, setData] = useState({
     name: project?.name || '',
     customer: project?.customer || '',
     site: project?.site || '',
     startDate: project?.startDate || '',
     dueDate: project?.dueDate || '',
+    manager: project?.manager || '',
     notionLink: project?.notionLink || ''
   });
 
   if (!project) return null;
+  const list = engineers || [];
+  // 현재 담당자가 엔지니어 리스트에 없을 수 있으니 보존용 합성 옵션
+  const hasCurrentInList = list.some(e => e.name === data.manager);
 
   return (
     <ModalWrapper
@@ -47,6 +51,24 @@ const ProjectEditModal = memo(function ProjectEditModal({ project, onClose, onSu
           <label className="block text-sm font-medium text-slate-700 mb-1">{t('납기일', 'Due Date')}</label>
           <input required type="date" className="w-full p-2.5 border rounded-lg text-sm" value={data.dueDate} onChange={e => setData({...data, dueDate: e.target.value})} />
         </div>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1">{t('담당자(PM)', 'Manager')}</label>
+        {list.length === 0 ? (
+          <input className="w-full p-2.5 border rounded-lg text-sm" value={data.manager} onChange={e => setData({...data, manager: e.target.value})} placeholder={t('등록된 인력이 없어 직접 입력', 'No engineers — type name')} />
+        ) : (
+          <select className="w-full p-2.5 border rounded-lg text-sm" value={data.manager} onChange={e => setData({...data, manager: e.target.value})}>
+            <option value="">{t('-- 미지정 --', '-- Unassigned --')}</option>
+            {!hasCurrentInList && data.manager && (
+              <option value={data.manager}>{data.manager} {t('(레거시)', '(Legacy)')}</option>
+            )}
+            {list.map(eng => (
+              <option key={eng.id} value={eng.name}>
+                {eng.name}{eng.dept ? ` · ${eng.dept}` : ''}{eng.role ? ` · ${eng.role}` : ''}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-1">{t('Notion 링크 (선택)', 'Notion Link (Optional)')}</label>

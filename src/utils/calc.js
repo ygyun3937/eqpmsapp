@@ -12,3 +12,76 @@ export const calcAct = (tasks) => {
   if (!tasks || tasks.length === 0) return 0;
   return Math.round((tasks.filter(t => t.isCompleted).length / tasks.length) * 100);
 };
+
+const daysBetween = (a, b) => Math.floor((a.getTime() - b.getTime()) / (1000 * 60 * 60 * 24));
+
+// 엔지니어가 등록된 모든 출장 일정 모음 (project.trips 기준)
+export const getEngineerTrips = (engineer, projects) => {
+  if (!engineer || !engineer.id) return [];
+  const out = [];
+  (projects || []).forEach(p => {
+    (p.trips || []).forEach(t => {
+      if (t.engineerId === engineer.id) {
+        out.push({
+          ...t,
+          projectId: p.id,
+          projectName: p.name,
+          site: p.site,
+          customer: p.customer
+        });
+      }
+    });
+  });
+  return out;
+};
+
+// 엔지니어의 "현재 또는 다음 출장" 한 건 반환 (명시된 trips만 사용)
+// state: 'onsite' (오늘 진행 중), 'scheduled' (미래 출장), null (해당 없음)
+export const getCurrentTrip = (engineer, projects) => {
+  const trips = getEngineerTrips(engineer, projects);
+  if (trips.length === 0) return null;
+  const today = TODAY;
+
+  const ongoing = trips
+    .filter(t => {
+      const a = new Date(t.departureDate); const b = new Date(t.returnDate);
+      return !isNaN(a) && !isNaN(b) && a <= today && today <= b;
+    })
+    .sort((a, b) => new Date(a.returnDate) - new Date(b.returnDate));
+  if (ongoing.length > 0) {
+    const tr = ongoing[0];
+    return {
+      state: 'onsite',
+      label: '현장 파견',
+      site: tr.site,
+      projectId: tr.projectId,
+      projectName: tr.projectName,
+      departureDate: tr.departureDate,
+      returnDate: tr.returnDate,
+      daysLeft: daysBetween(new Date(tr.returnDate), today),
+      note: tr.note,
+      tripId: tr.id
+    };
+  }
+
+  const future = trips
+    .filter(t => { const d = new Date(t.departureDate); return !isNaN(d) && d > today; })
+    .sort((a, b) => new Date(a.departureDate) - new Date(b.departureDate));
+  if (future.length > 0) {
+    const tr = future[0];
+    return {
+      state: 'scheduled',
+      label: '출장 예정',
+      site: tr.site,
+      projectId: tr.projectId,
+      projectName: tr.projectName,
+      departureDate: tr.departureDate,
+      returnDate: tr.returnDate,
+      daysUntil: daysBetween(new Date(tr.departureDate), today),
+      note: tr.note,
+      tripId: tr.id
+    };
+  }
+
+  return null;
+};
