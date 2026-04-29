@@ -1,12 +1,12 @@
 import React, { useState, useMemo, memo } from 'react';
-import { Plus, Filter, AlignJustify, CalendarDays, Clock, User, HardDrive, Monitor, Cpu, Edit, ListTodo, Trash, Download, Link as LinkIcon, History, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Filter, AlignJustify, CalendarDays, Clock, User, HardDrive, Monitor, Cpu, Edit, ListTodo, Trash, Download, Link as LinkIcon, History, ChevronDown, ChevronUp, Plane, Users } from 'lucide-react';
 import { PROJECT_PHASES } from '../../constants';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
 import ProjectIssueBadge from '../common/ProjectIssueBadge';
 import { downloadICS, openGoogleCalendar } from '../../utils/calendar';
 import { exportToExcel, exportSectionedExcel } from '../../utils/export';
 
-const ProjectListView = memo(function ProjectListView({ projects, issues, getStatusColor, onAddClick, onManageTasks, onEditVersion, onChangeManager, onViewPhaseGantt, onEditProject, onDeleteProject, onUpdatePhase, onIssueClick, calcExp, calcAct, currentUser, t }) {
+const ProjectListView = memo(function ProjectListView({ projects, issues, engineers, getStatusColor, onAddClick, onManageTasks, onEditVersion, onChangeManager, onManageTeam, onViewPhaseGantt, onEditProject, onDeleteProject, onUpdatePhase, onEditPhases, onIssueClick, calcExp, calcAct, currentUser, t }) {
   const [viewMode, setViewMode] = useState('list');
   const [filterManager, setFilterManager] = useState('all');
   const [openIssueDropdownId, setOpenIssueDropdownId] = useState(null);
@@ -125,6 +125,49 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, getSta
         ]
       });
 
+      // 버전 이력
+      sections.push({
+        title: `버전 이력 (${(p.versions || []).length}건)`,
+        rows: (p.versions || []).slice().sort((a, b) => new Date(b.releaseDate || 0) - new Date(a.releaseDate || 0)).map(v => ({
+          category: v.category, version: v.version,
+          releaseDate: v.releaseDate || '-', author: v.author || '-', note: v.note || '-'
+        })),
+        columns: [
+          { header: '카테고리', key: 'category' }, { header: '버전', key: 'version' },
+          { header: '배포일', key: 'releaseDate' }, { header: '등록자', key: 'author' }, { header: '변경 내용', key: 'note' }
+        ]
+      });
+
+      // 출장 일정
+      sections.push({
+        title: `출장 일정 (${(p.trips || []).length}건)`,
+        rows: (p.trips || []).map(tr => ({
+          engineerName: tr.engineerName || '-',
+          departureDate: tr.departureDate || '-', returnDate: tr.returnDate || '-',
+          note: tr.note || '-', createdBy: tr.createdBy || '-', createdAt: tr.createdAt || '-'
+        })),
+        columns: [
+          { header: '엔지니어', key: 'engineerName' },
+          { header: '출발일', key: 'departureDate' }, { header: '복귀일', key: 'returnDate' },
+          { header: '메모', key: 'note' }, { header: '등록자', key: 'createdBy' }, { header: '등록일', key: 'createdAt' }
+        ]
+      });
+
+      // 추가 대응 작업 (검수 후)
+      sections.push({
+        title: `추가 대응 작업 (${(p.extraTasks || []).length}건)`,
+        rows: (p.extraTasks || []).map(et => ({
+          type: et.type, name: et.name, requester: et.requester || '-',
+          status: et.status, startDate: et.startDate || '-', endDate: et.endDate || '-',
+          note: et.note || '-', createdBy: et.createdBy || '-', createdAt: et.createdAt || '-'
+        })),
+        columns: [
+          { header: '유형', key: 'type' }, { header: '작업 내용', key: 'name' }, { header: '요청자', key: 'requester' },
+          { header: '상태', key: 'status' }, { header: '시작일', key: 'startDate' }, { header: '종료일', key: 'endDate' },
+          { header: '메모', key: 'note' }, { header: '등록자', key: 'createdBy' }, { header: '등록일', key: 'createdAt' }
+        ]
+      });
+
       // 체크리스트
       sections.push({
         title: `디지털 검수표 (${(p.checklist || []).length}건)`,
@@ -209,10 +252,10 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, getSta
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
         {viewMode === 'list' ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200">
+          <div className="overflow-x-auto rounded-xl">
+            <table className="divide-y divide-slate-200" style={{ minWidth: '1200px', width: '100%' }}>
               <thead className="bg-slate-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase min-w-[250px]">{t('프로젝트명 / 진행 단계', 'Project / Phase')}</th>
@@ -253,27 +296,114 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, getSta
                       )}
                     </div>
                     <div className="text-xs text-slate-500 flex items-center mt-1"><Clock size={12} className="mr-1" /> {prj.startDate} ~ {prj.dueDate}</div>
-                    <ProjectPipelineStepper currentPhase={prj.phaseIndex || 0} onUpdatePhase={onUpdatePhase} projectId={prj.id} role={currentUser.role} />
-                  </td>
-                  <td className="px-6 py-5 whitespace-nowrap"><div className="text-sm text-slate-900">{prj.customer}</div><div className="text-xs text-slate-500">{prj.site}</div></td>
-                  <td className="px-6 py-5 whitespace-nowrap">
-                    <div className="text-sm text-slate-700 flex items-center"><User size={14} className="mr-1.5 text-slate-400" />{prj.manager || t('미지정', 'Unassigned')}</div>
-                    {(currentUser.role === 'ADMIN' || currentUser.role === 'PM') && (
-                      <button onClick={() => onChangeManager(prj)} className="mt-1 flex items-center text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-500 hover:text-blue-600 px-2 py-1 rounded transition-all opacity-0 group-hover:opacity-100"><Edit size={10} className="mr-1" /> {t('담당자 변경', 'Change')}</button>
-                    )}
-                    {prj.managerHistory?.length > 0 && (
-                      <div className="mt-1 flex items-center text-[10px] text-slate-400"><History size={10} className="mr-1" />{t('변경', 'Changed')} {prj.managerHistory.length}{t('회', 'x')}</div>
-                    )}
+                    <ProjectPipelineStepper phases={prj.phases} currentPhase={prj.phaseIndex || 0} onUpdatePhase={onUpdatePhase} projectId={prj.id} role={currentUser.role} onEditPhases={onEditPhases} />
                   </td>
                   <td className="px-6 py-5 whitespace-nowrap">
-                    <div className="flex flex-col space-y-1.5 text-xs text-slate-700">
-                      <div className="flex items-center"><HardDrive size={14} className="mr-1.5 text-amber-500" /> <span className="font-medium">HW:</span> <span className="ml-1 bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">{prj.hwVersion || '-'}</span></div>
-                      <div className="flex items-center"><Monitor size={14} className="mr-1.5 text-blue-500" /> <span className="font-medium">SW:</span> <span className="ml-1 bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">{prj.swVersion || '-'}</span></div>
-                      <div className="flex items-center"><Cpu size={14} className="mr-1.5 text-emerald-500" /> <span className="font-medium">FW:</span> <span className="ml-1 bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">{prj.fwVersion || '-'}</span></div>
-                    </div>
-                    {currentUser.role !== 'CUSTOMER' && (
-                      <button onClick={() => onEditVersion(prj)} className="mt-2 flex items-center text-[10px] bg-slate-100 hover:bg-blue-50 text-slate-500 hover:text-blue-600 px-2 py-1 rounded transition-all opacity-0 group-hover:opacity-100"><Edit size={10} className="mr-1" /> {t('버전 변경', 'Edit Version')}</button>
-                    )}
+                    {(() => {
+                      const canEdit = currentUser.role === 'ADMIN' || currentUser.role === 'PM';
+                      const handleClick = () => { if (canEdit) onEditProject(prj); };
+                      return (
+                        <button
+                          type="button"
+                          onClick={handleClick}
+                          disabled={!canEdit}
+                          className={`text-left p-1.5 -m-1.5 rounded transition-colors ${canEdit ? 'cursor-pointer hover:bg-indigo-50' : 'cursor-default'}`}
+                          title={canEdit ? t('클릭하여 고객사/사이트/일정 수정', 'Click to edit') : ''}
+                        >
+                          <div className="text-sm text-slate-900 flex items-center">
+                            {prj.customer}
+                            {canEdit && <Edit size={10} className="ml-1.5 text-slate-300" />}
+                          </div>
+                          <div className="text-xs text-slate-500">{prj.site}</div>
+                        </button>
+                      );
+                    })()}
+                  </td>
+                  <td className="px-6 py-5 whitespace-nowrap">
+                    {(() => {
+                      const extras = (engineers || []).filter(e => Array.isArray(e.assignedProjectIds) && e.assignedProjectIds.includes(prj.id) && e.name !== prj.manager);
+                      const tripCount = (prj.trips || []).length;
+                      const canEdit = currentUser.role === 'ADMIN' || currentUser.role === 'PM';
+                      const handleClick = () => { if (canEdit && onManageTeam) onManageTeam(prj); };
+                      return (
+                        <button
+                          type="button"
+                          onClick={handleClick}
+                          disabled={!canEdit}
+                          className={`text-left w-full p-2 -m-2 rounded-lg transition-colors ${canEdit ? 'cursor-pointer hover:bg-blue-50' : 'cursor-default'}`}
+                          title={canEdit ? t('클릭하여 담당자/추가 인력/출장 일정 관리', 'Click to manage team & trips') : ''}
+                        >
+                          <div className="text-sm text-slate-700 flex items-center font-bold">
+                            <User size={14} className="mr-1.5 text-slate-400" />{prj.manager || t('미지정', 'Unassigned')}
+                            {canEdit && <Edit size={10} className="ml-1.5 text-slate-300" />}
+                          </div>
+                          {extras.length > 0 && (
+                            <div className="mt-1 flex items-center text-[10px] text-slate-500" title={extras.map(e => e.name).join(', ')}>
+                              <Users size={10} className="mr-1" />{t('추가 인력', 'Team')} {extras.length}{t('명', '')}
+                            </div>
+                          )}
+                          {tripCount > 0 && (
+                            <div className="mt-1 flex items-center text-[10px] text-purple-600 font-bold"><Plane size={10} className="mr-1" />{t('출장', 'Trips')} {tripCount}{t('건', '')}</div>
+                          )}
+                          {prj.managerHistory?.length > 0 && (
+                            <div className="mt-1 flex items-center text-[10px] text-slate-400"><History size={10} className="mr-1" />{t('변경', 'Changed')} {prj.managerHistory.length}{t('회', 'x')}</div>
+                          )}
+                        </button>
+                      );
+                    })()}
+                  </td>
+                  <td className="px-6 py-5 whitespace-nowrap">
+                    {(() => {
+                      const versions = prj.versions || [];
+                      // 카테고리별 최신
+                      const latest = {};
+                      versions.forEach(v => {
+                        if (!latest[v.category]) latest[v.category] = v;
+                        else {
+                          const a = new Date(latest[v.category].releaseDate || 0);
+                          const b = new Date(v.releaseDate || 0);
+                          if (b > a || (b.getTime() === a.getTime() && v.id > latest[v.category].id)) latest[v.category] = v;
+                        }
+                      });
+                      const cats = Object.keys(latest);
+                      const canEdit = currentUser.role !== 'CUSTOMER';
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => canEdit && onEditVersion(prj)}
+                          disabled={!canEdit}
+                          className={`text-left p-1.5 -m-1.5 rounded-lg transition-colors w-full ${canEdit ? 'cursor-pointer hover:bg-indigo-50' : 'cursor-default'}`}
+                          title={canEdit ? t('클릭하여 버전 관리', 'Click to manage versions') : ''}
+                        >
+                          {cats.length === 0 ? (
+                            <div className="text-xs text-slate-400 flex items-center">
+                              <HardDrive size={14} className="mr-1.5" />
+                              {t('버전 미등록', 'No versions')}
+                              {canEdit && <Edit size={10} className="ml-1.5 text-slate-300" />}
+                            </div>
+                          ) : (
+                            <div className="space-y-1 max-h-24 overflow-y-auto">
+                              {cats.map(cat => {
+                                const v = latest[cat];
+                                const Icon = cat === 'HW' ? HardDrive : cat === 'SW' ? Monitor : Cpu;
+                                const colorCls = cat === 'HW' ? 'text-amber-500'
+                                  : cat === 'SW' ? 'text-blue-500'
+                                  : cat.includes('충방전기') ? 'text-purple-500'
+                                  : cat.includes('인터페이스') ? 'text-pink-500'
+                                  : 'text-emerald-500';
+                                return (
+                                  <div key={cat} className="flex items-center text-xs">
+                                    <Icon size={13} className={`mr-1.5 shrink-0 ${colorCls}`} />
+                                    <span className="font-medium text-slate-700 mr-1">{cat}:</span>
+                                    <span className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 font-mono text-[11px] truncate">{v.version}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })()}
                   </td>
                   <td className="px-6 py-5 whitespace-nowrap min-w-[150px]">
                     <div className="flex flex-col space-y-1">
