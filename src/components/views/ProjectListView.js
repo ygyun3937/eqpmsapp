@@ -3,6 +3,7 @@ import { Plus, Filter, AlignJustify, CalendarDays, Clock, User, HardDrive, Monit
 import { PROJECT_PHASES } from '../../constants';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
 import ProjectIssueBadge from '../common/ProjectIssueBadge';
+import ProjectNotesBadge from '../common/ProjectNotesBadge';
 import { downloadICS, openGoogleCalendar } from '../../utils/calendar';
 import { exportToExcel, exportSectionedExcel } from '../../utils/export';
 
@@ -10,6 +11,7 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
   const [viewMode, setViewMode] = useState('list');
   const [filterManager, setFilterManager] = useState('all');
   const [openIssueDropdownId, setOpenIssueDropdownId] = useState(null);
+  const [openNotesDropdownId, setOpenNotesDropdownId] = useState(null);
   const [expandedGanttId, setExpandedGanttId] = useState(null);
 
   const managers = ['all', ...new Set(projects.map(p => p.manager).filter(Boolean))];
@@ -282,6 +284,7 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                     <td className="px-6 py-5 whitespace-nowrap">
                       <div className="flex items-center space-x-2">
                       <ProjectIssueBadge prjId={prj.id} projectIssues={projectIssues} openIssueDropdownId={openIssueDropdownId} setOpenIssueDropdownId={setOpenIssueDropdownId} onIssueClick={onIssueClick} getStatusColor={getStatusColor} t={t} />
+                      <ProjectNotesBadge prjId={prj.id} notes={prj.notes} openId={openNotesDropdownId} setOpenId={setOpenNotesDropdownId} onJump={() => onManageTasks && onManageTasks(prj.id)} t={t} />
                       {prj.notionLink && (
                         <a href={prj.notionLink} target="_blank" rel="noreferrer" className="text-[10px] px-2 py-0.5 bg-white border border-slate-200 rounded-full text-slate-700 hover:bg-slate-100 transition-colors flex items-center shadow-sm" title="Notion" onClick={e => e.stopPropagation()}>
                           <LinkIcon size={10} className="mr-1 text-slate-400" /> Notion
@@ -613,6 +616,7 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                           <div className="flex items-center space-x-1 mt-0.5">
                             <div className="text-[10px] text-indigo-600 bg-indigo-50 inline-block px-1.5 py-0.5 rounded font-bold">{PROJECT_PHASES[prj.phaseIndex || 0]} {t('단계', '')}</div>
                             <ProjectIssueBadge prjId={prj.id} projectIssues={projectIssues} openIssueDropdownId={openIssueDropdownId} setOpenIssueDropdownId={setOpenIssueDropdownId} onIssueClick={onIssueClick} getStatusColor={getStatusColor} isGanttView={true} t={t} />
+                            <ProjectNotesBadge prjId={prj.id} notes={prj.notes} openId={openNotesDropdownId} setOpenId={setOpenNotesDropdownId} onJump={() => onManageTasks && onManageTasks(prj.id)} isGanttView={true} t={t} />
                           </div>
                           <div className="text-xs text-slate-500 flex justify-between mt-1 pr-2">
                             <span>{prj.manager || t('미지정', 'Unassigned')}</span>

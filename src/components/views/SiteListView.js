@@ -1,16 +1,23 @@
 import React, { memo } from 'react';
-import { Plus, Edit, Trash, Cpu, Database, HardDrive, AlertTriangle, Info, Download } from 'lucide-react';
+import { Plus, Edit, Trash, Cpu, Info, Download, Cable } from 'lucide-react';
 import { exportToExcel } from '../../utils/export';
 
 const SiteListView = memo(function SiteListView({ sites, onAddClick, onEditClick, onDeleteClick, currentUser, t }) {
   const handleExport = () => {
+    const rows = sites.map(s => ({
+      ...s,
+      customSpecs: Array.isArray(s.customSpecs) && s.customSpecs.length > 0
+        ? s.customSpecs.map(c => `${c.label}: ${c.value}${c.note ? ` (${c.note})` : ''}`).join(' / ')
+        : '-'
+    }));
     exportToExcel('사이트_리스트', [{
       name: '사이트 리스트',
-      rows: sites,
+      rows,
       columns: [
         { header: 'ID', key: 'id' }, { header: '고객사', key: 'customer' }, { header: 'Fab', key: 'fab' },
-        { header: '라인', key: 'line' }, { header: 'Power', key: 'power' }, { header: 'PCW', key: 'pcw' },
-        { header: 'Gas/CDA', key: 'gas' }, { header: '반입 제한', key: 'limit' }, { header: '특이사항', key: 'note' }, { header: '등록일', key: 'date' }
+        { header: '라인', key: 'line' }, { header: 'Power', key: 'power' },
+        { header: '추가 스펙', key: 'customSpecs' },
+        { header: '특이사항', key: 'note' }, { header: '등록일', key: 'date' }
       ]
     }]);
   };
@@ -49,12 +56,32 @@ const SiteListView = memo(function SiteListView({ sites, onAddClick, onEditClick
                 </div>
               )}
             </div>
-            <div className="p-5 grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="bg-slate-50 p-3 rounded-lg border border-slate-100"><span className="text-xs font-bold text-slate-500 flex items-center mb-1"><Cpu size={14} className="mr-1 text-slate-400"/> Power</span><p className="text-sm font-bold text-slate-800">{site.power}</p></div>
-              <div className="bg-slate-50 p-3 rounded-lg border border-slate-100"><span className="text-xs font-bold text-slate-500 flex items-center mb-1"><Database size={14} className="mr-1 text-blue-400"/> PCW</span><p className="text-sm font-bold text-slate-800">{site.pcw}</p></div>
-              <div className="bg-slate-50 p-3 rounded-lg border border-slate-100"><span className="text-xs font-bold text-slate-500 flex items-center mb-1"><HardDrive size={14} className="mr-1 text-amber-400"/> Gas / CDA</span><p className="text-sm font-bold text-slate-800">{site.gas}</p></div>
-              <div className="bg-amber-50 p-3 rounded-lg border border-amber-100"><span className="text-xs font-bold text-amber-700 flex items-center mb-1"><AlertTriangle size={14} className="mr-1"/> {t('반입/하중 제한', 'Restrictions')}</span><p className="text-sm font-bold text-amber-900">{site.limit}</p></div>
+            <div className="p-5">
+              <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                <span className="text-xs font-bold text-slate-500 flex items-center mb-1"><Cpu size={14} className="mr-1 text-slate-400"/> Power</span>
+                <p className="text-sm font-bold text-slate-800">{site.power || '-'}</p>
+              </div>
             </div>
+            {Array.isArray(site.customSpecs) && site.customSpecs.length > 0 && (
+              <div className="px-5 pb-5">
+                <div className="bg-purple-50 p-3 rounded-lg border border-purple-100">
+                  <span className="text-xs font-bold text-purple-700 flex items-center mb-2">
+                    <Cable size={14} className="mr-1" />
+                    {t('추가 스펙', 'Additional Specs')}
+                    <span className="ml-2 text-[10px] bg-white border border-purple-200 text-purple-700 px-1.5 py-0.5 rounded-full font-bold">{site.customSpecs.length}{t('건', '')}</span>
+                  </span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {site.customSpecs.map(s => (
+                      <div key={s.id} className="bg-white border border-purple-200 rounded-lg p-2.5">
+                        <div className="text-[10px] font-bold text-purple-600 mb-0.5">{s.label}</div>
+                        <div className="text-sm font-bold text-slate-800 break-all">{s.value}</div>
+                        {s.note && <div className="text-[11px] text-slate-500 mt-0.5 italic">{s.note}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
             {site.note && (
               <div className="px-5 pb-5">
                 <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">

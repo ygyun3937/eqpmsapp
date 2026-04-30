@@ -1,5 +1,5 @@
-import React, { useMemo, memo } from 'react';
-import { Kanban, AlertCircle, CheckCircle, AlertTriangle, PieChart, BarChart3, Clock, Wrench, Download, CalendarDays, User, Building, TrendingUp, Users, Zap, MessageSquare, LifeBuoy, ExternalLink, MapPin, HardHat, ShieldAlert, Plane, UserCircle, XCircle, Calendar, Home } from 'lucide-react';
+import React, { useMemo, memo, useState } from 'react';
+import { Kanban, AlertCircle, CheckCircle, AlertTriangle, PieChart, BarChart3, Clock, Wrench, Download, CalendarDays, User, Building, TrendingUp, Users, Zap, MessageSquare, LifeBuoy, ExternalLink, MapPin, HardHat, ShieldAlert, Plane, UserCircle, XCircle, Calendar, Home, FileText, X, Search, Filter } from 'lucide-react';
 import { TODAY } from '../../constants';
 import { getCurrentTrip } from '../../utils/calc';
 import { PROJECT_PHASES } from '../../constants';
@@ -8,7 +8,12 @@ import SimpleDonutChart from '../common/SimpleDonutChart';
 import SimpleBarChart from '../common/SimpleBarChart';
 import { exportToExcel } from '../../utils/export';
 
-const DashboardView = memo(function DashboardView({ projects: rawProjects, issues: rawIssues, engineers, getStatusColor, calcExp, calcAct, onProjectClick, currentUser, t }) {
+const DashboardView = memo(function DashboardView({ projects: rawProjects, issues: rawIssues, engineers, getStatusColor, calcExp, calcAct, onProjectClick, onIssueClick, currentUser, t }) {
+  const [issuePopupOpen, setIssuePopupOpen] = useState(false);
+  const [noteSearch, setNoteSearch] = useState('');
+  const [noteFilterProject, setNoteFilterProject] = useState('all');
+  const [noteFilterAuthor, setNoteFilterAuthor] = useState('all');
+  const [noteShowAll, setNoteShowAll] = useState(false);
   const projects = useMemo(() => {
     if (currentUser && currentUser.role === 'CUSTOMER') {
       const allowed = Array.isArray(currentUser.assignedProjectIds) ? currentUser.assignedProjectIds : [];
@@ -241,9 +246,83 @@ const DashboardView = memo(function DashboardView({ projects: rawProjects, issue
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <StatCard title={t('진행중 프로젝트', 'Active Projects')} value={activeProjectsCount} icon={<Kanban size={24} className="text-blue-500" />} />
-        <StatCard title={t('미해결 이슈', 'Unresolved Issues')} value={unresolvedIssuesCount} icon={<AlertCircle size={24} className="text-amber-500" />} color="border-amber-200 bg-amber-50" />
+        <StatCard
+          title={t('미해결 이슈', 'Unresolved Issues')}
+          value={unresolvedIssuesCount}
+          icon={<AlertCircle size={24} className="text-amber-500" />}
+          color="border-amber-200 bg-amber-50"
+          onClick={unresolvedIssuesCount > 0 ? () => setIssuePopupOpen(true) : undefined}
+          hint={unresolvedIssuesCount > 0 ? t('클릭하여 상세 보기', 'Click to view details') : ''}
+        />
         <StatCard title={t('전체 프로젝트', 'Total Projects')} value={projects.length} icon={<CheckCircle size={24} className="text-emerald-500" />} />
       </div>
+
+      {/* 미해결 이슈 상세 팝업 */}
+      {issuePopupOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[200] p-4 animate-[fadeIn_0.2s_ease-in-out]"
+          onClick={() => setIssuePopupOpen(false)}
+        >
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-slate-200 flex justify-between items-center bg-amber-50 shrink-0">
+              <h3 className="text-base font-bold text-amber-800 flex items-center">
+                <AlertTriangle size={18} className="mr-2" />
+                {t('미해결 이슈 전체', 'All Unresolved Issues')}
+                <span className="ml-2 text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full border border-amber-200">{unresolvedIssuesCount}{t('건', '')}</span>
+              </h3>
+              <button onClick={() => setIssuePopupOpen(false)} className="text-amber-400 hover:text-amber-600 p-1"><X size={20} /></button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-4 bg-slate-50">
+              {(() => {
+                const list = issues.filter(i => i.status !== '조치 완료');
+                if (list.length === 0) return (
+                  <div className="text-center py-10 text-emerald-600 text-sm">
+                    <CheckCircle size={28} className="mx-auto mb-2 text-emerald-500" />
+                    {t('미해결 이슈가 없습니다.', 'No unresolved issues.')}
+                  </div>
+                );
+                // 심각도순 정렬
+                const order = { High: 0, Medium: 1, Low: 2 };
+                const sorted = [...list].sort((a, b) => (order[a.severity] ?? 9) - (order[b.severity] ?? 9) || new Date(b.date) - new Date(a.date));
+                return (
+                  <div className="space-y-2">
+                    {sorted.map(issue => {
+                      const sevColor = issue.severity === 'High' ? 'bg-red-100 text-red-700 border-red-200'
+                        : issue.severity === 'Medium' ? 'bg-amber-100 text-amber-700 border-amber-200'
+                        : 'bg-emerald-100 text-emerald-700 border-emerald-200';
+                      return (
+                        <button
+                          key={issue.id}
+                          onClick={() => { setIssuePopupOpen(false); onIssueClick && onIssueClick(issue); }}
+                          className="w-full text-left p-3 bg-white border border-slate-200 rounded-lg hover:border-blue-400 hover:shadow-md transition-all group"
+                        >
+                          <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                            <span className="text-[10px] font-bold text-slate-400">{issue.id}</span>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${sevColor}`}>{issue.severity}</span>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${getStatusColor(issue.status)}`}>{issue.status}</span>
+                            <span className="ml-auto text-[10px] text-slate-400">{issue.date}</span>
+                          </div>
+                          <div className="text-sm font-bold text-slate-800 group-hover:text-blue-600 mb-1">{issue.title}</div>
+                          <div className="flex items-center text-[11px] text-slate-500 gap-3">
+                            <span className="flex items-center"><Building size={10} className="mr-1" />{issue.projectName}</span>
+                            <span className="flex items-center"><User size={10} className="mr-1" />{issue.author}</span>
+                            {(issue.comments || []).length > 0 && (
+                              <span className="flex items-center"><MessageSquare size={10} className="mr-1" />{issue.comments.length}</span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+            <div className="px-5 py-3 border-t border-slate-100 flex justify-end bg-white shrink-0">
+              <button onClick={() => setIssuePopupOpen(false)} className="px-4 py-2 text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">{t('닫기', 'Close')}</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
         <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center"><PieChart size={18} className="mr-2 text-indigo-500"/> {t('고급 분석 (Analytics)', 'Advanced Analytics')}</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -844,6 +923,145 @@ const DashboardView = memo(function DashboardView({ projects: rawProjects, issue
                 )}
               </div>
             </div>
+
+            {/* 최근 공유 노트 — 전사 직원이 빠뜨리지 않도록 검색/필터 + 전체 내용 표시 */}
+            {(() => {
+              const allNotes = [];
+              projects.forEach(p => {
+                (p.notes || []).forEach(n => {
+                  allNotes.push({
+                    id: n.id, projectId: p.id, projectName: p.name,
+                    author: n.author, text: n.text, date: n.date,
+                    ts: Number(n.id) || 0
+                  });
+                });
+              });
+              allNotes.sort((a, b) => b.ts - a.ts);
+              const projectOptions = Array.from(new Set(allNotes.map(n => n.projectName))).sort();
+              const authorOptions = Array.from(new Set(allNotes.map(n => n.author).filter(Boolean))).sort();
+              const q = noteSearch.trim().toLowerCase();
+              const filtered = allNotes.filter(n => {
+                if (noteFilterProject !== 'all' && n.projectName !== noteFilterProject) return false;
+                if (noteFilterAuthor !== 'all' && n.author !== noteFilterAuthor) return false;
+                if (q) {
+                  const hay = `${n.text || ''} ${n.author || ''} ${n.projectName || ''}`.toLowerCase();
+                  if (!hay.includes(q)) return false;
+                }
+                return true;
+              });
+              const visible = noteShowAll ? filtered : filtered.slice(0, 12);
+              const hasFilter = noteSearch || noteFilterProject !== 'all' || noteFilterAuthor !== 'all';
+
+              return (
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                  <h3 className="text-base font-bold text-slate-800 mb-3 flex items-center">
+                    <FileText size={16} className="mr-2 text-amber-500" />
+                    {t('최근 공유 노트', 'Recent Shared Notes')}
+                    <span className="ml-2 text-xs text-slate-400">{t('카드 클릭 시 해당 프로젝트의 노트 탭으로 이동', 'Click a card to jump to the project Notes tab')}</span>
+                    <span className="ml-auto text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold border border-amber-200">
+                      {hasFilter ? `${filtered.length} / ${allNotes.length}` : allNotes.length}{t('건', '')}
+                    </span>
+                  </h3>
+
+                  {/* 필터 바 */}
+                  {allNotes.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 mb-4 pb-3 border-b border-slate-100">
+                      <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 flex-1 min-w-[200px]">
+                        <Search size={14} className="text-slate-400 mr-1.5 shrink-0" />
+                        <input
+                          type="text"
+                          value={noteSearch}
+                          onChange={(e) => setNoteSearch(e.target.value)}
+                          placeholder={t('내용/작성자/프로젝트 검색...', 'Search content / author / project...')}
+                          className="bg-transparent border-none outline-none text-xs w-full"
+                        />
+                        {noteSearch && (
+                          <button onClick={() => setNoteSearch('')} className="text-slate-400 hover:text-slate-600 ml-1"><X size={12} /></button>
+                        )}
+                      </div>
+                      <div className="flex items-center bg-white border border-slate-200 rounded-lg px-2 py-1">
+                        <Filter size={12} className="text-slate-400 mr-1.5" />
+                        <select
+                          value={noteFilterProject}
+                          onChange={(e) => setNoteFilterProject(e.target.value)}
+                          className="text-xs bg-transparent border-none outline-none cursor-pointer text-slate-700 font-medium"
+                        >
+                          <option value="all">{t('전체 프로젝트', 'All Projects')}</option>
+                          {projectOptions.map(p => (<option key={p} value={p}>{p}</option>))}
+                        </select>
+                      </div>
+                      <div className="flex items-center bg-white border border-slate-200 rounded-lg px-2 py-1">
+                        <User size={12} className="text-slate-400 mr-1.5" />
+                        <select
+                          value={noteFilterAuthor}
+                          onChange={(e) => setNoteFilterAuthor(e.target.value)}
+                          className="text-xs bg-transparent border-none outline-none cursor-pointer text-slate-700 font-medium"
+                        >
+                          <option value="all">{t('전체 작성자', 'All Authors')}</option>
+                          {authorOptions.map(a => (<option key={a} value={a}>{a}</option>))}
+                        </select>
+                      </div>
+                      {hasFilter && (
+                        <button
+                          onClick={() => { setNoteSearch(''); setNoteFilterProject('all'); setNoteFilterAuthor('all'); }}
+                          className="text-[11px] font-bold text-slate-500 hover:text-slate-700 px-2 py-1 rounded transition-colors"
+                        >
+                          {t('필터 초기화', 'Clear filters')}
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {allNotes.length === 0 ? (
+                    <div className="text-center py-8 text-slate-400 text-sm">
+                      <FileText size={28} className="mx-auto mb-2 text-slate-300" />
+                      {t('등록된 공유 노트가 없습니다.', 'No shared notes yet.')}
+                    </div>
+                  ) : filtered.length === 0 ? (
+                    <div className="text-center py-8 text-slate-400 text-sm">
+                      <Search size={28} className="mx-auto mb-2 text-slate-300" />
+                      {t('검색 조건에 맞는 공유 노트가 없습니다.', 'No notes match your filter.')}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {visible.map(n => (
+                        <button
+                          key={`${n.projectId}-${n.id}`}
+                          onClick={() => onProjectClick && onProjectClick(n.projectId, 'notes')}
+                          className="text-left p-4 bg-amber-50 border border-amber-100 rounded-lg hover:border-amber-400 hover:bg-amber-100/50 transition-colors group flex flex-col"
+                          title={t('클릭하여 공유 노트 탭으로 이동', 'Click to open Notes tab')}
+                        >
+                          <div className="flex items-center text-[11px] text-slate-500 mb-2 gap-2">
+                            <span className="flex items-center font-bold text-slate-700 truncate"><Building size={11} className="mr-1 shrink-0" />{n.projectName}</span>
+                            <span className="ml-auto shrink-0">{n.date}</span>
+                          </div>
+                          <p className="text-sm text-slate-800 whitespace-pre-wrap break-words mb-3 flex-1">{n.text}</p>
+                          <div className="flex items-center text-[11px] text-slate-500 pt-2 border-t border-amber-200/60">
+                            <User size={11} className="mr-1" /><span className="font-medium">{n.author}</span>
+                            <span className="ml-auto flex items-center text-amber-700 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+                              {t('노트 탭 열기', 'Open Notes')} <ExternalLink size={11} className="ml-1" />
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {filtered.length > 12 && (
+                    <div className="mt-3 pt-3 border-t border-slate-100 text-center">
+                      <button
+                        onClick={() => setNoteShowAll(v => !v)}
+                        className="text-xs font-bold text-amber-700 hover:text-amber-900 px-3 py-1.5 rounded-md hover:bg-amber-50 transition-colors"
+                      >
+                        {noteShowAll
+                          ? t('접기', 'Collapse')
+                          : t(`+${filtered.length - 12}건 더 보기`, `Show ${filtered.length - 12} more`)}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* 진행중 AS */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">

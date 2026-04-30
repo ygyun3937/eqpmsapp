@@ -1,12 +1,16 @@
 import React, { useState, memo } from 'react';
-import { X, ListTodo, CheckSquare, AlertTriangle, CheckCircle, User, Edit, Trash, PenTool, Info, ShieldCheck, FileText, ImageIcon, History, GitCommit as TimelineIcon, Package, Wrench, HardDrive, MessageSquare, Send, LifeBuoy, Plus, ShieldOff, Sparkles } from 'lucide-react';
+import { X, ListTodo, CheckSquare, AlertTriangle, CheckCircle, User, Edit, Trash, PenTool, Info, ShieldCheck, FileText, ImageIcon, History, GitCommit as TimelineIcon, Package, Wrench, HardDrive, MessageSquare, Send, LifeBuoy, Plus, ShieldOff, Sparkles, Paperclip, Upload, Download, ExternalLink, Loader, FolderOpen } from 'lucide-react';
 import { PROJECT_PHASES } from '../../constants';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
 import SignaturePad from '../common/SignaturePad';
 import { generatePDF } from '../../utils/export';
 
-const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusColor, onClose, onToggleTask, onAddTask, onEditTaskName, onDeleteTask, onUpdateDelayReason, onUpdateTaskDates, onUpdateChecklistItem, onLoadDefaultChecklist, onAddChecklistItem, onDeleteChecklistItem, onUpdatePhase, onEditPhases, onSignOff, onCancelSignOff, onAddExtraTask, onUpdateExtraTask, onDeleteExtraTask, onAddNote, onDeleteNote, onAddCustomerRequest, onUpdateCustomerRequestStatus, onAddCustomerResponse, onDeleteCustomerRequest, onAddAS, onUpdateAS, onDeleteAS, calcAct, currentUser, t }) {
-  const [activeModalTab, setActiveModalTab] = useState('tasks');
+const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusColor, onClose, onToggleTask, onAddTask, onEditTaskName, onDeleteTask, onUpdateDelayReason, onUpdateTaskDates, onUpdateChecklistItem, onLoadDefaultChecklist, onAddChecklistItem, onDeleteChecklistItem, onUpdatePhase, onEditPhases, onSignOff, onCancelSignOff, onAddExtraTask, onUpdateExtraTask, onDeleteExtraTask, onAddNote, onDeleteNote, onAddCustomerRequest, onUpdateCustomerRequestStatus, onAddCustomerResponse, onDeleteCustomerRequest, onAddAS, onUpdateAS, onDeleteAS, onUploadAttachment, onDeleteAttachment, driveConfigured, calcAct, currentUser, t, initialTab }) {
+  const [activeModalTab, setActiveModalTab] = useState(initialTab || 'tasks');
+  const [attachUploading, setAttachUploading] = useState(false);
+  const [attachDragOver, setAttachDragOver] = useState(false);
+  const [attachProgress, setAttachProgress] = useState(0);
+  const [attachError, setAttachError] = useState('');
   const [newTaskName, setNewTaskName] = useState('');
   const [newNoteText, setNewNoteText] = useState('');
   const [editingTaskId, setEditingTaskId] = useState(null);
@@ -45,13 +49,14 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
           </div>
           <button onClick={onClose} className="text-blue-400 hover:text-blue-600 p-2 shrink-0"><X size={20} /></button>
         </div>
-        <div className="grid grid-cols-4 md:grid-cols-8 border-b border-slate-200 bg-white shrink-0">
+        <div className="grid grid-cols-3 md:grid-cols-9 border-b border-slate-200 bg-white shrink-0">
           <button onClick={() => setActiveModalTab('tasks')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'tasks' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><ListTodo size={16} className="mb-0.5" /><span>{t('셋업 일정', 'Setup Tasks')}</span></button>
           <button onClick={() => setActiveModalTab('checklist')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'checklist' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><CheckSquare size={16} className="mb-0.5" /><span>{t('검수표', 'Checklist')} ({checklistCompleted}/{checklistCount})</span></button>
           <button onClick={() => setActiveModalTab('extras')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'extras' ? 'border-pink-600 text-pink-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><Sparkles size={16} className="mb-0.5" /><span>{t('추가 대응', 'Extras')} ({(project.extraTasks || []).length})</span></button>
           <button onClick={() => setActiveModalTab('issues')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'issues' ? 'border-red-600 text-red-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><AlertTriangle size={16} className="mb-0.5" /><span>{t('이슈', 'Issues')} ({projectIssues.length})</span></button>
           <button onClick={() => setActiveModalTab('history')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'history' ? 'border-slate-600 text-slate-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><History size={16} className="mb-0.5" /><span>{t('이력', 'History')} ({(project.activityLog || []).length})</span></button>
           <button onClick={() => setActiveModalTab('notes')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'notes' ? 'border-amber-600 text-amber-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><FileText size={16} className="mb-0.5" /><span>{t('노트', 'Notes')} ({(project.notes || []).length})</span></button>
+          <button onClick={() => setActiveModalTab('attachments')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'attachments' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><Paperclip size={16} className="mb-0.5" /><span>{t('참고 자료', 'Files')} ({(project.attachments || []).length})</span></button>
           <button onClick={() => setActiveModalTab('requests')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'requests' ? 'border-cyan-600 text-cyan-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><MessageSquare size={16} className="mb-0.5" /><span>{t('고객요청', 'Requests')} ({(project.customerRequests || []).length})</span></button>
           <button onClick={() => setActiveModalTab('as')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'as' ? 'border-purple-600 text-purple-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><LifeBuoy size={16} className="mb-0.5" /><span>{t('AS 관리', 'AS')} ({(project.asRecords || []).length})</span></button>
         </div>
@@ -368,6 +373,147 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
               )}
             </div>
           )}
+
+          {activeModalTab === 'attachments' && (() => {
+            const attachments = [...(project.attachments || [])].sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
+            const canEdit = currentUser.role !== 'CUSTOMER';
+            const fmtSize = (b) => {
+              if (!b && b !== 0) return '';
+              if (b < 1024) return b + ' B';
+              if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+              return (b / 1024 / 1024).toFixed(2) + ' MB';
+            };
+            const handleFiles = async (files) => {
+              if (!files || files.length === 0 || !onUploadAttachment) return;
+              setAttachError('');
+              setAttachUploading(true);
+              for (const f of files) {
+                try {
+                  await onUploadAttachment(project.id, f, ({ percent }) => setAttachProgress(percent || 0));
+                } catch (e) {
+                  setAttachError((e && e.message) || String(e));
+                }
+              }
+              setAttachUploading(false);
+              setAttachProgress(0);
+            };
+            return (
+              <div className="space-y-4">
+                <div className="bg-emerald-50 text-emerald-800 p-3 rounded-lg text-xs font-medium border border-emerald-200 flex items-start">
+                  <Info size={14} className="mr-1.5 shrink-0 mt-0.5" />
+                  <div>
+                    {t('회의록·PDF·도면 등 참고자료를 Google Drive에 업로드합니다. 파일은 ', 'Upload reference files (meeting notes, PDFs, drawings) to Google Drive. Stored under ')}
+                    <code className="bg-white px-1 rounded text-[11px]">[루트]/[고객사]/[프로젝트]</code>
+                    {t(' 폴더에 자동 저장됩니다.', '.')}
+                  </div>
+                </div>
+
+                {!driveConfigured ? (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-900 flex items-start">
+                    <AlertTriangle size={16} className="mr-2 shrink-0 mt-0.5 text-amber-600" />
+                    <div>
+                      <strong>{t('Drive 연동이 설정되지 않았습니다.', 'Drive not configured.')}</strong>
+                      <p className="mt-1 text-xs">{t('관리자가 [시스템 설정 → Google Drive 연동]에서 루트 폴더를 등록해야 업로드가 가능합니다.', 'Admin must set the root folder in [System Settings → Google Drive Integration].')}</p>
+                    </div>
+                  </div>
+                ) : canEdit ? (
+                  <label
+                    onDragOver={(e) => { e.preventDefault(); setAttachDragOver(true); }}
+                    onDragLeave={() => setAttachDragOver(false)}
+                    onDrop={async (e) => {
+                      e.preventDefault();
+                      setAttachDragOver(false);
+                      await handleFiles(Array.from(e.dataTransfer.files || []));
+                    }}
+                    className={`block border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer ${attachDragOver ? 'border-emerald-500 bg-emerald-50' : 'border-slate-300 bg-white hover:border-emerald-400 hover:bg-emerald-50/40'} ${attachUploading ? 'pointer-events-none opacity-70' : ''}`}
+                  >
+                    <input
+                      type="file"
+                      multiple
+                      className="hidden"
+                      disabled={attachUploading}
+                      onChange={async (e) => { await handleFiles(Array.from(e.target.files || [])); e.target.value = ''; }}
+                    />
+                    {attachUploading ? (
+                      <div className="flex flex-col items-center">
+                        <Loader size={28} className="text-emerald-500 animate-spin mb-2" />
+                        <div className="text-sm font-bold text-emerald-700">{t('업로드 중...', 'Uploading...')} {attachProgress}%</div>
+                        <div className="w-48 h-1.5 bg-slate-200 rounded-full mt-2 overflow-hidden">
+                          <div className="h-1.5 bg-emerald-500 transition-all" style={{ width: `${attachProgress}%` }}></div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center">
+                        <Upload size={28} className="text-emerald-500 mb-2" />
+                        <div className="text-sm font-bold text-slate-700">{t('파일을 드래그하거나 클릭하여 업로드', 'Drag files here or click to upload')}</div>
+                        <div className="text-[11px] text-slate-500 mt-1">{t('최대 18MB · PDF/이미지/문서 등 모든 형식 지원', 'Up to 18MB · all file types')}</div>
+                      </div>
+                    )}
+                  </label>
+                ) : null}
+
+                {attachError && (
+                  <div className="bg-red-50 border border-red-200 text-red-800 text-xs rounded-lg p-2.5 flex items-center">
+                    <AlertTriangle size={14} className="mr-1.5 shrink-0" />{attachError}
+                  </div>
+                )}
+
+                {attachments.length === 0 ? (
+                  <div className="text-center py-10 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl bg-white">
+                    {t('등록된 참고자료가 없습니다.', 'No attachments yet.')}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {attachments[0] && attachments[0].folderUrl && (
+                      <a
+                        href={attachments[0].folderUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center text-xs font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors mb-1"
+                      >
+                        <FolderOpen size={12} className="mr-1.5" /> {t('Drive 프로젝트 폴더 열기', 'Open Drive folder')} <ExternalLink size={11} className="ml-1.5" />
+                      </a>
+                    )}
+                    {attachments.map(a => (
+                      <div key={a.id} className="bg-white border border-slate-200 rounded-lg p-3 flex items-center gap-3 hover:border-emerald-300 transition-colors group">
+                        <div className="w-10 h-10 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0">
+                          <Paperclip size={16} className="text-emerald-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-bold text-slate-800 truncate" title={a.fileName}>{a.fileName}</div>
+                          <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5 flex-wrap">
+                            <span className="font-mono">{fmtSize(a.size)}</span>
+                            <span>·</span>
+                            <span className="flex items-center"><User size={10} className="mr-0.5" />{a.uploadedBy}</span>
+                            <span>·</span>
+                            <span>{a.uploadedAt}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {a.viewUrl && (
+                            <a href={a.viewUrl} target="_blank" rel="noreferrer" className="p-1.5 rounded-md text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 border border-transparent hover:border-emerald-200 transition-colors" title={t('Drive에서 열기', 'Open in Drive')}>
+                              <ExternalLink size={14} />
+                            </a>
+                          )}
+                          {a.downloadUrl && (
+                            <a href={a.downloadUrl} target="_blank" rel="noreferrer" className="p-1.5 rounded-md text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-200 transition-colors" title={t('다운로드', 'Download')}>
+                              <Download size={14} />
+                            </a>
+                          )}
+                          {canEdit && onDeleteAttachment && (
+                            <button onClick={() => { if (window.confirm(t('이 참고자료를 삭제할까요? Drive 휴지통으로 이동합니다.', 'Delete this attachment? File will be moved to Drive trash.'))) onDeleteAttachment(project.id, a.id); }} className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors" title={t('삭제', 'Delete')}>
+                              <Trash size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {activeModalTab === 'requests' && (
             <div className="space-y-4">
               <div className="bg-cyan-50 text-cyan-800 p-3 rounded-lg text-xs font-medium border border-cyan-200 flex items-center">

@@ -7,16 +7,20 @@
  * 3. 기존 코드를 지우고 이 코드를 붙여넣습니다.
  * 4. 상단 [배포] > [새 배포] > 유형: '웹 앱', 액세스 권한: '모든 사용자'로 설정하여 배포합니다.
  * 5. 생성된 '웹 앱 URL'을 복사하여 React 코드의 GAS_URL 변수에 붙여넣습니다.
- * 6. 첫 배포 시 MailApp 권한 승인 프롬프트가 뜨면 [허용] 클릭.
+ * 6. 첫 배포 시 MailApp + Drive 권한 승인 프롬프트가 뜨면 [허용] 클릭.
  *
  * [데이터 저장 방식]
  * - 시트별로 컬럼 분리 저장 (1행: 헤더 = 객체 키, 2행~: 행별 1건)
  * - 객체/배열 값(tasks, comments, assignedProjectIds 등)은 셀에 JSON 문자열로 직렬화 저장,
  *   읽을 때 다시 객체로 복원.
+ * - Settings 시트: 단일 행(시스템 설정 객체) 저장
  *
  * [지원 액션 (POST body { action, data })]
  *   UPDATE_PROJECTS, UPDATE_ISSUES, UPDATE_RELEASES,
- *   UPDATE_ENGINEERS, UPDATE_PARTS, UPDATE_SITES, UPDATE_USERS
+ *   UPDATE_ENGINEERS, UPDATE_PARTS, UPDATE_SITES, UPDATE_USERS, UPDATE_SETTINGS
+ *   UPLOAD_FILE       — Drive에 파일 업로드 (data: { projectId, customer, projectName, fileName, mimeType, base64 })
+ *   DELETE_FILE       — Drive 파일 휴지통 이동 (data: { fileId })
+ *   VERIFY_DRIVE_FOLDER — 폴더 ID 접근 검증 (data: { folderId })
  *
  * [알림 (POST body 가 'EQ-PMS 알림' 텍스트 포함)]
  *   handleWebhook 으로 전달 → MailApp.sendEmail 발송
@@ -29,6 +33,9 @@ var DEFAULT_NOTIFY_EMAIL = "yyg2025@mak.co.kr";
 
 // 1. 웹 앱에서 데이터를 요청(GET)할 때 실행 - DB 읽기
 function doGet(e) {
+  var settingsArr = readFromSheet("Settings");
+  var settings = (settingsArr && settingsArr.length > 0) ? settingsArr[0] : {};
+
   var data = {
     projects: readFromSheet("Projects") || [],
     issues: readFromSheet("Issues") || [],
@@ -36,7 +43,8 @@ function doGet(e) {
     engineers: readFromSheet("Engineers") || [],
     parts: readFromSheet("Parts") || [],
     sites: readFromSheet("Sites") || [],
-    users: readFromSheet("Users") || []
+    users: readFromSheet("Users") || [],
+    settings: settings
   };
 
   return ContentService.createTextOutput(JSON.stringify(data))
@@ -73,6 +81,21 @@ function doPost(e) {
       writeToSheet("Sites", data);
     } else if (action === 'UPDATE_USERS') {
       writeToSheet("Users", data);
+    } else if (action === 'UPDATE_SETTINGS') {
+      // Settings는 단일 객체 → 1행짜리 배열로 감싸 저장
+      writeToSheet("Settings", [data || {}]);
+    } else if (action === 'UPLOAD_FILE') {
+      var uploaded = uploadFileToDrive(data);
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", file: uploaded }))
+        .setMimeType(ContentService.MimeType.JSON);
+    } else if (action === 'DELETE_FILE') {
+      var ok = deleteFileFromDrive(data);
+      return ContentService.createTextOutput(JSON.stringify({ status: ok ? "success" : "error" }))
+        .setMimeType(ContentService.MimeType.JSON);
+    } else if (action === 'VERIFY_DRIVE_FOLDER') {
+      var verify = verifyDriveFolder(data);
+      return ContentService.createTextOutput(JSON.stringify(verify))
+        .setMimeType(ContentService.MimeType.JSON);
     }
 
     return ContentService.createTextOutput(JSON.stringify({ status: "success" }))
@@ -142,6 +165,105 @@ function writeToSheet(sheetName, dataArray) {
 
   // 시트에 일괄 기록
   sheet.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
+}
+
+// ==============================================
+// Google Drive 업로드/삭제/검증 (참고자료 첨부 기능)
+// ==============================================
+
+// 폴더 URL/ID에서 ID만 추출 (관리자가 URL 전체를 붙여넣어도 동작)
+function extractFolderId(input) {
+  if (!input) return '';
+  input = String(input).trim();
+  // /folders/<ID> 패턴
+  var m1 = input.match(/folders\/([a-zA-Z0-9_-]+)/);
+  if (m1) return m1[1];
+  // ?id=<ID> 패턴
+  var m2 = input.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m2) return m2[1];
+  // 그 자체가 ID
+  return input;
+}
+
+function getOrCreateSubFolder(parent, name) {
+  var safe = String(name || '').replace(/[\/\\:*?"<>|]/g, '_').trim() || '미분류';
+  var iter = parent.getFoldersByName(safe);
+  if (iter.hasNext()) return iter.next();
+  return parent.createFolder(safe);
+}
+
+// Settings 시트에서 driveRootFolderId 읽기
+function getRootFolderIdFromSettings() {
+  var arr = readFromSheet("Settings");
+  if (!arr || arr.length === 0) return '';
+  return extractFolderId(arr[0].driveRootFolderId || '');
+}
+
+// 폴더 접근 검증 (관리자 설정 페이지에서 "연결 테스트")
+function verifyDriveFolder(payload) {
+  try {
+    var id = extractFolderId(payload && payload.folderId);
+    if (!id) return { ok: false, message: '폴더 ID/URL이 비어 있습니다.' };
+    var folder = DriveApp.getFolderById(id);
+    return {
+      ok: true,
+      folderId: id,
+      folderName: folder.getName(),
+      folderUrl: folder.getUrl()
+    };
+  } catch (e) {
+    return { ok: false, message: '폴더 접근 실패: ' + e.toString() };
+  }
+}
+
+// 파일 업로드 (base64) — 프로젝트별 하위 폴더 자동 생성
+function uploadFileToDrive(payload) {
+  var rootId = getRootFolderIdFromSettings();
+  if (!rootId) throw new Error('Drive 루트 폴더가 설정되지 않았습니다. 시스템 설정에서 폴더 ID를 등록하세요.');
+  var root = DriveApp.getFolderById(rootId);
+
+  var customer = payload.customer || '미분류고객사';
+  var projectName = payload.projectName || '미분류프로젝트';
+  var projectId = payload.projectId || '';
+  var fileName = payload.fileName || ('upload-' + new Date().getTime());
+  var mimeType = payload.mimeType || MimeType.PLAIN_TEXT;
+  var base64 = payload.base64 || '';
+
+  // 폴더 구조: [루트] / [고객사] / [프로젝트명-PRJxxxxxx]
+  var customerFolder = getOrCreateSubFolder(root, customer);
+  var projectFolderName = projectName + (projectId ? ('-' + projectId) : '');
+  var projectFolder = getOrCreateSubFolder(customerFolder, projectFolderName);
+
+  var bytes = Utilities.base64Decode(base64);
+  var blob = Utilities.newBlob(bytes, mimeType, fileName);
+  var file = projectFolder.createFile(blob);
+
+  // 링크로 누구나 보기 (조직 정책에 따라 조정하세요)
+  // 외부 공유를 막으려면 아래 줄을 주석 처리하고 명시적 권한 부여 사용
+  // file.setSharing(DriveApp.Access.DOMAIN_WITH_LINK, DriveApp.Permission.VIEW);
+
+  return {
+    fileId: file.getId(),
+    fileName: file.getName(),
+    mimeType: file.getMimeType(),
+    size: file.getSize(),
+    viewUrl: file.getUrl(),
+    downloadUrl: 'https://drive.google.com/uc?export=download&id=' + file.getId(),
+    folderUrl: projectFolder.getUrl()
+  };
+}
+
+// 파일 삭제 (휴지통 이동)
+function deleteFileFromDrive(payload) {
+  try {
+    var id = (payload && payload.fileId) || '';
+    if (!id) return false;
+    var file = DriveApp.getFileById(id);
+    file.setTrashed(true);
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 // ==============================================

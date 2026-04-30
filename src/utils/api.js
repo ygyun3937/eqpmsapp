@@ -53,6 +53,33 @@ export const saveToGoogleDB = async (action, data, retries = 3) => {
   console.error('구글 DB 저장 최종 실패');
 };
 
+// 응답을 받아야 하는 액션용 (UPLOAD_FILE, VERIFY_DRIVE_FOLDER 등)
+export const callGoogleAction = async (action, data) => {
+  if (!GAS_URL) return { status: 'error', message: 'GAS_URL이 설정되지 않았습니다.' };
+  try {
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action, data })
+    });
+    return await res.json();
+  } catch (error) {
+    return { status: 'error', message: error.message };
+  }
+};
+
+// 파일을 base64로 변환 (Drive 업로드 전 준비)
+export const fileToBase64 = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => {
+    // data:<mime>;base64,<data> → <data>만 추출
+    const result = reader.result || '';
+    const idx = String(result).indexOf(',');
+    resolve(idx >= 0 ? String(result).slice(idx + 1) : String(result));
+  };
+  reader.onerror = reject;
+  reader.readAsDataURL(file);
+});
+
 export const notifyWebhook = async (message, type = 'INFO', meta = null) => {
   if (!WEBHOOK_URL) return;
   try {

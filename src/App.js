@@ -1,9 +1,10 @@
-import React, { useState, useCallback, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, lazy, Suspense } from 'react';
 import {
   LayoutDashboard, Kanban, AlertTriangle, Wrench, Database, Users,
   GitCommit, Search, Globe, Smartphone, Monitor, LogOut,
   Building, Camera, CheckSquare, Package, LayoutDashboard as Home,
-  KeyRound, UserCog, LifeBuoy, HelpCircle, ChevronsLeft, ChevronsRight
+  KeyRound, UserCog, LifeBuoy, HelpCircle, ChevronsLeft, ChevronsRight,
+  Settings as SettingsIcon
 } from 'lucide-react';
 
 // Constants & Initial Data
@@ -16,11 +17,12 @@ import {
 // Utils
 import { getStatusColor } from './utils/status';
 import { calcExp, calcAct } from './utils/calc';
-import { loadFromGoogleDB, saveToGoogleDB, notifyWebhook } from './utils/api';
+import { loadFromGoogleDB, saveToGoogleDB, notifyWebhook, callGoogleAction, fileToBase64 } from './utils/api';
 import { hashPassword } from './utils/auth';
 
 // Common Components
 import NavItem from './components/common/NavItem';
+import NotificationBell from './components/common/NotificationBell';
 
 // Lazy-loaded Views
 const DashboardView = lazy(() => import('./components/views/DashboardView'));
@@ -32,6 +34,7 @@ const ResourceListView = lazy(() => import('./components/views/ResourceListView'
 const VersionHistoryView = lazy(() => import('./components/views/VersionHistoryView'));
 const ASManagementView = lazy(() => import('./components/views/ASManagementView'));
 const UserManagementView = lazy(() => import('./components/views/UserManagementView'));
+const SystemSettingsView = lazy(() => import('./components/views/SystemSettingsView'));
 const LoginScreen = lazy(() => import('./components/views/LoginScreen'));
 
 // Lazy-loaded Modals
@@ -120,6 +123,7 @@ export default function App() {
   const [teamEditProjectId, setTeamEditProjectId] = useState(null);
   const [isPhaseEditOpen, setIsPhaseEditOpen] = useState(false);
   const [phaseEditProjectId, setPhaseEditProjectId] = useState(null);
+  const [taskModalInitialTab, setTaskModalInitialTab] = useState(null);
 
   // Delete confirm states
   const [engineerToDelete, setEngineerToDelete] = useState(null);
@@ -140,6 +144,7 @@ export default function App() {
   const [parts, setParts] = useState([]);
   const [sites, setSites] = useState([]);
   const [users, setUsers] = useState([]);
+  const [settings, setSettings] = useState({ driveRootFolderId: '' });
 
   // User management modal states
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
@@ -148,6 +153,103 @@ export default function App() {
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [forcePasswordChange, setForcePasswordChange] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+
+  // 알림 마지막 본 시각 (사용자별 localStorage)
+  const notifKey = currentUser ? `eq_pms_notif_lastSeen_${currentUser.id}` : null;
+  const [notifLastSeen, setNotifLastSeen] = useState(0);
+  useEffect(() => {
+    if (!notifKey) return;
+    try {
+      const v = Number(localStorage.getItem(notifKey)) || 0;
+      setNotifLastSeen(v);
+    } catch (_) { setNotifLastSeen(0); }
+  }, [notifKey]);
+  const handleMarkAllRead = () => {
+    const now = Date.now();
+    setNotifLastSeen(now);
+    try { if (notifKey) localStorage.setItem(notifKey, String(now)); } catch (_) {}
+  };
+
+  // 알림 피드: 프로젝트별 nested 항목들 + 이슈를 통합하여 시간 역순 정렬
+  const notifications = useMemo(() => {
+    if (!currentUser) return [];
+    const isCustomer = currentUser.role === 'CUSTOMER';
+    const allowedIds = Array.isArray(currentUser.assignedProjectIds) ? currentUser.assignedProjectIds : [];
+    const isProjectVisible = (pid) => !isCustomer || allowedIds.includes(pid);
+    const items = [];
+    (projects || []).forEach(p => {
+      if (!isProjectVisible(p.id)) return;
+      (p.notes || []).forEach(n => items.push({
+        id: `note-${p.id}-${n.id}`,
+        ts: Number(n.id) || 0,
+        type: 'NOTE', projectId: p.id, projectName: p.name,
+        author: n.author, title: '공유 노트',
+        detail: n.text || '', date: n.date || ''
+      }));
+      (p.customerRequests || []).forEach(r => items.push({
+        id: `req-${p.id}-${r.id}`,
+        ts: Number(r.id) || 0,
+        type: 'REQUEST', projectId: p.id, projectName: p.name,
+        author: r.requester, title: `고객 요청 (${r.urgency || '-'})`,
+        detail: r.content || '', date: r.date || '',
+        requestId: r.id
+      }));
+      (p.asRecords || []).forEach(a => items.push({
+        id: `as-${p.id}-${a.id}`,
+        ts: Number(a.id) || 0,
+        type: 'AS', projectId: p.id, projectName: p.name,
+        author: a.engineer, title: `AS (${a.type || '-'})`,
+        detail: a.description || '', date: a.date || '',
+        asId: a.id
+      }));
+      (p.versions || []).forEach(v => items.push({
+        id: `ver-${p.id}-${v.id}`,
+        ts: Number(v.id) || 0,
+        type: 'VERSION', projectId: p.id, projectName: p.name,
+        author: v.author, title: `[${v.category || ''}] ${v.version || ''}`,
+        detail: v.note || '', date: v.releaseDate || ''
+      }));
+      (p.trips || []).forEach(tr => items.push({
+        id: `trip-${p.id}-${tr.id}`,
+        ts: Number(tr.id) || 0,
+        type: 'TRIP', projectId: p.id, projectName: p.name,
+        author: tr.createdBy, title: `출장: ${tr.engineerName || ''}`,
+        detail: `${tr.departureDate || ''} ~ ${tr.returnDate || ''}${tr.note ? ` · ${tr.note}` : ''}`,
+        date: tr.createdAt || ''
+      }));
+      (p.extraTasks || []).forEach(et => items.push({
+        id: `ext-${p.id}-${et.id}`,
+        ts: Number(et.id) || 0,
+        type: 'EXTRA', projectId: p.id, projectName: p.name,
+        author: et.createdBy || et.requester, title: `추가 작업 (${et.type || '-'})`,
+        detail: et.name || '', date: et.createdAt || ''
+      }));
+      (p.attachments || []).forEach(a => items.push({
+        id: `att-${p.id}-${a.id}`,
+        ts: Number(a.id) || 0,
+        type: 'ATTACHMENT', projectId: p.id, projectName: p.name,
+        author: a.uploadedBy, title: `참고자료: ${a.fileName || ''}`,
+        detail: a.uploadedAt || '', date: a.uploadedAt || ''
+      }));
+    });
+    // 이슈
+    const visibleIssues = isCustomer
+      ? (issues || []).filter(i => allowedIds.includes(i.projectId))
+      : (issues || []);
+    visibleIssues.forEach(i => {
+      const ts = i.date ? new Date(i.date).getTime() : 0;
+      items.push({
+        id: `iss-${i.id}`,
+        ts: isNaN(ts) ? 0 : ts,
+        type: 'ISSUE', projectId: i.projectId, projectName: i.projectName,
+        author: i.author, title: `이슈 (${i.severity || '-'})`,
+        detail: i.title || '', date: i.date || '',
+        issue: i
+      });
+    });
+    items.sort((a, b) => b.ts - a.ts);
+    return items.slice(0, 50);
+  }, [projects, issues, currentUser]);
 
   // 앱 시작 시 Google Sheets에서 데이터 불러오기
   useEffect(() => {
@@ -163,7 +265,7 @@ export default function App() {
           }
           return [];
         };
-        const PROJECT_ARRAYS = ['tasks', 'checklist', 'activityLog', 'managerHistory', 'trips', 'extraTasks', 'asRecords', 'customerRequests', 'notes', 'versions', 'phases'];
+        const PROJECT_ARRAYS = ['tasks', 'checklist', 'activityLog', 'managerHistory', 'trips', 'extraTasks', 'asRecords', 'customerRequests', 'notes', 'versions', 'phases', 'attachments'];
         const sanitizeProject = (p) => {
           const next = { ...p };
           PROJECT_ARRAYS.forEach(f => { next[f] = ensureArr(next[f]); });
@@ -226,7 +328,16 @@ export default function App() {
         });
         setEngineers(migratedEngineers);
         setParts(data.parts || []);
-        setSites(data.sites || []);
+        // 사이트 customSpecs 배열 정규화 (GAS에서 빈셀/문자열로 와도 안전)
+        const normalizedSites = (data.sites || []).map(s => ({
+          ...s,
+          customSpecs: ensureArr(s.customSpecs)
+        }));
+        setSites(normalizedSites);
+        // 시스템 설정 로드 (Settings 시트가 비어있으면 기본값)
+        if (data.settings && typeof data.settings === 'object' && !Array.isArray(data.settings)) {
+          setSettings({ driveRootFolderId: '', ...data.settings });
+        }
         const loadedUsers = Array.isArray(data.users) ? data.users : [];
         if (loadedUsers.length === 0) {
           // 시드: TEST_MODE면 4개 권한별 계정, 아니면 관리자 1명
@@ -273,10 +384,35 @@ export default function App() {
   // Helpers
   const handleLogout = () => { setCurrentUser(null); setActiveTab('dashboard'); };
   // 프로젝트 클릭 → 프로젝트 관리 탭으로 이동 + 상세 모달 오픈
-  const openProjectDetail = (projectId) => {
+  // tab 인자를 주면 해당 모달 탭으로 직접 진입 (예: 'notes', 'as', 'requests')
+  const openProjectDetail = (projectId, tab = null) => {
     setSelectedProjectId(projectId);
     setActiveTab('projects');
+    setTaskModalInitialTab(tab);
     setIsTaskModalOpen(true);
+  };
+
+  // 알림 클릭 시 점프 — 이슈는 IssueDetailModal, 그 외는 프로젝트 상세 모달의 적절한 탭
+  const NOTIF_TAB_MAP = {
+    NOTE: 'notes',
+    ATTACHMENT: 'attachments',
+    REQUEST: 'requests',
+    AS: 'as',
+    EXTRA: 'extras',
+    VERSION: null,
+    TRIP: null
+  };
+  const handleNotificationJump = (n) => {
+    if (!n) return;
+    if (n.type === 'ISSUE' && n.issue) {
+      setSelectedIssue(n.issue);
+      setIsIssueDetailModalOpen(true);
+      return;
+    }
+    if (n.projectId) {
+      const tab = NOTIF_TAB_MAP[n.type] || null;
+      openProjectDetail(n.projectId, tab);
+    }
   };
   const generateUniqueId = (prefix) => `${prefix}-${Date.now().toString().slice(-6)}`;
   const showToast = (msg) => { setToastMessage(msg); setTimeout(() => setToastMessage(''), 3000); };
@@ -293,6 +429,10 @@ export default function App() {
   const syncParts = (updated) => { setParts(updated); saveToGoogleDB('UPDATE_PARTS', updated); };
   const syncSites = (updated) => { setSites(updated); saveToGoogleDB('UPDATE_SITES', updated); };
   const syncUsers = (updated) => { setUsers(updated); saveToGoogleDB('UPDATE_USERS', updated); };
+  const syncSettings = async (updated) => {
+    setSettings(updated);
+    await saveToGoogleDB('UPDATE_SETTINGS', updated);
+  };
 
   // === 사용자 관리 핸들러 ===
   const handleSubmitUser = (payload, isEdit) => {
@@ -356,7 +496,7 @@ export default function App() {
       tasks, checklist,
       signOff: null,
       activityLog: [], managerHistory: [],
-      trips: [], extraTasks: [], asRecords: [], customerRequests: [], notes: []
+      trips: [], extraTasks: [], asRecords: [], customerRequests: [], notes: [], attachments: []
     }, 'PROJECT_CREATE', `프로젝트 생성: ${newProject.name}`);
     syncProjects([newData, ...projects]);
     setIsProjectModalOpen(false);
@@ -802,6 +942,65 @@ export default function App() {
     }));
   };
 
+  // === 참고자료(첨부) — Google Drive 업로드 ===
+  // GAS 6MB 요청 한도 → 단일 파일 18MB 정도까지가 안전 (base64로 33% 부풀어짐)
+  const ATTACHMENT_MAX_BYTES = 18 * 1024 * 1024;
+  const handleUploadAttachment = async (projectId, file, onProgress) => {
+    if (!settings.driveRootFolderId) {
+      showToast(t('Drive 루트 폴더가 설정되지 않았습니다. 시스템 설정에서 등록하세요.', 'Drive root folder not configured. Please set it in System Settings.'));
+      return null;
+    }
+    if (file.size > ATTACHMENT_MAX_BYTES) {
+      showToast(t(`파일이 너무 큽니다 (최대 ${Math.floor(ATTACHMENT_MAX_BYTES/1024/1024)}MB). 큰 파일은 Drive에 직접 업로드 후 링크를 사용하세요.`, `File too large (max ${Math.floor(ATTACHMENT_MAX_BYTES/1024/1024)}MB).`));
+      return null;
+    }
+    const project = projects.find(p => p.id === projectId);
+    if (!project) return null;
+    if (onProgress) onProgress({ stage: 'encoding', percent: 10 });
+    const base64 = await fileToBase64(file);
+    if (onProgress) onProgress({ stage: 'uploading', percent: 50 });
+    const result = await callGoogleAction('UPLOAD_FILE', {
+      projectId, customer: project.customer, projectName: project.name,
+      fileName: file.name, mimeType: file.type || 'application/octet-stream',
+      base64
+    });
+    if (!result || result.status !== 'success' || !result.file) {
+      showToast(t('업로드 실패: ', 'Upload failed: ') + (result?.message || ''));
+      if (onProgress) onProgress({ stage: 'error', percent: 0 });
+      return null;
+    }
+    const f = result.file;
+    const attachment = {
+      id: Date.now(),
+      fileId: f.fileId,
+      fileName: f.fileName,
+      mimeType: f.mimeType,
+      size: f.size,
+      viewUrl: f.viewUrl,
+      downloadUrl: f.downloadUrl,
+      folderUrl: f.folderUrl,
+      uploadedBy: currentUser.name,
+      uploadedAt: new Date().toLocaleString()
+    };
+    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, attachments: [...(p.attachments || []), attachment] }, 'ATTACH_ADD', `참고자료 업로드: ${attachment.fileName}`)));
+    if (onProgress) onProgress({ stage: 'done', percent: 100 });
+    showToast(t('업로드 완료', 'Upload complete'));
+    return attachment;
+  };
+
+  const handleDeleteAttachment = async (projectId, attachmentId) => {
+    const project = projects.find(p => p.id === projectId);
+    if (!project) return;
+    const target = (project.attachments || []).find(a => a.id === attachmentId);
+    if (!target) return;
+    // Drive 휴지통으로 이동 (실패해도 메타데이터는 삭제)
+    if (target.fileId) {
+      await callGoogleAction('DELETE_FILE', { fileId: target.fileId });
+    }
+    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, attachments: (p.attachments || []).filter(a => a.id !== attachmentId) }, 'ATTACH_DELETE', `참고자료 삭제: ${target.fileName}`)));
+    showToast(t('참고자료가 삭제되었습니다.', 'Attachment deleted.'));
+  };
+
   const handleAddNote = (projectId, text) => {
     const note = { id: Date.now(), author: currentUser.name, text, date: new Date().toLocaleString() };
     syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, notes: [...(p.notes || []), note] }, 'NOTE_ADD', `공유 노트: ${text.substring(0, 30)}${text.length > 30 ? '...' : ''}`)));
@@ -853,7 +1052,11 @@ export default function App() {
     onAddAS: handleAddAS,
     onUpdateAS: handleUpdateAS,
     onDeleteAS: handleDeleteAS,
-    calcAct, currentUser, t
+    onUploadAttachment: handleUploadAttachment,
+    onDeleteAttachment: handleDeleteAttachment,
+    driveConfigured: !!settings.driveRootFolderId,
+    calcAct, currentUser, t,
+    initialTab: taskModalInitialTab
   };
 
   // === MOBILE MODE ===
@@ -864,6 +1067,7 @@ export default function App() {
         <div className="bg-slate-900 text-white p-4 shadow-md flex justify-between items-center sticky top-0 z-20 shrink-0">
           <div className="flex items-center space-x-2"><div className="w-8 h-8 bg-blue-500 rounded flex items-center justify-center font-bold text-lg">E</div><div><h1 className="font-bold text-sm leading-tight">EQ-PMS</h1><p className="text-[10px] text-blue-300">{t('모바일 모드', 'Mobile Mode')}</p></div></div>
           <div className="flex items-center gap-1.5">
+            <NotificationBell notifications={notifications} lastSeen={notifLastSeen} onMarkAllRead={handleMarkAllRead} onJump={handleNotificationJump} t={t} />
             <button onClick={() => setIsHelpOpen(true)} className="text-xs bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 rounded-full border border-indigo-700 transition-colors shadow-sm flex items-center" title="도움말"><HelpCircle size={14} /></button>
             <button onClick={() => setIsMobileMode(false)} className="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-full border border-slate-600 transition-colors shadow-sm flex items-center"><Monitor size={14} className="mr-1" /> PC화면</button>
           </div>
@@ -976,7 +1180,10 @@ export default function App() {
               </>
             )}
             {currentUser.role === 'ADMIN' && (
-              <NavItem icon={<UserCog size={20} />} label={t('사용자 관리', 'User Management')} active={activeTab === 'users'} onClick={() => setActiveTab('users')} collapsed={sidebarCollapsed} />
+              <>
+                <NavItem icon={<UserCog size={20} />} label={t('사용자 관리', 'User Management')} active={activeTab === 'users'} onClick={() => setActiveTab('users')} collapsed={sidebarCollapsed} />
+                <NavItem icon={<SettingsIcon size={20} />} label={t('시스템 설정', 'System Settings')} active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} collapsed={sidebarCollapsed} />
+              </>
             )}
           </nav>
           {/* 펼치기/접기 토글 */}
@@ -993,6 +1200,7 @@ export default function App() {
           <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 z-10 shadow-sm shrink-0">
             <div className="flex items-center text-slate-500 bg-slate-100 px-4 py-2 rounded-lg w-96"><Search size={18} className="mr-2" /><input type="text" placeholder={t("검색...", "Search...")} className="bg-transparent border-none outline-none w-full text-sm" /></div>
             <div className="flex items-center space-x-4">
+              <NotificationBell notifications={notifications} lastSeen={notifLastSeen} onMarkAllRead={handleMarkAllRead} onJump={handleNotificationJump} t={t} />
               <button onClick={() => setIsHelpOpen(true)} className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-3 py-1.5 rounded-full text-xs font-bold transition-colors flex items-center shadow-sm border border-indigo-200" title={t('사용자 가이드', 'User Guide')}><HelpCircle size={14} className="mr-1.5" /> {t('도움말', 'Help')}</button>
               <button onClick={() => setLang(lang === 'ko' ? 'en' : 'ko')} className="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-full text-xs font-bold transition-colors flex items-center shadow-sm hover:bg-slate-200"><Globe size={14} className="mr-1.5" /> {lang === 'ko' ? 'EN' : 'KO'}</button>
               <button onClick={() => { setActiveTab('dashboard'); setIsMobileMode(true); }} className="bg-slate-800 hover:bg-slate-700 text-white text-xs px-4 py-2 rounded-lg font-bold transition-colors flex items-center shadow-sm"><Smartphone size={16} className="mr-2" /> {t('모바일 현장 모드', 'Mobile Mode')}</button>
@@ -1007,7 +1215,7 @@ export default function App() {
 
           <div className="flex-1 overflow-auto p-8">
             <Suspense fallback={<Loading />}>
-              {activeTab === 'dashboard' && <DashboardView projects={projects} issues={issues} engineers={engineers} getStatusColor={getStatusColor} calcExp={calcExp} calcAct={calcAct} onProjectClick={openProjectDetail} currentUser={currentUser} t={t} />}
+              {activeTab === 'dashboard' && <DashboardView projects={projects} issues={issues} engineers={engineers} getStatusColor={getStatusColor} calcExp={calcExp} calcAct={calcAct} onProjectClick={openProjectDetail} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} currentUser={currentUser} t={t} />}
               {activeTab === 'projects' && <ProjectListView projects={projects} issues={issues} engineers={engineers} getStatusColor={getStatusColor} onAddClick={() => setIsProjectModalOpen(true)} onManageTasks={(id) => { setSelectedProjectId(id); setIsTaskModalOpen(true); }} onEditVersion={(prj) => { setVersionEditProject(prj); setIsVersionModalOpen(true); }} onChangeManager={(prj) => { setTeamEditProjectId(prj.id); setIsTeamModalOpen(true); }} onManageTeam={(prj) => { setTeamEditProjectId(prj.id); setIsTeamModalOpen(true); }} onViewPhaseGantt={(prj) => { setPhaseGanttProject(prj); setIsPhaseGanttOpen(true); }} onEditProject={(prj) => { setProjectEditTarget(prj); setIsProjectEditOpen(true); }} onDeleteProject={(prj) => setProjectToDelete(prj)} onUpdatePhase={handleUpdatePhase} onEditPhases={(prjId) => { setPhaseEditProjectId(prjId); setIsPhaseEditOpen(true); }} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} calcExp={calcExp} calcAct={calcAct} currentUser={currentUser} t={t} />}
               {activeTab === 'issues' && <IssueListView issues={issues} getStatusColor={getStatusColor} onAddClick={() => setIsIssueModalOpen(true)} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} onDeleteIssue={(issue) => setIssueToDelete(issue)} currentUser={currentUser} t={t} />}
               {activeTab === 'parts' && <PartsListView parts={parts} getStatusColor={getStatusColor} onUpdateStatus={handleUpdatePartStatus} onDeletePart={(part) => setPartToDelete(part)} onAddClick={() => setIsPartModalOpen(true)} currentUser={currentUser} t={t} />}
@@ -1017,6 +1225,9 @@ export default function App() {
                 <ASManagementView projects={projects} onProjectClick={openProjectDetail} onUpdateAS={handleUpdateAS} currentUser={currentUser} t={t} />
               )}
               {activeTab === 'versions' && <VersionHistoryView projects={projects} releases={releases} onAddClick={() => setIsReleaseModalOpen(true)} onDeleteRelease={(release) => setReleaseToDelete(release)} currentUser={currentUser} t={t} />}
+              {activeTab === 'settings' && currentUser.role === 'ADMIN' && (
+                <SystemSettingsView settings={settings} onSave={syncSettings} currentUser={currentUser} t={t} />
+              )}
               {activeTab === 'users' && currentUser.role === 'ADMIN' && (
                 <UserManagementView
                   users={users}
