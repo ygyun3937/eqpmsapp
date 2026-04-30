@@ -139,17 +139,6 @@ const SystemSettingsView = memo(function SystemSettingsView({ settings, onSave, 
         </div>
       </div>
 
-      {/* GAS 배포 안내 */}
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
-        <h3 className="text-sm font-bold text-amber-800 mb-2 flex items-center"><AlertTriangle size={14} className="mr-1.5" />{t('첫 사용 전 GAS 백엔드 업데이트가 필요합니다', 'GAS backend update required for first use')}</h3>
-        <ol className="text-xs text-amber-900 space-y-1 list-decimal list-inside leading-relaxed">
-          <li>{t('Google Sheets → 확장 프로그램 → Apps Script 열기', 'Google Sheets → Extensions → Apps Script')}</li>
-          <li>{t('docs/gas-backend.gs 의 최신 코드를 복사하여 붙여넣기', 'Copy & paste the latest docs/gas-backend.gs')}</li>
-          <li>{t('상단 [배포] → [배포 관리] → 기존 배포 편집 → 새 버전 발행', 'Deploy → Manage deployments → Edit existing → New version')}</li>
-          <li>{t('Drive 권한 승인 (최초 1회)', 'Approve Drive permissions (first time only)')}</li>
-          <li>{t('이 페이지로 돌아와 폴더 ID 등록 + 연결 테스트', 'Return here, register folder ID, run Test')}</li>
-        </ol>
-      </div>
     </div>
   );
 });
