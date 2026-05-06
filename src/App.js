@@ -48,6 +48,7 @@ const VersionModal = lazy(() => import('./components/modals/VersionModal'));
 const ReleaseModal = lazy(() => import('./components/modals/ReleaseModal'));
 const EngineerModal = lazy(() => import('./components/modals/EngineerModal'));
 const EngineerCertificatesModal = lazy(() => import('./components/modals/EngineerCertificatesModal'));
+const EngineerActivityModal = lazy(() => import('./components/modals/EngineerActivityModal'));
 const DailyReportModal = lazy(() => import('./components/modals/DailyReportModal'));
 const MobileIssueModal = lazy(() => import('./components/modals/MobileIssueModal'));
 const MobilePartModal = lazy(() => import('./components/modals/MobilePartModal'));
@@ -112,6 +113,8 @@ export default function App() {
   const [selectedEngineer, setSelectedEngineer] = useState(null);
   const [isCertModalOpen, setIsCertModalOpen] = useState(false);
   const [certEngineerId, setCertEngineerId] = useState(null);
+  const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
+  const [activityEngineerId, setActivityEngineerId] = useState(null);
   const [selectedSite, setSelectedSite] = useState(null);
   const [isManagerModalOpen, setIsManagerModalOpen] = useState(false);
   const [managerEditProject, setManagerEditProject] = useState(null);
@@ -694,6 +697,20 @@ export default function App() {
     syncIssues(issues.map(i => i.id === issueId ? { ...i, status: newStatus } : i));
   };
 
+  // ADMIN 전용: 이슈 제목/담당자(작성자) 수정 + 이력 기록
+  const handleUpdateIssue = (issueId, updates, changeSummary) => {
+    if (!currentUser || currentUser.role !== 'ADMIN') {
+      showToast(t('관리자만 수정할 수 있습니다.', 'Admin only.'));
+      return;
+    }
+    const issue = issues.find(i => i.id === issueId);
+    if (!issue) return;
+    syncIssues(issues.map(i => i.id === issueId ? { ...i, ...updates } : i));
+    if (changeSummary && issue.projectId) {
+      syncProjects(projects.map(p => p.id !== issue.projectId ? p : addLog(p, 'ISSUE_UPDATE', changeSummary)));
+    }
+  };
+
   const handleDeleteIssue = () => {
     if (!issueToDelete) return;
     syncIssues(issues.filter(i => i.id !== issueToDelete.id));
@@ -869,8 +886,12 @@ export default function App() {
     syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, trips: [...(p.trips || []), trip] }, 'TRIP_ADD', `출장 등록: ${trip.engineerName} (${trip.departureDate}~${trip.returnDate})`)));
   };
 
-  const handleUpdateTrip = (projectId, tripId, updates) => {
-    syncProjects(projects.map(p => p.id !== projectId ? p : { ...p, trips: (p.trips || []).map(tr => tr.id === tripId ? { ...tr, ...updates } : tr) }));
+  const handleUpdateTrip = (projectId, tripId, updates, changeSummary) => {
+    syncProjects(projects.map(p => {
+      if (p.id !== projectId) return p;
+      const next = { ...p, trips: (p.trips || []).map(tr => tr.id === tripId ? { ...tr, ...updates } : tr) };
+      return changeSummary ? addLog(next, 'TRIP_UPDATE', changeSummary) : next;
+    }));
   };
 
   const handleDeleteTrip = (projectId, tripId) => {
@@ -907,11 +928,22 @@ export default function App() {
     syncProjects(projects.map(p => {
       if (p.id !== projectId) return p;
       const changes = [];
+      const fmtDate = (v) => v || '미정';
+      if (data.domain !== undefined && p.domain !== data.domain) {
+        if (currentUser.role !== 'ADMIN') {
+          showToast(t('산업군은 관리자만 수정할 수 있습니다.', 'Domain can only be changed by admin.'));
+          return p;
+        }
+        changes.push(`산업군: ${p.domain} → ${data.domain}`);
+      }
       if (p.name !== data.name) changes.push(`이름: ${p.name} → ${data.name}`);
       if (p.customer !== data.customer) changes.push(`고객사: ${p.customer} → ${data.customer}`);
       if (p.site !== data.site) changes.push(`사이트: ${p.site} → ${data.site}`);
-      if (p.startDate !== data.startDate) changes.push(`시작일: ${p.startDate} → ${data.startDate}`);
-      if (p.dueDate !== data.dueDate) changes.push(`납기일: ${p.dueDate} → ${data.dueDate}`);
+      if (p.startDate !== data.startDate) changes.push(`시작일: ${fmtDate(p.startDate)} → ${fmtDate(data.startDate)}`);
+      if (p.dueDate !== data.dueDate) changes.push(`납기일: ${fmtDate(p.dueDate)} → ${fmtDate(data.dueDate)}`);
+      if (data.voltage !== undefined && (p.voltage || '') !== (data.voltage || '')) changes.push(`전압: ${p.voltage || '-'} → ${data.voltage || '-'}`);
+      if (data.current !== undefined && (p.current || '') !== (data.current || '')) changes.push(`전류: ${p.current || '-'} → ${data.current || '-'}`);
+      if (data.spec !== undefined && (p.spec || '') !== (data.spec || '')) changes.push(`사양: ${p.spec || '-'} → ${data.spec || '-'}`);
       const updated = { ...p, ...data };
       return changes.length > 0 ? addLog(updated, 'PROJECT_EDIT', `프로젝트 수정: ${changes.join(', ')}`) : updated;
     }));
@@ -1145,7 +1177,7 @@ export default function App() {
           {isDailyReportOpen && <DailyReportModal projects={projects} onClose={() => setIsDailyReportOpen(false)} onSubmit={handleAddDailyReport} t={t} />}
           {isSiteModalOpen && <SiteModal site={selectedSite} onClose={() => setIsSiteModalOpen(false)} onSubmit={handleAddSite} t={t} />}
           {isTaskModalOpen && <TaskModal {...taskModalProps} />}
-          {isIssueDetailModalOpen && <IssueDetailModal issue={selectedIssue} issuesList={issues} onClose={() => setIsIssueDetailModalOpen(false)} onAddComment={handleAddComment} onUpdateIssueStatus={handleUpdateIssueStatus} getStatusColor={getStatusColor} t={t} />}
+          {isIssueDetailModalOpen && <IssueDetailModal issue={selectedIssue} issuesList={issues} engineers={engineers} currentUser={currentUser} onClose={() => setIsIssueDetailModalOpen(false)} onAddComment={handleAddComment} onUpdateIssueStatus={handleUpdateIssueStatus} onUpdateIssue={handleUpdateIssue} getStatusColor={getStatusColor} t={t} />}
           {siteToDelete && <DeleteConfirmModal type="site" item={siteToDelete} onClose={() => setSiteToDelete(null)} onConfirm={handleDeleteSite} t={t} />}
           {isPasswordModalOpen && (
             <PasswordChangeModal user={currentUser} forced={forcePasswordChange} onClose={() => { if (!forcePasswordChange) setIsPasswordModalOpen(false); }} onSubmit={handleChangeMyPassword} t={t} />
@@ -1220,7 +1252,7 @@ export default function App() {
               {activeTab === 'issues' && <IssueListView issues={issues} getStatusColor={getStatusColor} onAddClick={() => setIsIssueModalOpen(true)} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} onDeleteIssue={(issue) => setIssueToDelete(issue)} currentUser={currentUser} t={t} />}
               {activeTab === 'parts' && <PartsListView parts={parts} getStatusColor={getStatusColor} onUpdateStatus={handleUpdatePartStatus} onDeletePart={(part) => setPartToDelete(part)} onAddClick={() => setIsPartModalOpen(true)} currentUser={currentUser} t={t} />}
               {activeTab === 'sites' && <SiteListView sites={sites} onAddClick={() => { setSelectedSite(null); setIsSiteModalOpen(true); }} onEditClick={(site) => { setSelectedSite(site); setIsSiteModalOpen(true); }} onDeleteClick={(site) => setSiteToDelete(site)} currentUser={currentUser} t={t} />}
-              {activeTab === 'resources' && <ResourceListView engineers={engineers} projects={projects} getStatusColor={getStatusColor} TODAY={TODAY} onAddClick={() => { setSelectedEngineer(null); setIsEngineerModalOpen(true); }} onEditClick={(eng) => { setSelectedEngineer(eng); setIsEngineerModalOpen(true); }} onManageCertificates={(eng) => { setCertEngineerId(eng.id); setIsCertModalOpen(true); }} onDeleteClick={(eng) => setEngineerToDelete(eng)} currentUser={currentUser} t={t} />}
+              {activeTab === 'resources' && <ResourceListView engineers={engineers} projects={projects} issues={issues} getStatusColor={getStatusColor} TODAY={TODAY} onAddClick={() => { setSelectedEngineer(null); setIsEngineerModalOpen(true); }} onEditClick={(eng) => { setSelectedEngineer(eng); setIsEngineerModalOpen(true); }} onManageCertificates={(eng) => { setCertEngineerId(eng.id); setIsCertModalOpen(true); }} onShowActivity={(eng) => { setActivityEngineerId(eng.id); setIsActivityModalOpen(true); }} onDeleteClick={(eng) => setEngineerToDelete(eng)} currentUser={currentUser} t={t} />}
               {activeTab === 'as' && currentUser.role !== 'CUSTOMER' && (
                 <ASManagementView projects={projects} onProjectClick={openProjectDetail} onUpdateAS={handleUpdateAS} currentUser={currentUser} t={t} />
               )}
@@ -1250,14 +1282,14 @@ export default function App() {
             {isPartModalOpen && <PartModal projects={projects} onClose={() => setIsPartModalOpen(false)} onSubmit={handleAddPart} t={t} />}
             {isSiteModalOpen && <SiteModal site={selectedSite} onClose={() => setIsSiteModalOpen(false)} onSubmit={handleAddSite} t={t} />}
             {isTaskModalOpen && <TaskModal {...taskModalProps} />}
-            {isIssueDetailModalOpen && <IssueDetailModal issue={selectedIssue} issuesList={issues} onClose={() => setIsIssueDetailModalOpen(false)} onAddComment={handleAddComment} onUpdateIssueStatus={handleUpdateIssueStatus} getStatusColor={getStatusColor} t={t} />}
+            {isIssueDetailModalOpen && <IssueDetailModal issue={selectedIssue} issuesList={issues} engineers={engineers} currentUser={currentUser} onClose={() => setIsIssueDetailModalOpen(false)} onAddComment={handleAddComment} onUpdateIssueStatus={handleUpdateIssueStatus} onUpdateIssue={handleUpdateIssue} getStatusColor={getStatusColor} t={t} />}
             {isVersionModalOpen && versionEditProject && (() => {
               const liveProject = projects.find(p => p.id === versionEditProject.id);
               if (!liveProject) return null;
               return <VersionModal project={liveProject} onClose={() => setIsVersionModalOpen(false)} onAdd={handleAddVersion} onUpdate={handleUpdateVersion} onDelete={handleDeleteVersion} t={t} />;
             })()}
             {isPhaseGanttOpen && <PhaseGanttModal project={phaseGanttProject} onClose={() => setIsPhaseGanttOpen(false)} t={t} />}
-            {isProjectEditOpen && <ProjectEditModal project={projectEditTarget} engineers={engineers} onClose={() => setIsProjectEditOpen(false)} onSubmit={handleEditProject} t={t} />}
+            {isProjectEditOpen && <ProjectEditModal project={projectEditTarget} engineers={engineers} currentUser={currentUser} onClose={() => setIsProjectEditOpen(false)} onSubmit={handleEditProject} t={t} />}
             {isPhaseEditOpen && phaseEditProjectId && (() => {
               const lp = projects.find(p => p.id === phaseEditProjectId);
               if (!lp) return null;
@@ -1266,7 +1298,7 @@ export default function App() {
             {isTeamModalOpen && teamEditProjectId && (() => {
               const liveProject = projects.find(p => p.id === teamEditProjectId);
               if (!liveProject) return null;
-              return <ProjectTeamModal project={liveProject} engineers={engineers} onClose={() => { setIsTeamModalOpen(false); setTeamEditProjectId(null); }} onChangeManager={handleChangeManager} onToggleAssignment={handleToggleEngineerAssignment} onAddTrip={handleAddTrip} onDeleteTrip={handleDeleteTrip} t={t} />;
+              return <ProjectTeamModal project={liveProject} engineers={engineers} currentUser={currentUser} onClose={() => { setIsTeamModalOpen(false); setTeamEditProjectId(null); }} onChangeManager={handleChangeManager} onToggleAssignment={handleToggleEngineerAssignment} onAddTrip={handleAddTrip} onUpdateTrip={handleUpdateTrip} onDeleteTrip={handleDeleteTrip} t={t} />;
             })()}
             {isReleaseModalOpen && <ReleaseModal onClose={() => setIsReleaseModalOpen(false)} onSubmit={handleAddRelease} t={t} />}
             {isEngineerModalOpen && <EngineerModal engineer={selectedEngineer} projects={projects} onClose={() => setIsEngineerModalOpen(false)} onSubmit={handleAddEngineer} t={t} />}
@@ -1274,6 +1306,11 @@ export default function App() {
               const eng = engineers.find(e => e.id === certEngineerId);
               if (!eng) return null;
               return <EngineerCertificatesModal engineer={eng} projects={projects} onClose={() => { setIsCertModalOpen(false); setCertEngineerId(null); }} onAdd={handleAddCertificate} onUpdate={handleUpdateCertificate} onDelete={handleDeleteCertificate} t={t} />;
+            })()}
+            {isActivityModalOpen && activityEngineerId && (() => {
+              const eng = engineers.find(e => e.id === activityEngineerId);
+              if (!eng) return null;
+              return <EngineerActivityModal engineer={eng} projects={projects} issues={issues} onClose={() => { setIsActivityModalOpen(false); setActivityEngineerId(null); }} t={t} />;
             })()}
 
             {projectToDelete && <DeleteConfirmModal type="project" item={projectToDelete} onClose={() => setProjectToDelete(null)} onConfirm={handleDeleteProject} t={t} />}

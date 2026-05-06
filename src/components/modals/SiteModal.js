@@ -107,8 +107,12 @@ const SiteModal = memo(function SiteModal({ site, onClose, onSubmit, t }) {
                     <span className="text-sm font-bold text-slate-800 break-all">{s.value}</span>
                     {s.note && <span className="text-xs text-slate-500 ml-1 italic">— {s.note}</span>}
                     <div className="ml-auto flex gap-1 shrink-0">
-                      <button type="button" onClick={() => startEdit(s)} className="text-slate-400 hover:text-purple-600 p-1" title={t('수정', 'Edit')}><Edit size={14} /></button>
-                      <button type="button" onClick={() => removeSpec(s.id)} className="text-slate-400 hover:text-red-600 p-1" title={t('삭제', 'Delete')}><Trash size={14} /></button>
+                      <button type="button" onClick={() => startEdit(s)} className="inline-flex items-center px-1.5 py-1 rounded bg-purple-50 hover:bg-purple-100 text-purple-700 text-[10px] font-bold border border-purple-200 transition-colors" title={t('수정', 'Edit')}>
+                        <Edit size={11} className="mr-0.5" />{t('수정', 'Edit')}
+                      </button>
+                      <button type="button" onClick={() => removeSpec(s.id)} className="inline-flex items-center px-1.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 transition-colors" title={t('삭제', 'Delete')}>
+                        <Trash size={11} className="mr-0.5" />{t('삭제', 'Delete')}
+                      </button>
                     </div>
                   </div>
                 )}

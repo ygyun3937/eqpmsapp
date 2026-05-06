@@ -5,6 +5,8 @@ export const PHASE_WARRANTY_INDEX = 6;
 export const ISSUE_PHASES = ['이슈 확인', '조치 진행 중', '조치 완료'];
 export const PART_PHASES = ['청구', '발주', '입고', '교체완료'];
 export const DOMAINS = ['반도체', '디스플레이', '2차전지 사이클러', '2차전지 EOL'];
+// 2차전지 계열은 전압/전류/사양 등 추가 스펙 입력 가능
+export const BATTERY_DOMAINS = ['2차전지 사이클러', '2차전지 EOL'];
 
 // 빌드 타임 환경 변수: REACT_APP_TEST_MODE
 // "true"  → 사내 테스트 모드 (다중 계정 자동 시드, 강제 변경 끔, 안내 노출)

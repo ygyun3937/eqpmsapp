@@ -60,7 +60,9 @@ const IssueListView = memo(function IssueListView({ issues, getStatusColor, onAd
               <div className="text-sm mb-1 flex items-center justify-end">
                 {t('작성자', 'Author')}: {issue.author}
                 {(currentUser.role === 'ADMIN' || currentUser.role === 'PM') && (
-                  <button onClick={(e) => { e.stopPropagation(); onDeleteIssue(issue); }} className="text-slate-300 hover:text-red-500 ml-4 transition-colors"><Trash size={16} /></button>
+                  <button onClick={(e) => { e.stopPropagation(); onDeleteIssue(issue); }} className="ml-4 inline-flex items-center px-2 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold border border-red-200 transition-colors" title={t('삭제', 'Delete')}>
+                    <Trash size={13} className="mr-1" />{t('삭제', 'Delete')}
+                  </button>
                 )}
               </div>
               <div className="text-sm text-slate-500 mt-1 flex items-center">

@@ -1,11 +1,12 @@
 import React, { useState, memo, useMemo } from 'react';
-import { Users, User, UserPlus, Plane, Plus, Trash, Calendar, MapPin, History, Info, AlertTriangle } from 'lucide-react';
+import { Users, User, UserPlus, Plane, Plus, Trash, Calendar, MapPin, History, Info, AlertTriangle, Pencil, Save, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { fmtYMD } from '../../utils/calc';
 import ModalWrapper from '../common/ModalWrapper';
 
 const ProjectTeamModal = memo(function ProjectTeamModal({
-  project, engineers,
+  project, engineers, currentUser,
   onClose, onChangeManager, onToggleAssignment,
-  onAddTrip, onDeleteTrip,
+  onAddTrip, onUpdateTrip, onDeleteTrip,
   t
 }) {
   const [activeTab, setActiveTab] = useState('manager');
@@ -15,6 +16,11 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
   // 출장 일정
   const [tripForm, setTripForm] = useState({ engineerId: '', departureDate: '', returnDate: '', note: '' });
   const [tripError, setTripError] = useState('');
+  // 출장 수정
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({ engineerId: '', departureDate: '', returnDate: '', note: '', reason: '' });
+  const [editError, setEditError] = useState('');
+  const [historyOpenIds, setHistoryOpenIds] = useState(() => new Set());
 
   const list = engineers || [];
 
@@ -56,6 +62,92 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
     setTripForm({ engineerId: '', departureDate: '', returnDate: '', note: '' });
   };
 
+  const handleStartEdit = (trip) => {
+    setEditError('');
+    setEditingId(trip.id);
+    setEditForm({
+      engineerId: trip.engineerId || '',
+      departureDate: trip.departureDate || '',
+      returnDate: trip.returnDate || '',
+      note: trip.note || '',
+      reason: ''
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditError('');
+    setEditForm({ engineerId: '', departureDate: '', returnDate: '', note: '', reason: '' });
+  };
+
+  const handleSaveEdit = (trip) => {
+    setEditError('');
+    if (!editForm.engineerId) { setEditError(t('출장 인력을 선택하세요.', 'Select engineer.')); return; }
+    if (!editForm.departureDate) { setEditError(t('출발일을 입력하세요.', 'Enter departure.')); return; }
+    if (!editForm.returnDate) { setEditError(t('복귀일을 입력하세요.', 'Enter return.')); return; }
+    if (new Date(editForm.returnDate) < new Date(editForm.departureDate)) {
+      setEditError(t('복귀일이 출발일보다 빠를 수 없습니다.', 'Return must be after departure.')); return;
+    }
+
+    // 변경된 필드만 추출
+    const fieldLabels = {
+      engineerId: t('인력', 'Engineer'),
+      departureDate: t('출발일', 'Departure'),
+      returnDate: t('복귀일', 'Return'),
+      note: t('메모', 'Note')
+    };
+    const nameOf = (id) => {
+      const e = (engineers || []).find(x => x.id === id);
+      return e ? e.name : id;
+    };
+    const changes = [];
+    ['engineerId', 'departureDate', 'returnDate', 'note'].forEach(k => {
+      const before = trip[k] || '';
+      const after = editForm[k] || '';
+      if (before !== after) {
+        const beforeDisp = k === 'engineerId' ? nameOf(before) : before;
+        const afterDisp = k === 'engineerId' ? nameOf(after) : after;
+        changes.push({ field: fieldLabels[k], from: beforeDisp || '(없음)', to: afterDisp || '(없음)' });
+      }
+    });
+
+    if (changes.length === 0) {
+      handleCancelEdit();
+      return;
+    }
+
+    const newName = nameOf(editForm.engineerId);
+    const updates = {
+      engineerId: editForm.engineerId,
+      engineerName: newName,
+      departureDate: editForm.departureDate,
+      returnDate: editForm.returnDate,
+      note: editForm.note,
+      editHistory: [
+        ...(trip.editHistory || []),
+        {
+          ts: new Date().toLocaleString(),
+          by: currentUser?.name || '-',
+          changes,
+          reason: (editForm.reason || '').trim()
+        }
+      ]
+    };
+    const summaryText = `출장 수정 (${newName} ${editForm.departureDate}~${editForm.returnDate}): ` +
+      changes.map(c => `${c.field} ${c.from} → ${c.to}`).join(', ') +
+      (editForm.reason ? ` / 사유: ${editForm.reason}` : '');
+    onUpdateTrip(project.id, trip.id, updates, summaryText);
+    handleCancelEdit();
+  };
+
+  const toggleHistory = (id) => {
+    setHistoryOpenIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
   return (
     <ModalWrapper
       title={t('담당자 / 출장 일정', 'Team & Trips')}
@@ -70,7 +162,7 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
         <p className="text-xs text-slate-500 mb-1">{t('프로젝트', 'Project')}</p>
         <p className="text-sm font-bold text-slate-800">{project.name}</p>
         <p className="text-[11px] text-slate-500 mt-0.5 flex flex-wrap gap-x-3">
-          <span className="flex items-center"><Calendar size={10} className="mr-1" />{project.startDate} ~ {project.dueDate}</span>
+          <span className="flex items-center"><Calendar size={10} className="mr-1" />{fmtYMD(project.startDate) || '미정'} ~ {fmtYMD(project.dueDate) || '미정'}</span>
           <span className="flex items-center"><MapPin size={10} className="mr-1" />{project.site}</span>
         </p>
       </div>
@@ -181,7 +273,7 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
         <div className="space-y-3">
           <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 flex items-start text-xs text-purple-800">
             <Info size={14} className="mr-1.5 shrink-0 mt-0.5" />
-            <span>{t('인력 풀 = 메인 담당자 + 추가 배정 엔지니어. 한 명이 같은 프로젝트에 여러 번 출장 가능합니다.', 'Pool = main PM + assignees. Multiple trips allowed.')}</span>
+            <span>{t('인력 풀 = 메인 담당자 + 추가 배정 엔지니어. 한 명이 같은 프로젝트에 여러 번 출장 가능합니다. 등록 후 일정/인력 수정도 가능하며, 변경 이력은 자동으로 기록됩니다.', 'Pool = main PM + assignees. Multiple trips allowed. Edits are tracked in history.')}</span>
           </div>
 
           <div className="bg-white border border-slate-200 rounded-lg p-3 space-y-2">
@@ -237,9 +329,65 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
                 {t('등록된 출장이 없습니다.', 'No trips.')}
               </div>
             ) : (
-              <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+              <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
                 {trips.map(tr => {
                   const eng = engineerById(tr.engineerId);
+                  const isEditing = editingId === tr.id;
+                  const history = tr.editHistory || [];
+                  const showHistory = historyOpenIds.has(tr.id);
+
+                  if (isEditing) {
+                    return (
+                      <div key={tr.id} className="bg-blue-50 p-2.5 rounded border border-blue-300 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-blue-700 flex items-center">
+                            <Pencil size={10} className="mr-1" />{t('출장 수정', 'Edit Trip')}
+                          </span>
+                          <button type="button" onClick={handleCancelEdit} className="text-slate-400 hover:text-slate-600 p-0.5"><X size={12} /></button>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('인력', 'Engineer')}</label>
+                          <select className="w-full text-xs p-1.5 border border-slate-300 rounded" value={editForm.engineerId} onChange={e => setEditForm({...editForm, engineerId: e.target.value})}>
+                            <option value="">{t('-- 선택 --', '-- Select --')}</option>
+                            {tripPool.map(e2 => (
+                              <option key={e2.id} value={e2.id}>
+                                {e2.name}{e2.grade ? ` ${e2.grade}` : ''}{e2.dept ? ` · ${e2.dept}` : ''}
+                                {project.manager === e2.name ? ' · 메인 PM' : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('출발일', 'Departure')}</label>
+                            <input type="date" className="w-full text-xs p-1.5 border border-slate-300 rounded" value={editForm.departureDate} onChange={e => setEditForm({...editForm, departureDate: e.target.value})} />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('복귀일', 'Return')}</label>
+                            <input type="date" className="w-full text-xs p-1.5 border border-slate-300 rounded" value={editForm.returnDate} onChange={e => setEditForm({...editForm, returnDate: e.target.value})} />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('메모', 'Note')}</label>
+                          <input type="text" className="w-full text-xs p-1.5 border border-slate-300 rounded" value={editForm.note} onChange={e => setEditForm({...editForm, note: e.target.value})} />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('변경 사유 (선택)', 'Reason (Optional)')}</label>
+                          <input type="text" className="w-full text-xs p-1.5 border border-slate-300 rounded" value={editForm.reason} onChange={e => setEditForm({...editForm, reason: e.target.value})} placeholder={t('예: 일정 지연, 인력 교체', 'e.g. delay, swap')} />
+                        </div>
+                        {editError && <p className="text-[11px] font-bold text-red-600">{editError}</p>}
+                        <div className="flex justify-end gap-1.5">
+                          <button type="button" onClick={handleCancelEdit} className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded">
+                            {t('취소', 'Cancel')}
+                          </button>
+                          <button type="button" onClick={() => handleSaveEdit(tr)} className="inline-flex items-center px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded">
+                            <Save size={10} className="mr-1" />{t('저장', 'Save')}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
+
                   return (
                     <div key={tr.id} className="bg-white p-2 rounded border border-slate-200">
                       <div className="flex justify-between items-start gap-2">
@@ -248,14 +396,49 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
                             <User size={10} className="mr-1 text-slate-400" />
                             {eng ? eng.name : (tr.engineerName || '(unknown)')}
                             {eng?.grade && <span className="ml-1 text-[10px] font-bold px-1 py-0.5 rounded bg-slate-100 text-slate-600">{eng.grade}</span>}
+                            {history.length > 0 && (
+                              <span className="ml-1.5 text-[9px] font-bold px-1 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">{t('수정됨', 'edited')} {history.length}</span>
+                            )}
                           </div>
                           <div className="text-[10px] text-slate-600 flex items-center mt-0.5">
                             <Calendar size={9} className="mr-0.5 text-purple-400" />
                             {tr.departureDate} ~ {tr.returnDate}
                           </div>
                           {tr.note && <div className="text-[10px] text-slate-500 italic mt-0.5">{tr.note}</div>}
+                          {history.length > 0 && (
+                            <button type="button" onClick={() => toggleHistory(tr.id)} className="mt-1 text-[10px] text-slate-500 hover:text-slate-700 flex items-center font-bold">
+                              {showHistory ? <ChevronUp size={10} className="mr-0.5" /> : <ChevronDown size={10} className="mr-0.5" />}
+                              <History size={10} className="mr-0.5" />
+                              {t('수정 이력', 'Edit history')} ({history.length})
+                            </button>
+                          )}
+                          {showHistory && history.length > 0 && (
+                            <div className="mt-1.5 space-y-1 border-l-2 border-amber-200 pl-2">
+                              {[...history].reverse().map((h, i) => (
+                                <div key={i} className="text-[10px] text-slate-600 bg-amber-50/40 rounded p-1.5 border border-amber-100">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-bold text-slate-700">{h.by}</span>
+                                    <span className="text-slate-400">{h.ts}</span>
+                                  </div>
+                                  {(h.changes || []).map((c, j) => (
+                                    <div key={j} className="text-slate-600">
+                                      <span className="font-bold">{c.field}:</span> <span className="line-through text-slate-400">{c.from}</span> → <span className="text-emerald-700 font-bold">{c.to}</span>
+                                    </div>
+                                  ))}
+                                  {h.reason && <div className="text-slate-500 italic mt-0.5">{t('사유:', 'Reason:')} {h.reason}</div>}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                        <button type="button" onClick={() => onDeleteTrip(project.id, tr.id)} className="text-slate-300 hover:text-red-500 p-0.5"><Trash size={10} /></button>
+                        <div className="flex flex-col gap-1 shrink-0">
+                          <button type="button" onClick={() => handleStartEdit(tr)} className="inline-flex items-center px-1.5 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] font-bold border border-blue-200 transition-colors" title={t('수정', 'Edit')}>
+                            <Pencil size={11} className="mr-0.5" />{t('수정', 'Edit')}
+                          </button>
+                          <button type="button" onClick={() => onDeleteTrip(project.id, tr.id)} className="inline-flex items-center px-1.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 transition-colors" title={t('삭제', 'Delete')}>
+                            <Trash size={11} className="mr-0.5" />{t('삭제', 'Delete')}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );

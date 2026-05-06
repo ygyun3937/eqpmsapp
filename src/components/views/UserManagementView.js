@@ -129,12 +129,21 @@ const UserManagementView = memo(function UserManagementView({ users, projects, c
                       {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '-'}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-right">
-                      <button title={t('편집', 'Edit')} onClick={() => onEdit(u)} className="text-slate-400 hover:text-indigo-600 p-2 transition-colors"><Edit size={16} /></button>
-                      <button title={t('비밀번호 초기화', 'Reset Password')} onClick={() => onResetPassword(u)} className="text-slate-400 hover:text-amber-600 p-2 transition-colors"><KeyRound size={16} /></button>
-                      <button title={u.active === false ? t('활성화', 'Activate') : t('비활성화', 'Deactivate')} onClick={() => onToggleActive(u)} disabled={isSelf} className="text-slate-400 hover:text-blue-600 p-2 transition-colors disabled:opacity-30">
-                        {u.active === false ? <ShieldCheck size={16} /> : <ShieldOff size={16} />}
-                      </button>
-                      <button title={t('삭제', 'Delete')} onClick={() => onDelete(u)} disabled={isSelf} className="text-slate-400 hover:text-red-600 p-2 transition-colors disabled:opacity-30"><Trash size={16} /></button>
+                      <div className="inline-flex items-center gap-1">
+                        <button title={t('편집', 'Edit')} onClick={() => onEdit(u)} className="inline-flex items-center px-2 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition-colors">
+                          <Edit size={12} className="mr-1" />{t('편집', 'Edit')}
+                        </button>
+                        <button title={t('비밀번호 초기화', 'Reset Password')} onClick={() => onResetPassword(u)} className="inline-flex items-center px-2 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-bold border border-amber-200 transition-colors">
+                          <KeyRound size={12} className="mr-1" />{t('PW', 'PW')}
+                        </button>
+                        <button title={u.active === false ? t('활성화', 'Activate') : t('비활성화', 'Deactivate')} onClick={() => onToggleActive(u)} disabled={isSelf} className="inline-flex items-center px-2 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold border border-blue-200 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+                          {u.active === false ? <ShieldCheck size={12} className="mr-1" /> : <ShieldOff size={12} className="mr-1" />}
+                          {u.active === false ? t('활성', 'On') : t('정지', 'Off')}
+                        </button>
+                        <button title={t('삭제', 'Delete')} onClick={() => onDelete(u)} disabled={isSelf} className="inline-flex items-center px-2 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold border border-red-200 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+                          <Trash size={12} className="mr-1" />{t('삭제', 'Delete')}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );

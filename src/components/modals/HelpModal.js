@@ -74,6 +74,23 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
             {tab === 'start' && (
               <>
                 <h2 className="text-base font-bold text-slate-800 mb-3">{t('시작하기', 'Getting Started')}</h2>
+
+                <div className="mb-5 bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 rounded-lg p-4">
+                  <h3 className="text-sm font-bold text-indigo-800 mb-2 flex items-center"><Sparkles size={14} className="mr-1.5" />{t('최근 업데이트 (v1.0 베타 이후 개선)', 'Recent Updates')}</h3>
+                  <div className="text-[12px] text-slate-700 leading-relaxed space-y-1">
+                    <p>· <strong>안전교육 만료없음 옵션</strong> — 상시 이수 교육은 만료일 비워두기 가능 (자동 만료/임박 카운트에서 제외)</p>
+                    <p>· <strong>출장 등록 후 수정</strong> — 인력/일정/메모 수정 + 변경 사유 입력, 수정 이력 자동 누적 (담당자/관리자/PM)</p>
+                    <p>· <strong>이슈 제목·담당자 수정</strong> (관리자 전용) — 잘못 입력 시 수정 가능, 변경 전/후 + 사유가 이력에 기록</p>
+                    <p>· <strong>단계별 일정 직접 지정</strong> — 단계 편집 모달에서 단계마다 시작/종료일 설정. "균등 분배"/"일정 비우기" 버튼 제공, 간트차트에 즉시 반영</p>
+                    <p>· <strong>2차전지 장비 스펙</strong> — 사이클러/EOL 도메인은 전압/전류/사양 입력 가능, 프로젝트 리스트에 보라 배지로 노출</p>
+                    <p>· <strong>산업군(도메인) 수정 (관리자)</strong> — 잘못 입력한 도메인을 사후 변경 가능 (활동 로그 자동 기록)</p>
+                    <p>· <strong>일정 미정(TBD) 옵션</strong> — 시작일/납기일을 비운 채로 등록 가능. 산업군 특성상 세부 일정이 정해지지 않은 케이스 지원</p>
+                    <p>· <strong>버전 카테고리 인덱스 통일</strong> — 카테고리별 최신 버전과 프로젝트 리스트의 버전 표시를 도메인 표준 순서로 정렬</p>
+                    <p>· <strong>활동 이력 (담당자별 통합 타임라인)</strong> — 인력/리소스 페이지에서 시계 아이콘 클릭 → 출장/이슈/노트/버전/AS/요청/PM변경 시간순 모아보기</p>
+                    <p>· <strong>UI 가독성 개선</strong> — 모든 수정/삭제 버튼이 색상 칩 + 라벨 형태로 통일되어 마우스를 올리지 않아도 명확하게 보입니다</p>
+                  </div>
+                </div>
+
                 <Section title="로그인">
                   <Step n={1}>관리자가 발급한 ID/비밀번호로 로그인합니다.</Step>
                   <Step n={2}>최초 로그인 시 비밀번호 변경이 강제될 수 있습니다.</Step>
@@ -143,16 +160,33 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                   <p>· 마지막 단계(예: 완료)로 변경하면 진짜 완료 처리됩니다.</p>
                   <p>· 단계 칩을 클릭해 임의 단계로 이동할 수 있습니다.</p>
                 </Section>
-                <Section title="단계 자유 편집 (PM 이상)">
-                  <p>프로젝트마다 단계 구성을 자유롭게 편집할 수 있습니다.</p>
+                <Section title="단계 자유 편집 + 단계별 일정 (PM 이상)">
+                  <p>프로젝트마다 단계 구성과 <strong>단계별 시작/종료일</strong>을 자유롭게 편집할 수 있습니다.</p>
                   <p>· 셋업 일정 탭의 단계 칩 옆 <strong>"단계 편집"</strong> 버튼 → 모달</p>
                   <p>· 이름 변경, 단계 추가/삭제, 위/아래 순서 변경 가능</p>
+                  <p>· <strong>단계마다 시작일/종료일 직접 지정</strong> (간트차트에 즉시 반영)</p>
+                  <p>· <strong>"균등 분배"</strong> 버튼: 프로젝트 시작~종료를 단계 수로 자동 분배</p>
+                  <p>· <strong>"일정 비우기"</strong>: 모든 단계 일정 초기화 → 간트차트는 균등 분배 폴백</p>
                   <p>· 표준 8단계로 초기화 버튼 제공</p>
                   <p>· 마지막 단계 = 자동 "완료" 처리 단계로 인식</p>
+                  <p>· 간트차트에서 일정이 직접 지정된 단계는 "지정" 배지로 구분 표시</p>
                 </Section>
                 <Section title="프로젝트 정보 수정">
                   <p>리스트의 <strong>프로젝트명 또는 고객사/사이트 셀</strong>을 클릭하면 수정 모달이 열립니다 (ADMIN/PM만 가능).</p>
-                  <p>이름·고객사·사이트·일정·담당자·Notion 링크 모두 수정 가능합니다.</p>
+                  <p>이름·고객사·사이트·일정·담당자 모두 수정 가능합니다.</p>
+                  <p>· <strong>산업군(도메인) 수정은 관리자(ADMIN) 전용</strong> — 잘못 입력했을 때 변경 가능 (활동 로그에 변경 이력 자동 기록)</p>
+                </Section>
+                <Section title="2차전지 장비 스펙 (사이클러 / EOL)">
+                  <p>산업군이 <strong>2차전지 사이클러</strong> 또는 <strong>2차전지 EOL</strong>인 프로젝트는 추가 스펙 입력 가능:</p>
+                  <p>· <strong>전압 / 전류 / 사양</strong> 3가지 필드 (예: 5V / 100A / 256ch 파우치셀)</p>
+                  <p>· 프로젝트 생성 시점에 입력 가능, 이후 정보 수정에서도 변경 가능</p>
+                  <p>· 프로젝트 리스트의 산업군 배지 옆에 보라색 배지로 자동 표시</p>
+                </Section>
+                <Section title="일정 미정 (TBD)">
+                  <p>· 시작일/납기일 옆 <strong>"미정"</strong> 체크박스 → 일정 비워두고 등록 가능</p>
+                  <p>· 산업군 특성상 납기 등 세부일정이 정해지지 않은 채 진행하는 케이스 지원</p>
+                  <p>· 프로젝트 리스트에서는 "미정" 글자가 호박색 이탤릭으로 강조 표시됩니다</p>
+                  <p>· 추후 실제 일정이 확정되면 정보 수정에서 체크 해제 후 날짜 입력</p>
                 </Section>
               </>
             )}
@@ -177,7 +211,13 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                   <Step n={2}>출발일/복귀일/메모(예: 셋업 1차, Buy-off 입회) 입력</Step>
                   <Step n={3}>한 사람이 같은 프로젝트에 <strong>여러 번 출장</strong> 등록 가능</Step>
                 </Section>
-                <Note>출장 일정은 인력/리소스 화면과 대시보드에 자동으로 출장 상태(현장 파견 / 출장 예정 / 복귀 N일 전 등)로 반영됩니다.</Note>
+                <Section title="④ 출장 등록 후 수정 (이력 자동 기록)">
+                  <Step n={1}>등록된 출장 카드 우측의 <strong>연필 아이콘</strong> 클릭 → 인력 / 출발일 / 복귀일 / 메모 수정</Step>
+                  <Step n={2}>변경 사유 입력 (선택)</Step>
+                  <Step n={3}>저장 시 변경 전/후 값과 사유, 수정자, 일시가 <strong>수정 이력</strong>에 자동 기록됩니다</Step>
+                  <Step n={4}>카드의 <strong>"수정 이력 (N)"</strong> 토글로 전체 변경 내역 확인 가능</Step>
+                </Section>
+                <Note>출장 일정은 인력/리소스 화면과 대시보드에 자동으로 출장 상태(현장 파견 / 출장 예정 / 복귀 N일 전 등)로 반영됩니다. 수정 이력은 활동 로그(TRIP_UPDATE)에도 함께 남습니다.</Note>
               </>
             )}
 
@@ -230,15 +270,23 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                   <Step n={2}>이름 / 직급 / 부서 / 현재 위치 / 수동 상태 입력</Step>
                   <Step n={3}>활성 프로젝트 체크박스로 배정</Step>
                 </Section>
+                <Section title="활동 이력 (담당자별 통합 타임라인)">
+                  <Step n={1}>인력/리소스 리스트 우측 <strong>시계 아이콘</strong> 클릭 → 모달</Step>
+                  <Step n={2}>출장 등록/수정, 이슈 등록/수정, 공유 노트, 버전 등록, AS 처리, 고객 요청, 메인 PM 변경 이력이 시간순으로 통합 집계</Step>
+                  <Step n={3}>필터 칩으로 종류별 필터, 상단 검색창으로 내용/프로젝트 검색</Step>
+                  <p className="mt-1 text-[11px] text-slate-500">매칭 기준은 엔지니어 이름. 본인 명의로 등록되었거나 본인이 수정한 항목만 자동 집계됩니다.</p>
+                </Section>
                 <Section title="자격 정보 관리 (출입증/안전교육/비자)">
                   <Step n={1}>리스트의 <strong>"자격/만료" 셀</strong> 클릭 → 자격 관리 모달</Step>
                   <Step n={2}>3 탭(출입증/안전교육/비자)에서 각각 추가/삭제</Step>
                   <Step n={3}>한 사람이 여러 출입증 / 여러 안전교육 / 여러 비자를 가질 수 있습니다 (예: A사 출입증, B사 출입증)</Step>
+                  <Step n={4}><strong>안전교육</strong>은 만료기간이 없는 상시 교육도 있어 <strong>만료일 비워두기</strong> 가능 (카드에 "상시 (만료없음)" 배지 표시)</Step>
                 </Section>
                 <Section title="자동 알림 (만료/임박)">
                   <p>· 만료된 항목은 <strong>빨간 배지</strong>, 30일 이내 임박은 <strong>노란 배지</strong>로 자동 표시</p>
                   <p>· 대시보드 인력/리소스 요약 카드에서 위험 인력을 한눈에 확인</p>
                   <p>· 비자 상태가 "필요" 또는 "만료"면 비자 이슈로 카운트</p>
+                  <p>· 만료일이 비어 있는 안전교육(상시)은 만료/임박 카운트에서 자동으로 제외됩니다</p>
                 </Section>
                 <Section title="출장 일정 = 자동 반영">
                   <p>프로젝트에서 등록한 출장 일정이 인력 화면에 <strong>현장 파견 / 출장 예정</strong>으로 자동 반영됩니다 (D-Day 표시).</p>
@@ -253,6 +301,13 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                   <Step n={1}>좌측 메뉴 → 이슈/펀치 관리 → "현장 이슈 등록"</Step>
                   <Step n={2}>또는 모바일 모드에서 사진 첨부와 함께 빠르게 등록 가능</Step>
                   <Step n={3}>중요도(High/Medium/Low) 별로 자동 색상 분류</Step>
+                </Section>
+                <Section title="이슈 제목/담당자 수정 (관리자 전용)">
+                  <Step n={1}>이슈 상세 모달 우측 상단 <strong>"수정"</strong> 버튼 (ADMIN만 표시)</Step>
+                  <Step n={2}>제목 / 담당자(작성자) 수정 + 변경 사유(선택) 입력</Step>
+                  <Step n={3}>저장 시 변경 전/후 값과 사유, 수정자, 일시가 <strong>수정 이력</strong>에 자동 기록</Step>
+                  <Step n={4}>제목 영역의 <strong>"수정 이력 (N)"</strong> 토글로 전체 변경 내역 확인</Step>
+                  <p className="mt-1 text-[11px] text-slate-500">활동 로그(ISSUE_UPDATE)에도 함께 남아 프로젝트 이력에서 추적할 수 있습니다.</p>
                 </Section>
                 <Section title="AS 통합 관리 (신규)">
                   <p>좌측 메뉴 <strong>"AS 통합 관리"</strong> — 전체 프로젝트의 AS 내역을 한 화면에서 조회 (AS 부서용).</p>
@@ -278,6 +333,11 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                   <Step n={5}><strong>변경 내용/이력 노트 (필수)</strong> 입력 — 무엇이 바뀌었는지 추적용</Step>
                   <Step n={6}>"버전 추가" 버튼 클릭 (카테고리/버전 칸에서 Enter, 노트 칸에서 Ctrl+Enter도 동일)</Step>
                   <Step n={7}>모달은 안 닫히고 카드 즉시 추가 — 카테고리는 유지되어 연속 등록 가능</Step>
+                </Section>
+                <Section title="카테고리 인덱스 통일 (도메인 표준 순서)">
+                  <p>프로젝트마다 등록한 카테고리가 들쭉날쭉하지 않도록, 카테고리별 최신 버전과 프로젝트 리스트의 버전 표시 순서를 <strong>도메인 추천 순서로 통일</strong>합니다.</p>
+                  <p>· 예: 2차전지 사이클러 → <code>HW → SW → 충방전기 FW → 인터페이스 FW</code> 순서로 항상 동일하게 표시</p>
+                  <p>· 도메인 추천에 없는 자유 입력 카테고리는 추천 카테고리들 다음에 알파벳/한글 순으로 정렬됩니다.</p>
                 </Section>
                 <Section title="필수 항목 (* 표시)">
                   <p>· <strong>카테고리</strong>, <strong>버전</strong>, <strong>변경 내용 노트</strong>는 반드시 입력해야 추가됩니다.</p>
@@ -351,7 +411,10 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                         ['담당자 변경 / 추가 인력 / 출장 일정', '✅', '✅', '❌', '❌'],
                         ['추가 대응 작업', '✅', '✅', '✅', '❌'],
                         ['이슈 등록', '✅', '✅', '✅', '❌'],
+                        ['이슈 제목/담당자 수정 (이력 기록)', '✅', '❌', '❌', '❌'],
                         ['이슈 삭제', '✅', '✅', '❌', '❌'],
+                        ['프로젝트 산업군(도메인) 수정', '✅', '❌', '❌', '❌'],
+                        ['2차전지 스펙(전압/전류/사양) 입력·수정', '✅', '✅', '❌', '❌'],
                         ['고객 요청 등록', '✅', '✅', '✅', '✅'],
                         ['고객 요청 처리', '✅', '✅', '✅', '❌'],
                         ['AS 등록/처리', '✅', '✅', '✅', '❌'],

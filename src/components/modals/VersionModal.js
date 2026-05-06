@@ -36,6 +36,20 @@ const VersionModal = memo(function VersionModal({ project, onClose, onAdd, onUpd
     return map;
   }, [versions]);
 
+  // 카테고리 인덱스 통일: 도메인 추천 카테고리 순서 → 그 외는 알파벳순
+  const orderedCategoryEntries = useMemo(() => {
+    if (!project) return [];
+    const recommended = DOMAIN_VERSION_CATEGORIES[project.domain] || DEFAULT_VERSION_CATEGORIES;
+    const rank = new Map();
+    recommended.forEach((c, i) => rank.set(c, i));
+    return Object.entries(latestByCategory).sort(([a], [b]) => {
+      const ra = rank.has(a) ? rank.get(a) : 999;
+      const rb = rank.has(b) ? rank.get(b) : 999;
+      if (ra !== rb) return ra - rb;
+      return a.localeCompare(b);
+    });
+  }, [latestByCategory, project]);
+
   if (!project) return null;
 
   const filteredVersions = filterCategory === '전체' ? versions : versions.filter(v => v.category === filterCategory);
@@ -89,12 +103,15 @@ const VersionModal = memo(function VersionModal({ project, onClose, onAdd, onUpd
             <p className="text-[11px] text-slate-500">{project.domain}{project.customer ? ` · ${project.customer}` : ''}</p>
           </div>
 
-          {/* 카테고리별 최신 버전 */}
-          {Object.keys(latestByCategory).length > 0 && (
+          {/* 카테고리별 최신 버전 — 도메인 추천 순서로 통일 */}
+          {orderedCategoryEntries.length > 0 && (
             <div>
-              <p className="text-xs font-bold text-slate-700 mb-1.5 flex items-center"><GitCommit size={12} className="mr-1" />{t('카테고리별 최신 버전', 'Latest by Category')}</p>
+              <p className="text-xs font-bold text-slate-700 mb-1.5 flex items-center">
+                <GitCommit size={12} className="mr-1" />{t('카테고리별 최신 버전', 'Latest by Category')}
+                <span className="ml-2 text-[10px] font-normal text-slate-400">{t('(도메인 표준 순서)', '(domain order)')}</span>
+              </p>
               <div className="flex flex-wrap gap-2">
-                {Object.entries(latestByCategory).map(([cat, v]) => (
+                {orderedCategoryEntries.map(([cat, v]) => (
                   <div key={cat} className="bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-lg">
                     <div className="text-[10px] font-bold text-indigo-600">{cat}</div>
                     <div className="text-sm font-bold text-slate-800 font-mono">{v.version}</div>
@@ -223,8 +240,12 @@ const VersionModal = memo(function VersionModal({ project, onClose, onAdd, onUpd
                           {v.note && <div className="text-[12px] text-slate-700 italic mt-2 bg-slate-50 p-2 rounded border border-slate-100">{v.note}</div>}
                         </div>
                         <div className="flex flex-col gap-1 shrink-0">
-                          <button type="button" onClick={() => startEdit(v)} className="text-slate-300 hover:text-indigo-500 p-1" title={t('수정', 'Edit')}><Edit size={14} /></button>
-                          <button type="button" onClick={() => onDelete(project.id, v.id)} className="text-slate-300 hover:text-red-500 p-1" title={t('삭제', 'Delete')}><Trash size={14} /></button>
+                          <button type="button" onClick={() => startEdit(v)} className="inline-flex items-center px-1.5 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-bold border border-indigo-200 transition-colors" title={t('수정', 'Edit')}>
+                            <Edit size={11} className="mr-0.5" />{t('수정', 'Edit')}
+                          </button>
+                          <button type="button" onClick={() => onDelete(project.id, v.id)} className="inline-flex items-center px-1.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 transition-colors" title={t('삭제', 'Delete')}>
+                            <Trash size={11} className="mr-0.5" />{t('삭제', 'Delete')}
+                          </button>
                         </div>
                       </div>
                     )}

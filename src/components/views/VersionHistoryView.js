@@ -201,7 +201,9 @@ const VersionHistoryView = memo(function VersionHistoryView({ projects, releases
                         {v.releaseDate && <span className="flex items-center"><CalendarDays size={12} className="mr-1" />{v.releaseDate}</span>}
                         {v.author && <span className="flex items-center"><User size={12} className="mr-1" />{v.author}</span>}
                         {v.source === 'global' && currentUser.role === 'ADMIN' && (
-                          <button onClick={() => onDeleteRelease({ id: v.rawId })} className="text-slate-300 hover:text-red-500"><Trash size={14} /></button>
+                          <button onClick={() => onDeleteRelease({ id: v.rawId })} className="inline-flex items-center px-1.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 transition-colors" title={t('삭제', 'Delete')}>
+                            <Trash size={11} className="mr-0.5" />{t('삭제', 'Delete')}
+                          </button>
                         )}
                       </div>
                     </div>

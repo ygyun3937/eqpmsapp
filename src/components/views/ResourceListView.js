@@ -1,10 +1,10 @@
 import React, { memo } from 'react';
-import { Users, HardHat, Building, UserCircle, User, MapPin, Edit, Trash, AlertTriangle, XCircle, Download, Plane, ShieldAlert, Calendar, Home, IdCard, ShieldCheck, CheckCircle } from 'lucide-react';
+import { Users, HardHat, Building, UserCircle, User, MapPin, Edit, Trash, AlertTriangle, XCircle, Download, Plane, ShieldAlert, Calendar, Home, IdCard, ShieldCheck, CheckCircle, History } from 'lucide-react';
 import StatCard from '../common/StatCard';
 import { exportToExcel } from '../../utils/export';
 import { getCurrentTrip } from '../../utils/calc';
 
-const ResourceListView = memo(function ResourceListView({ engineers, projects, getStatusColor, TODAY, onAddClick, onEditClick, onManageCertificates, onDeleteClick, currentUser, t }) {
+const ResourceListView = memo(function ResourceListView({ engineers, projects, issues, getStatusColor, TODAY, onAddClick, onEditClick, onManageCertificates, onShowActivity, onDeleteClick, currentUser, t }) {
   const checkExpiry = (dateStr) => {
     if (!dateStr) return { state: 'none', daysLeft: null };
     const exp = new Date(dateStr);
@@ -240,7 +240,23 @@ const ResourceListView = memo(function ResourceListView({ engineers, projects, g
                     </button>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    {currentUser.role === 'ADMIN' && (<><button onClick={() => onEditClick(eng)} className="text-slate-400 hover:text-indigo-600 transition-colors p-2"><Edit size={18} /></button><button onClick={() => onDeleteClick(eng)} className="text-slate-400 hover:text-red-600 transition-colors p-2"><Trash size={18} /></button></>)}
+                    <div className="inline-flex items-center gap-1.5">
+                      {onShowActivity && currentUser.role !== 'CUSTOMER' && (
+                        <button onClick={() => onShowActivity(eng)} className="inline-flex items-center px-2 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-bold border border-amber-200 transition-colors" title={t('활동 이력 보기', 'View activity history')}>
+                          <History size={13} className="mr-1" />{t('이력', 'History')}
+                        </button>
+                      )}
+                      {currentUser.role === 'ADMIN' && (
+                        <>
+                          <button onClick={() => onEditClick(eng)} className="inline-flex items-center px-2 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition-colors" title={t('수정', 'Edit')}>
+                            <Edit size={13} className="mr-1" />{t('수정', 'Edit')}
+                          </button>
+                          <button onClick={() => onDeleteClick(eng)} className="inline-flex items-center px-2 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold border border-red-200 transition-colors" title={t('삭제', 'Delete')}>
+                            <Trash size={13} className="mr-1" />{t('삭제', 'Delete')}
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );

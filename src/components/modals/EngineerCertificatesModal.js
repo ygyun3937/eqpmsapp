@@ -45,7 +45,8 @@ const EngineerCertificatesModal = memo(function EngineerCertificatesModal({
       if (!form.status) { setError(t('상태를 선택하세요.', 'Select status.')); return; }
     } else {
       if (!form.issuer.trim()) { setError(t('발급기관/종류를 입력하세요.', 'Enter issuer.')); return; }
-      if (!form.expiry) { setError(t('만료일을 입력하세요.', 'Enter expiry.')); return; }
+      // 안전교육은 만료없는 경우(상시 이수)가 있어 만료일 선택입력 허용
+      if (category !== 'safetyTrainings' && !form.expiry) { setError(t('만료일을 입력하세요.', 'Enter expiry.')); return; }
     }
     onAdd(engineer.id, category, { ...form, issuer: (form.issuer || '').trim(), note: (form.note || '').trim(), country: (form.country || '').trim(), type: (form.type || '').trim() });
     setForm(defaultForm);
@@ -58,6 +59,7 @@ const EngineerCertificatesModal = memo(function EngineerCertificatesModal({
         : 'bg-white border-slate-200';
     const Icon = state === 'expired' ? XCircle : state === 'warning' ? AlertTriangle : CheckCircle;
     const iconCls = state === 'expired' ? 'text-red-500' : state === 'warning' ? 'text-amber-500' : 'text-emerald-500';
+    const isPermanent = !item.expiry && category === 'safetyTrainings';
     return (
       <div key={item.id} className={`p-2.5 rounded-lg border ${cls}`}>
         <div className="flex justify-between items-start gap-2">
@@ -67,6 +69,7 @@ const EngineerCertificatesModal = memo(function EngineerCertificatesModal({
               {item.issuer || item.country || '(미입력)'}
               {item.type && <span className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">{item.type}</span>}
               {category === 'visas' && item.status && <span className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">{item.status}</span>}
+              {isPermanent && <span className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">{t('상시 (만료없음)', 'Permanent')}</span>}
             </div>
             {item.expiry && (
               <div className="text-[11px] text-slate-600 mt-0.5 flex items-center">
@@ -78,7 +81,9 @@ const EngineerCertificatesModal = memo(function EngineerCertificatesModal({
             )}
             {item.note && <div className="text-[11px] text-slate-500 italic mt-0.5">{item.note}</div>}
           </div>
-          <button type="button" onClick={() => onDelete(engineer.id, category, item.id)} className="text-slate-300 hover:text-red-500 p-0.5"><Trash size={12} /></button>
+          <button type="button" onClick={() => onDelete(engineer.id, category, item.id)} className="inline-flex items-center px-1.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 transition-colors shrink-0" title={t('삭제', 'Delete')}>
+            <Trash size={11} className="mr-0.5" />{t('삭제', 'Delete')}
+          </button>
         </div>
       </div>
     );
@@ -163,7 +168,7 @@ const EngineerCertificatesModal = memo(function EngineerCertificatesModal({
         <div className="space-y-3">
           <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex items-start text-xs text-emerald-800">
             <Info size={14} className="mr-1.5 shrink-0 mt-0.5" />
-            <span>{t('회사별 안전교육 이수 내역을 여러 개 등록할 수 있습니다.', 'Register multiple safety training certificates.')}</span>
+            <span>{t('회사별 안전교육 이수 내역을 여러 개 등록할 수 있습니다. 만료기간이 없는 교육(상시 이수)은 만료일을 비워두세요.', 'Register multiple safety training certificates. Leave expiry blank for permanent (no-expiry) trainings.')}</span>
           </div>
           <div className="bg-white border border-slate-200 rounded-lg p-3 space-y-2">
             <div className="grid grid-cols-2 gap-2">
@@ -178,7 +183,7 @@ const EngineerCertificatesModal = memo(function EngineerCertificatesModal({
                 </datalist>
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">{t('만료일', 'Expiry')}</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t('만료일 (없으면 비워두세요)', 'Expiry (Optional)')}</label>
                 <input type="date" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={safetyForm.expiry} onChange={e => setSafetyForm({...safetyForm, expiry: e.target.value})} />
               </div>
             </div>

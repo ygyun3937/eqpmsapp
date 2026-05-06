@@ -86,9 +86,15 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                         <div className="flex justify-between items-start">
                           <p className={`text-xs md:text-sm font-bold pr-2 ${task.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>Step {index + 1}. {task.name}</p>
                           {currentUser.role !== 'CUSTOMER' && (
-                            <div className="opacity-100 md:opacity-0 group-hover:opacity-100 flex items-center space-x-1 shrink-0">
-                              {!task.isCompleted && <button onClick={(e) => { e.stopPropagation(); setEditingTaskId(task.id); setEditingTaskName(task.name); }} className="text-slate-400 hover:text-blue-500 transition-colors p-1.5"><Edit size={14}/></button>}
-                              <button onClick={(e) => { e.stopPropagation(); onDeleteTask(project.id, task.id); }} className="text-slate-400 hover:text-red-500 transition-colors p-1.5"><Trash size={14}/></button>
+                            <div className="flex items-center gap-1 shrink-0">
+                              {!task.isCompleted && (
+                                <button onClick={(e) => { e.stopPropagation(); setEditingTaskId(task.id); setEditingTaskName(task.name); }} className="inline-flex items-center px-1.5 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] font-bold border border-blue-200 transition-colors" title={t('수정', 'Edit')}>
+                                  <Edit size={11} className="mr-0.5"/>{t('수정', 'Edit')}
+                                </button>
+                              )}
+                              <button onClick={(e) => { e.stopPropagation(); onDeleteTask(project.id, task.id); }} className="inline-flex items-center px-1.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 transition-colors" title={t('삭제', 'Delete')}>
+                                <Trash size={11} className="mr-0.5"/>{t('삭제', 'Delete')}
+                              </button>
                             </div>
                           )}
                         </div>
@@ -140,7 +146,11 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                         <span className="inline-block bg-slate-100 text-slate-500 text-[10px] font-bold px-1.5 py-0.5 rounded mb-1">{item.category}</span>
                         <div className="flex items-start justify-between">
                           <p className="text-sm font-bold text-slate-800">{item.task}</p>
-                          {!isLockedForChecklist && currentUser.role !== 'CUSTOMER' && (<button onClick={() => onDeleteChecklistItem(project.id, item.id)} className="text-slate-300 hover:text-red-500 p-1 ml-2 transition-colors shrink-0"><Trash size={14} /></button>)}
+                          {!isLockedForChecklist && currentUser.role !== 'CUSTOMER' && (
+                            <button onClick={() => onDeleteChecklistItem(project.id, item.id)} className="ml-2 inline-flex items-center px-1.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 transition-colors shrink-0" title={t('삭제', 'Delete')}>
+                              <Trash size={11} className="mr-0.5" />{t('삭제', 'Delete')}
+                            </button>
+                          )}
                         </div>
                       </div>
                       <div className="flex space-x-1 shrink-0 mt-2 md:mt-0">
@@ -363,7 +373,9 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                           </div>
                         </div>
                         {(currentUser.role === 'ADMIN' || currentUser.name === note.author) && (
-                          <button onClick={() => onDeleteNote(project.id, note.id)} className="text-slate-300 hover:text-red-500 transition-colors p-1"><Trash size={14} /></button>
+                          <button onClick={() => onDeleteNote(project.id, note.id)} className="inline-flex items-center px-1.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 transition-colors" title={t('삭제', 'Delete')}>
+                            <Trash size={11} className="mr-0.5" />{t('삭제', 'Delete')}
+                          </button>
                         )}
                       </div>
                       <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed ml-9">{note.text}</p>
@@ -564,7 +576,9 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                           <div className="flex items-center space-x-1 shrink-0">
                             <span className="text-[10px] text-slate-400">{req.date}</span>
                             {(currentUser.role === 'ADMIN' || currentUser.role === 'PM') && (
-                              <button onClick={() => onDeleteCustomerRequest(project.id, req.id)} className="text-slate-300 hover:text-red-500 p-1"><Trash size={12} /></button>
+                              <button onClick={() => onDeleteCustomerRequest(project.id, req.id)} className="inline-flex items-center px-1.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 transition-colors" title={t('삭제', 'Delete')}>
+                                <Trash size={11} className="mr-0.5" />{t('삭제', 'Delete')}
+                              </button>
                             )}
                           </div>
                         </div>
@@ -740,7 +754,9 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                           <div className="flex items-center space-x-1 shrink-0">
                             <span className="text-[10px] text-slate-400">{as.date}</span>
                             {(currentUser.role === 'ADMIN' || currentUser.role === 'PM') && (
-                              <button onClick={() => onDeleteAS(project.id, as.id)} className="text-slate-300 hover:text-red-500 p-1"><Trash size={12} /></button>
+                              <button onClick={() => onDeleteAS(project.id, as.id)} className="inline-flex items-center px-1.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 transition-colors" title={t('삭제', 'Delete')}>
+                                <Trash size={11} className="mr-0.5" />{t('삭제', 'Delete')}
+                              </button>
                             )}
                           </div>
                         </div>
@@ -852,7 +868,9 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${statusColor}`}>{task.status}</span>
                           </div>
                           {(currentUser.role === 'ADMIN' || currentUser.role === 'PM') && (
-                            <button onClick={() => onDeleteExtraTask(project.id, task.id)} className="text-slate-300 hover:text-red-500 p-1 shrink-0"><Trash size={12} /></button>
+                            <button onClick={() => onDeleteExtraTask(project.id, task.id)} className="inline-flex items-center px-1.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 transition-colors shrink-0" title={t('삭제', 'Delete')}>
+                              <Trash size={11} className="mr-0.5" />{t('삭제', 'Delete')}
+                            </button>
                           )}
                         </div>
                         <p className={`text-sm font-bold ${task.status === '완료' ? 'text-slate-500 line-through' : 'text-slate-800'}`}>{task.name}</p>

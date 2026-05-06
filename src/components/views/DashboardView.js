@@ -1,7 +1,7 @@
 import React, { useMemo, memo, useState } from 'react';
 import { Kanban, AlertCircle, CheckCircle, AlertTriangle, PieChart, BarChart3, Clock, Wrench, Download, CalendarDays, User, Building, TrendingUp, Users, Zap, MessageSquare, LifeBuoy, ExternalLink, MapPin, HardHat, ShieldAlert, Plane, UserCircle, XCircle, Calendar, Home, FileText, X, Search, Filter } from 'lucide-react';
 import { TODAY } from '../../constants';
-import { getCurrentTrip } from '../../utils/calc';
+import { getCurrentTrip, fmtYMD } from '../../utils/calc';
 import { PROJECT_PHASES } from '../../constants';
 import StatCard from '../common/StatCard';
 import SimpleDonutChart from '../common/SimpleDonutChart';
@@ -687,7 +687,7 @@ const DashboardView = memo(function DashboardView({ projects: rawProjects, issue
                           <div
                             className={`absolute h-5 rounded-sm transition-all hover:shadow-sm cursor-default ${barColor}`}
                             style={{ left: `${leftPercent}%`, width: `${Math.max(widthPercent, 1)}%` }}
-                            title={`${prj.startDate} ~ ${prj.dueDate}`}
+                            title={`${fmtYMD(prj.startDate) || '미정'} ~ ${fmtYMD(prj.dueDate) || '미정'}`}
                           ></div>
                         </div>
                       </div>

@@ -1,5 +1,18 @@
 import { TODAY } from '../constants';
 
+// ISO 타임스탬프 / Date 문자열 / 'null' 등 잡음을 'YYYY-MM-DD'로 정규화
+// 빈 값/유효하지 않은 값은 ''로 반환 → "미정" 폴백 처리 가능
+export const fmtYMD = (v) => {
+  if (v == null) return '';
+  const s = String(v).trim();
+  if (!s || s.toLowerCase() === 'null' || s.toLowerCase() === 'undefined') return '';
+  const m = s.match(/^\d{4}-\d{2}-\d{2}/);
+  if (m) return m[0];
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 export const calcExp = (startDate, dueDate) => {
   const start = new Date(startDate);
   const due = new Date(dueDate);

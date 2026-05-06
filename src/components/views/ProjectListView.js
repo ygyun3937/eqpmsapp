@@ -1,6 +1,7 @@
 import React, { useState, useMemo, memo } from 'react';
-import { Plus, Filter, AlignJustify, CalendarDays, Clock, User, HardDrive, Monitor, Cpu, Edit, ListTodo, Trash, Download, Link as LinkIcon, History, ChevronDown, ChevronUp, Plane, Users } from 'lucide-react';
-import { PROJECT_PHASES } from '../../constants';
+import { Plus, Filter, AlignJustify, CalendarDays, Clock, User, HardDrive, Monitor, Cpu, Edit, ListTodo, Trash, Download, History, ChevronDown, ChevronUp, Plane, Users } from 'lucide-react';
+import { PROJECT_PHASES, BATTERY_DOMAINS, DOMAIN_VERSION_CATEGORIES, DEFAULT_VERSION_CATEGORIES } from '../../constants';
+import { fmtYMD } from '../../utils/calc';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
 import ProjectIssueBadge from '../common/ProjectIssueBadge';
 import ProjectNotesBadge from '../common/ProjectNotesBadge';
@@ -285,20 +286,29 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                       <div className="flex items-center space-x-2">
                       <ProjectIssueBadge prjId={prj.id} projectIssues={projectIssues} openIssueDropdownId={openIssueDropdownId} setOpenIssueDropdownId={setOpenIssueDropdownId} onIssueClick={onIssueClick} getStatusColor={getStatusColor} t={t} />
                       <ProjectNotesBadge prjId={prj.id} notes={prj.notes} openId={openNotesDropdownId} setOpenId={setOpenNotesDropdownId} onJump={() => onManageTasks && onManageTasks(prj.id)} t={t} />
-                      {prj.notionLink && (
-                        <a href={prj.notionLink} target="_blank" rel="noreferrer" className="text-[10px] px-2 py-0.5 bg-white border border-slate-200 rounded-full text-slate-700 hover:bg-slate-100 transition-colors flex items-center shadow-sm" title="Notion" onClick={e => e.stopPropagation()}>
-                          <LinkIcon size={10} className="mr-1 text-slate-400" /> Notion
-                        </a>
-                      )}
                     </div>
-                    <div className="text-sm font-bold text-slate-900 mt-1.5 flex items-center">
+                    <div className="text-sm font-bold text-slate-900 mt-1.5 flex items-center flex-wrap gap-y-1">
                       {prj.name}
                       <span className="ml-2 bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] font-medium border border-slate-200">{prj.domain}</span>
+                      {(() => {
+                        const valid = (v) => v != null && String(v).trim() !== '' && String(v).trim().toLowerCase() !== 'null' && String(v).trim().toLowerCase() !== 'undefined';
+                        if (!BATTERY_DOMAINS.includes(prj.domain)) return null;
+                        if (!valid(prj.voltage) && !valid(prj.current) && !valid(prj.spec)) return null;
+                        return (
+                          <span className="ml-1 inline-flex items-center gap-1">
+                            {valid(prj.voltage) && <span className="bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded text-[10px] font-bold border border-purple-200" title={t('전압', 'Voltage')}>{prj.voltage}</span>}
+                            {valid(prj.current) && <span className="bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded text-[10px] font-bold border border-purple-200" title={t('전류', 'Current')}>{prj.current}</span>}
+                            {valid(prj.spec) && <span className="bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded text-[10px] font-bold border border-purple-200" title={t('사양', 'Spec')}>{prj.spec}</span>}
+                          </span>
+                        );
+                      })()}
                       {(currentUser.role === 'ADMIN' || currentUser.role === 'PM') && (
-                        <button onClick={() => onEditProject(prj)} className="ml-2 text-slate-300 hover:text-indigo-600 transition-colors opacity-0 group-hover:opacity-100" title={t('프로젝트 정보 수정', 'Edit Project')}><Edit size={12} /></button>
+                        <button onClick={() => onEditProject(prj)} className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-bold border border-indigo-200 transition-colors" title={t('프로젝트 정보 수정', 'Edit Project')}>
+                          <Edit size={10} className="mr-0.5" />{t('수정', 'Edit')}
+                        </button>
                       )}
                     </div>
-                    <div className="text-xs text-slate-500 flex items-center mt-1"><Clock size={12} className="mr-1" /> {prj.startDate} ~ {prj.dueDate}</div>
+                    <div className="text-xs text-slate-500 flex items-center mt-1"><Clock size={12} className="mr-1" /> {fmtYMD(prj.startDate) || <span className="italic text-amber-600">미정</span>} ~ {fmtYMD(prj.dueDate) || <span className="italic text-amber-600">미정</span>}</div>
                     <ProjectPipelineStepper phases={prj.phases} currentPhase={prj.phaseIndex || 0} onUpdatePhase={onUpdatePhase} projectId={prj.id} role={currentUser.role} onEditPhases={onEditPhases} />
                   </td>
                   <td className="px-6 py-5 whitespace-nowrap">
@@ -368,7 +378,16 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                           if (b > a || (b.getTime() === a.getTime() && v.id > latest[v.category].id)) latest[v.category] = v;
                         }
                       });
-                      const cats = Object.keys(latest);
+                      // 도메인 추천 카테고리 순서로 정렬 (인덱스 통일)
+                      const recommended = DOMAIN_VERSION_CATEGORIES[prj.domain] || DEFAULT_VERSION_CATEGORIES;
+                      const rank = new Map();
+                      recommended.forEach((c, i) => rank.set(c, i));
+                      const cats = Object.keys(latest).sort((a, b) => {
+                        const ra = rank.has(a) ? rank.get(a) : 999;
+                        const rb = rank.has(b) ? rank.get(b) : 999;
+                        if (ra !== rb) return ra - rb;
+                        return a.localeCompare(b);
+                      });
                       const canEdit = currentUser.role !== 'CUSTOMER';
                       return (
                         <button
@@ -485,7 +504,7 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                             <div className="flex justify-between items-start mb-4">
                               <div>
                                 <h3 className="text-base font-bold text-slate-800 mb-1">{t('단계별 간트 차트', 'Phase Gantt Chart')}</h3>
-                                <p className="text-xs text-slate-500">{prj.name}  ·  {prj.startDate} ~ {prj.dueDate}  ({t('총', 'Total')} {totalDaysInt}{t('일', 'd')})</p>
+                                <p className="text-xs text-slate-500">{prj.name}  ·  {fmtYMD(prj.startDate) || '미정'} ~ {fmtYMD(prj.dueDate) || '미정'}  ({t('총', 'Total')} {totalDaysInt}{t('일', 'd')})</p>
                               </div>
                               <div className="flex space-x-2 text-xs">
                                 <div className="px-2.5 py-1.5 bg-blue-50 border border-blue-200 rounded">
@@ -641,7 +660,7 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                               });
                             })()}
                           </div>
-                          <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 text-white text-xs py-1.5 px-3 rounded-lg -top-3 z-10 pointer-events-none whitespace-nowrap shadow-lg" style={{ left: `${leftPercent}%` }}>{prj.startDate} ~ {prj.dueDate}</div>
+                          <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 text-white text-xs py-1.5 px-3 rounded-lg -top-3 z-10 pointer-events-none whitespace-nowrap shadow-lg" style={{ left: `${leftPercent}%` }}>{fmtYMD(prj.startDate) || '미정'} ~ {fmtYMD(prj.dueDate) || '미정'}</div>
                         </div>
                       </div>
                     );

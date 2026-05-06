@@ -50,9 +50,13 @@ const SiteListView = memo(function SiteListView({ sites, onAddClick, onEditClick
                 <span className="text-sm text-slate-500 ml-2">({site.line})</span>
               </div>
               {currentUser.role === 'ADMIN' && (
-                <div className="flex space-x-2">
-                  <button onClick={() => onEditClick(site)} className="text-slate-400 hover:text-indigo-600 p-1 transition-colors"><Edit size={16} /></button>
-                  <button onClick={() => onDeleteClick(site)} className="text-slate-400 hover:text-red-600 p-1 transition-colors"><Trash size={16} /></button>
+                <div className="flex gap-1.5">
+                  <button onClick={() => onEditClick(site)} className="inline-flex items-center px-2 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition-colors" title={t('수정', 'Edit')}>
+                    <Edit size={13} className="mr-1" />{t('수정', 'Edit')}
+                  </button>
+                  <button onClick={() => onDeleteClick(site)} className="inline-flex items-center px-2 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold border border-red-200 transition-colors" title={t('삭제', 'Delete')}>
+                    <Trash size={13} className="mr-1" />{t('삭제', 'Delete')}
+                  </button>
                 </div>
               )}
             </div>
