@@ -5,7 +5,6 @@ import { fmtYMD } from '../../utils/calc';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
 import ProjectIssueBadge from '../common/ProjectIssueBadge';
 import ProjectNotesBadge from '../common/ProjectNotesBadge';
-import { downloadICS, openGoogleCalendar } from '../../utils/calendar';
 import { exportToExcel, exportSectionedExcel } from '../../utils/export';
 
 const ProjectListView = memo(function ProjectListView({ projects, issues, engineers, getStatusColor, onAddClick, onManageTasks, onEditVersion, onChangeManager, onManageTeam, onViewPhaseGantt, onEditProject, onDeleteProject, onUpdatePhase, onEditPhases, onIssueClick, calcExp, calcAct, currentUser, t }) {
@@ -267,7 +266,7 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                   <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase min-w-[150px]">{t('버전 (HW/SW/FW)', 'Versions')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase min-w-[200px]">{t('진척도 (계획 / 실적)', 'Progress')}</th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase min-w-[80px]">{t('단계 간트', 'Gantt')}</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase min-w-[180px]">{t('일정관리', 'Manage')}</th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase w-[140px]">{t('관리', 'Manage')}</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-200">
@@ -281,7 +280,7 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
 
                   return (
                   <React.Fragment key={prj.id}>
-                  <tr className="hover:bg-slate-50 group">
+                  <tr className="hover:bg-slate-50 group align-middle">
                     <td className="px-6 py-5 whitespace-nowrap">
                       <div className="flex items-center space-x-2">
                       <ProjectIssueBadge prjId={prj.id} projectIssues={projectIssues} openIssueDropdownId={openIssueDropdownId} setOpenIssueDropdownId={setOpenIssueDropdownId} onIssueClick={onIssueClick} getStatusColor={getStatusColor} t={t} />
@@ -446,15 +445,10 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                       {expandedGanttId === prj.id ? <ChevronUp size={12} className="ml-1" /> : <ChevronDown size={12} className="ml-1" />}
                     </button>
                   </td>
-                  <td className="px-6 py-5 whitespace-nowrap text-sm text-slate-500 text-right">
-                    <div className="flex justify-end items-center space-x-1.5">
-                      <button onClick={() => downloadICS(prj)} className="flex items-center text-slate-500 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 px-2 py-1.5 rounded-md border border-slate-200 transition-colors shadow-sm" title={t('MS Outlook 캘린더 등록 (.ics)', 'Add to MS Outlook')}><CalendarDays size={14} className="md:mr-1"/> <span className="hidden md:inline text-xs font-bold">MS</span></button>
-                      <button onClick={() => openGoogleCalendar(prj)} className="flex items-center text-slate-500 hover:text-blue-600 bg-slate-50 hover:bg-blue-50 px-2 py-1.5 rounded-md border border-slate-200 transition-colors shadow-sm" title={t('Google 캘린더 바로 열기', 'Open in Google Calendar')}><CalendarDays size={14} className="md:mr-1"/> <span className="hidden md:inline text-xs font-bold">Google</span></button>
-                      <button onClick={() => onManageTasks(prj.id)} className="flex items-center text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-md border border-blue-100 transition-colors shadow-sm"><ListTodo size={14} className="mr-1"/> {currentUser.role === 'CUSTOMER' ? t('상세 보기', 'View') : t('관리', 'Manage')}</button>
-                      {(currentUser.role === 'ADMIN' || currentUser.role === 'PM') && (
-                        <button onClick={() => onDeleteProject(prj)} className="flex items-center text-slate-400 hover:text-red-600 bg-white hover:bg-red-50 px-2 py-1.5 rounded-md border border-transparent hover:border-red-100 transition-colors" title={t('프로젝트 삭제', 'Delete Project')}><Trash size={16} /></button>
-                      )}
-                    </div>
+                  <td className="px-4 py-5 whitespace-nowrap align-middle text-center">
+                    <button onClick={() => onManageTasks(prj.id)} className="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors shadow-sm">
+                      <ListTodo size={14} className="mr-1.5"/>{currentUser.role === 'CUSTOMER' ? t('상세 보기', 'View') : t('관리하기', 'Manage')}
+                    </button>
                   </td>
                 </tr>
                 {expandedGanttId === prj.id && (

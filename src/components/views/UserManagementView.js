@@ -93,7 +93,7 @@ const UserManagementView = memo(function UserManagementView({ users, projects, c
               {filtered.map(u => {
                 const isSelf = currentUser && currentUser.id === u.id;
                 return (
-                  <tr key={u.id} className="hover:bg-slate-50">
+                  <tr key={u.id} className="hover:bg-slate-50 align-middle">
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="font-bold text-slate-800 text-sm">{u.id}</div>
                       {isSelf && <div className="text-[10px] font-bold text-blue-600">{t('현재 로그인', 'You')}</div>}

@@ -1086,6 +1086,7 @@ export default function App() {
     onDeleteAS: handleDeleteAS,
     onUploadAttachment: handleUploadAttachment,
     onDeleteAttachment: handleDeleteAttachment,
+    onDeleteProject: (prj) => { setIsTaskModalOpen(false); setProjectToDelete(prj); },
     driveConfigured: !!settings.driveRootFolderId,
     calcAct, currentUser, t,
     initialTab: taskModalInitialTab

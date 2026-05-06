@@ -1,11 +1,12 @@
 import React, { useState, memo } from 'react';
-import { X, ListTodo, CheckSquare, AlertTriangle, CheckCircle, User, Edit, Trash, PenTool, Info, ShieldCheck, FileText, ImageIcon, History, GitCommit as TimelineIcon, Package, Wrench, HardDrive, MessageSquare, Send, LifeBuoy, Plus, ShieldOff, Sparkles, Paperclip, Upload, Download, ExternalLink, Loader, FolderOpen } from 'lucide-react';
+import { X, ListTodo, CheckSquare, AlertTriangle, CheckCircle, User, Edit, Trash, PenTool, Info, ShieldCheck, FileText, ImageIcon, History, GitCommit as TimelineIcon, Package, Wrench, HardDrive, MessageSquare, Send, LifeBuoy, Plus, ShieldOff, Sparkles, Paperclip, Upload, Download, ExternalLink, Loader, FolderOpen, CalendarDays } from 'lucide-react';
 import { PROJECT_PHASES } from '../../constants';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
 import SignaturePad from '../common/SignaturePad';
 import { generatePDF } from '../../utils/export';
+import { downloadICS, openGoogleCalendar } from '../../utils/calendar';
 
-const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusColor, onClose, onToggleTask, onAddTask, onEditTaskName, onDeleteTask, onUpdateDelayReason, onUpdateTaskDates, onUpdateChecklistItem, onLoadDefaultChecklist, onAddChecklistItem, onDeleteChecklistItem, onUpdatePhase, onEditPhases, onSignOff, onCancelSignOff, onAddExtraTask, onUpdateExtraTask, onDeleteExtraTask, onAddNote, onDeleteNote, onAddCustomerRequest, onUpdateCustomerRequestStatus, onAddCustomerResponse, onDeleteCustomerRequest, onAddAS, onUpdateAS, onDeleteAS, onUploadAttachment, onDeleteAttachment, driveConfigured, calcAct, currentUser, t, initialTab }) {
+const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusColor, onClose, onToggleTask, onAddTask, onEditTaskName, onDeleteTask, onUpdateDelayReason, onUpdateTaskDates, onUpdateChecklistItem, onLoadDefaultChecklist, onAddChecklistItem, onDeleteChecklistItem, onUpdatePhase, onEditPhases, onSignOff, onCancelSignOff, onAddExtraTask, onUpdateExtraTask, onDeleteExtraTask, onAddNote, onDeleteNote, onAddCustomerRequest, onUpdateCustomerRequestStatus, onAddCustomerResponse, onDeleteCustomerRequest, onAddAS, onUpdateAS, onDeleteAS, onUploadAttachment, onDeleteAttachment, onDeleteProject, driveConfigured, calcAct, currentUser, t, initialTab }) {
   const [activeModalTab, setActiveModalTab] = useState(initialTab || 'tasks');
   const [attachUploading, setAttachUploading] = useState(false);
   const [attachDragOver, setAttachDragOver] = useState(false);
@@ -42,12 +43,28 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
   return (
     <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-2 md:p-4 animate-[fadeIn_0.2s_ease-in-out]">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="px-4 md:px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-blue-50 flex-shrink-0">
-          <div className="flex-1 min-w-0 pr-4">
-            <h2 className="text-lg font-bold text-blue-800 truncate">{project.name}</h2>
-            <p className="text-xs text-blue-600 mt-1">{t('상세 관리', 'Details')}</p>
+        <div className="px-4 md:px-6 py-4 border-b border-slate-200 bg-blue-50 flex-shrink-0">
+          <div className="flex justify-between items-start gap-3">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-lg font-bold text-blue-800 truncate">{project.name}</h2>
+              <p className="text-xs text-blue-600 mt-1">{t('상세 관리', 'Details')}</p>
+            </div>
+            <button onClick={onClose} className="text-blue-400 hover:text-blue-600 p-2 shrink-0"><X size={20} /></button>
           </div>
-          <button onClick={onClose} className="text-blue-400 hover:text-blue-600 p-2 shrink-0"><X size={20} /></button>
+          {/* 프로젝트 단위 유틸 액션: 캘린더 등록 / 삭제 */}
+          <div className="mt-3 flex items-center gap-1.5 flex-wrap">
+            <button onClick={() => downloadICS(project)} className="inline-flex items-center text-[11px] font-bold text-slate-600 hover:text-indigo-700 bg-white hover:bg-indigo-50 px-2 py-1 rounded border border-slate-200 transition-colors" title={t('MS Outlook 캘린더 등록 (.ics 다운로드)', 'Add to MS Outlook')}>
+              <CalendarDays size={11} className="mr-1" />MS Outlook
+            </button>
+            <button onClick={() => openGoogleCalendar(project)} className="inline-flex items-center text-[11px] font-bold text-slate-600 hover:text-blue-700 bg-white hover:bg-blue-50 px-2 py-1 rounded border border-slate-200 transition-colors" title={t('Google 캘린더에서 일정 만들기', 'Open in Google Calendar')}>
+              <CalendarDays size={11} className="mr-1" />Google Calendar
+            </button>
+            {(currentUser.role === 'ADMIN' || currentUser.role === 'PM') && onDeleteProject && (
+              <button onClick={() => onDeleteProject(project)} className="ml-auto inline-flex items-center text-[11px] font-bold text-red-700 hover:text-white bg-red-50 hover:bg-red-600 px-2 py-1 rounded border border-red-200 hover:border-red-700 transition-colors" title={t('프로젝트 삭제', 'Delete Project')}>
+                <Trash size={11} className="mr-1" />{t('프로젝트 삭제', 'Delete')}
+              </button>
+            )}
+          </div>
         </div>
         <div className="grid grid-cols-3 md:grid-cols-9 border-b border-slate-200 bg-white shrink-0">
           <button onClick={() => setActiveModalTab('tasks')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'tasks' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><ListTodo size={16} className="mb-0.5" /><span>{t('셋업 일정', 'Setup Tasks')}</span></button>

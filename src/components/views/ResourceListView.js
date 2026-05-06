@@ -137,7 +137,7 @@ const ResourceListView = memo(function ResourceListView({ engineers, projects, i
                   : 'bg-slate-50 border-slate-200 text-slate-600';
 
               return (
-                <tr key={eng.id} className="hover:bg-slate-50 transition-colors">
+                <tr key={eng.id} className="hover:bg-slate-50 transition-colors align-middle">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold mr-3">{eng.name.charAt(0)}</div>

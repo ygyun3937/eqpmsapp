@@ -66,7 +66,7 @@ const PartsListView = memo(function PartsListView({ parts, getStatusColor, onUpd
               <tr><td colSpan="5" className="text-center py-10 text-slate-400">{t('내역이 없습니다.', 'No parts requested.')}</td></tr>
             ) : (
               filteredParts.map(part => (
-                <tr key={part.id} className="hover:bg-slate-50 transition-colors">
+                <tr key={part.id} className="hover:bg-slate-50 transition-colors align-middle">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       {part.photo && part.photo !== 'null' && part.photo.startsWith('data:') ? (
@@ -102,7 +102,9 @@ const PartsListView = memo(function PartsListView({ parts, getStatusColor, onUpd
                   </td>
                   <td className="px-6 py-4 text-right">
                     {(currentUser.role === 'ADMIN' || currentUser.role === 'PM') && (
-                      <button onClick={() => onDeletePart(part)} className="text-slate-400 hover:text-red-600 transition-colors p-2"><Trash size={18} /></button>
+                      <button onClick={() => onDeletePart(part)} className="inline-flex items-center px-2 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold border border-red-200 transition-colors" title={t('삭제', 'Delete')}>
+                        <Trash size={13} className="mr-1" />{t('삭제', 'Delete')}
+                      </button>
                     )}
                   </td>
                 </tr>
