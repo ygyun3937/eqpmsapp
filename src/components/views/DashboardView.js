@@ -587,9 +587,17 @@ const DashboardView = memo(function DashboardView({ projects: rawProjects, issue
 
       {/* 전체 프로젝트 일정 타임라인 */}
       {projects.length > 0 && (() => {
-        const sorted = [...projects].sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
-        const minDate = new Date(Math.min(...sorted.map(p => new Date(p.startDate))));
-        const maxDate = new Date(Math.max(...sorted.map(p => new Date(p.dueDate))));
+        const safeDateLocal = (v) => {
+          const ymd = fmtYMD(v);
+          if (!ymd) return null;
+          const d = new Date(ymd);
+          return isNaN(d.getTime()) ? null : d;
+        };
+        const withDates = projects.filter(p => safeDateLocal(p.startDate) && safeDateLocal(p.dueDate));
+        if (withDates.length === 0) return null;
+        const sorted = [...withDates].sort((a, b) => safeDateLocal(a.startDate) - safeDateLocal(b.startDate));
+        const minDate = new Date(Math.min(...sorted.map(p => safeDateLocal(p.startDate).getTime())));
+        const maxDate = new Date(Math.max(...sorted.map(p => safeDateLocal(p.dueDate).getTime())));
         minDate.setDate(1); // 월 시작으로 맞춤
         maxDate.setMonth(maxDate.getMonth() + 1, 0); // 월 끝으로 맞춤
         const totalDays = (maxDate - minDate) / (1000 * 60 * 60 * 24);
@@ -615,18 +623,27 @@ const DashboardView = memo(function DashboardView({ projects: rawProjects, issue
             </h2>
 
             <div className="overflow-x-auto">
-              <div className="min-w-[800px] relative">
+              <div className="min-w-[800px] relative pt-6">
+
+                {/* 오늘 라벨 — pt-6 안쪽에 배치(잘림 방지), 점선은 헤더~막대 끝까지 */}
+                <div className="absolute z-20 pointer-events-none" style={{ left: `calc(${chartLeft} + ${todayPercent}% * 0.65)`, top: 0, bottom: 0 }}>
+                  <div className="absolute top-0.5 -translate-x-1/2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md whitespace-nowrap border border-red-600 leading-tight">
+                    ▼ {t('오늘', 'Today')}
+                  </div>
+                  <div className="absolute top-7 bottom-2 left-0 border-l-2 border-dashed border-red-500 -translate-x-1/2"></div>
+                </div>
 
                 {/* 월별 헤더 */}
                 <div className="flex h-8 border-b border-slate-200 relative" style={{ marginLeft: chartLeft }}>
-                  {months.map((m, i) => (
-                    <div key={i} className="absolute text-[10px] font-bold text-slate-500 border-l border-slate-200 pl-1 h-full flex items-end pb-1" style={{ left: `${m.pos}%` }}>{m.label}</div>
-                  ))}
-                </div>
-
-                {/* 오늘 표시선 */}
-                <div className="absolute top-0 bottom-8 w-px bg-orange-400 z-10" style={{ left: `calc(${chartLeft} + ${todayPercent}% * 0.65)` }}>
-                  <div className="absolute bottom-0 -translate-x-1/2 translate-y-5 text-orange-500 text-[10px] font-bold">{t('오늘', 'Today')}</div>
+                  {months.map((m, i) => {
+                    const next = months[i + 1];
+                    const widthPct = next ? next.pos - m.pos : 100 - m.pos;
+                    return (
+                      <div key={i} className="absolute h-full" style={{ left: `${m.pos}%`, width: `${widthPct}%` }}>
+                        <div className="sticky left-0 inline-block whitespace-nowrap text-[10px] font-bold text-slate-500 border-l border-slate-200 pl-1 pb-1 bg-white">{m.label}</div>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {/* 테이블 헤더 */}
@@ -640,8 +657,8 @@ const DashboardView = memo(function DashboardView({ projects: rawProjects, issue
                 {/* 프로젝트 바 */}
                 <div className="space-y-2 pt-3">
                   {sorted.map(prj => {
-                    const pStart = new Date(prj.startDate);
-                    const pDue = new Date(prj.dueDate);
+                    const pStart = safeDateLocal(prj.startDate);
+                    const pDue = safeDateLocal(prj.dueDate);
                     const leftPercent = ((pStart - minDate) / (1000 * 60 * 60 * 24) / totalDays) * 100;
                     const widthPercent = ((pDue - pStart) / (1000 * 60 * 60 * 24) / totalDays) * 100;
                     const actual = calcAct(prj.tasks);

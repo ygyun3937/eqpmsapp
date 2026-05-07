@@ -99,7 +99,10 @@ const UserManagementView = memo(function UserManagementView({ users, projects, c
                       {isSelf && <div className="text-[10px] font-bold text-blue-600">{t('현재 로그인', 'You')}</div>}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="text-sm font-medium text-slate-800">{u.name}</div>
+                      <div className="text-sm font-medium text-slate-800">
+                        {u.name}
+                        {u.position && <span className="ml-1 text-xs text-slate-500 font-normal">{u.position}</span>}
+                      </div>
                       <div className="text-xs text-slate-500">{u.dept || '-'}</div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">

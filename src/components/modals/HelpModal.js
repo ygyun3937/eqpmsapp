@@ -1,5 +1,5 @@
 import React, { useState, memo } from 'react';
-import { HelpCircle, Kanban, Users, AlertTriangle, LifeBuoy, GitCommit, ShieldCheck, Sparkles, Plane, FileText, X, ChevronRight, Info } from 'lucide-react';
+import { HelpCircle, Kanban, Users, AlertTriangle, LifeBuoy, GitCommit, ShieldCheck, Sparkles, Plane, FileText, X, ChevronRight, Info, Bell } from 'lucide-react';
 
 const Section = ({ title, children }) => (
   <div className="mb-5 last:mb-0">
@@ -33,6 +33,7 @@ const TABS = [
   { key: 'version', label: '버전 관리', icon: GitCommit },
   { key: 'export', label: '보고서/Excel', icon: FileText },
   { key: 'roles', label: '권한별 기능', icon: LifeBuoy },
+  { key: 'changelog', label: '업데이트 내역', icon: Bell },
 ];
 
 const HelpModal = memo(function HelpModal({ onClose, t }) {
@@ -75,21 +76,17 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
               <>
                 <h2 className="text-base font-bold text-slate-800 mb-3">{t('시작하기', 'Getting Started')}</h2>
 
-                <div className="mb-5 bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 rounded-lg p-4">
-                  <h3 className="text-sm font-bold text-indigo-800 mb-2 flex items-center"><Sparkles size={14} className="mr-1.5" />{t('최근 업데이트 (v1.0 베타 이후 개선)', 'Recent Updates')}</h3>
-                  <div className="text-[12px] text-slate-700 leading-relaxed space-y-1">
-                    <p>· <strong>안전교육 만료없음 옵션</strong> — 상시 이수 교육은 만료일 비워두기 가능 (자동 만료/임박 카운트에서 제외)</p>
-                    <p>· <strong>출장 등록 후 수정</strong> — 인력/일정/메모 수정 + 변경 사유 입력, 수정 이력 자동 누적 (담당자/관리자/PM)</p>
-                    <p>· <strong>이슈 제목·담당자 수정</strong> (관리자 전용) — 잘못 입력 시 수정 가능, 변경 전/후 + 사유가 이력에 기록</p>
-                    <p>· <strong>단계별 일정 직접 지정</strong> — 단계 편집 모달에서 단계마다 시작/종료일 설정. "균등 분배"/"일정 비우기" 버튼 제공, 간트차트에 즉시 반영</p>
-                    <p>· <strong>2차전지 장비 스펙</strong> — 사이클러/EOL 도메인은 전압/전류/사양 입력 가능, 프로젝트 리스트에 보라 배지로 노출</p>
-                    <p>· <strong>산업군(도메인) 수정 (관리자)</strong> — 잘못 입력한 도메인을 사후 변경 가능 (활동 로그 자동 기록)</p>
-                    <p>· <strong>일정 미정(TBD) 옵션</strong> — 시작일/납기일을 비운 채로 등록 가능. 산업군 특성상 세부 일정이 정해지지 않은 케이스 지원</p>
-                    <p>· <strong>버전 카테고리 인덱스 통일</strong> — 카테고리별 최신 버전과 프로젝트 리스트의 버전 표시를 도메인 표준 순서로 정렬</p>
-                    <p>· <strong>활동 이력 (담당자별 통합 타임라인)</strong> — 인력/리소스 페이지에서 시계 아이콘 클릭 → 출장/이슈/노트/버전/AS/요청/PM변경 시간순 모아보기</p>
-                    <p>· <strong>UI 가독성 개선</strong> — 모든 수정/삭제 버튼이 색상 칩 + 라벨 형태로 통일되어 마우스를 올리지 않아도 명확하게 보입니다</p>
-                  </div>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setTab('changelog')}
+                  className="mb-5 w-full text-left bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg p-3 flex items-center gap-2 transition-colors"
+                >
+                  <Bell size={14} className="text-indigo-600 shrink-0" />
+                  <span className="text-xs text-indigo-800">
+                    <strong>{t('업데이트 내역', "What's New")}</strong> — {t('v1.0 베타 이후 추가/개선된 기능 모아보기', 'Recently added & improved features')}
+                  </span>
+                  <ChevronRight size={14} className="ml-auto text-indigo-600 shrink-0" />
+                </button>
 
                 <Section title="로그인">
                   <Step n={1}>관리자가 발급한 ID/비밀번호로 로그인합니다.</Step>
@@ -101,6 +98,12 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                   <p>· <strong>현장 PM(PM)</strong>: 프로젝트/이슈/자재/AS 전반 + 담당자 변경</p>
                   <p>· <strong>엔지니어(ENGINEER)</strong>: 본인 배정 프로젝트의 진행 상황 입력</p>
                   <p>· <strong>고객사(CUSTOMER)</strong>: 본인 회사 프로젝트 조회 + 요청 등록 + 검수 서명</p>
+                </Section>
+                <Section title="사용자 직급 (관리자)">
+                  <p>사용자 추가/수정 시 <strong>직급</strong> 필드 입력 가능 (선택).</p>
+                  <p>· 사원 / 주임 / 대리 / 과장 / 차장 / 부장 / 이사 / 상무 / 전무 / 대표 자동완성</p>
+                  <p>· 자유 입력도 가능 (예: 책임 매니저)</p>
+                  <p>· 사용자 관리 테이블에 이름 옆에 자동 표시되어 호칭 식별이 쉬워집니다</p>
                 </Section>
                 <Section title="모바일/PC 모드">
                   <p>화면 폭 768px 미만은 자동으로 모바일 모드. 헤더의 모드 전환 버튼으로 수동 변경도 가능합니다.</p>
@@ -186,7 +189,40 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                   <p>· 시작일/납기일 옆 <strong>"미정"</strong> 체크박스 → 일정 비워두고 등록 가능</p>
                   <p>· 산업군 특성상 납기 등 세부일정이 정해지지 않은 채 진행하는 케이스 지원</p>
                   <p>· 프로젝트 리스트에서는 "미정" 글자가 호박색 이탤릭으로 강조 표시됩니다</p>
+                  <p>· 간트차트는 일정 미정 프로젝트를 안내 박스/배지로 표시하고 다른 프로젝트의 차트 범위 계산에서 자동 제외</p>
                   <p>· 추후 실제 일정이 확정되면 정보 수정에서 체크 해제 후 날짜 입력</p>
+                </Section>
+                <Section title="장비 코드 관리">
+                  <p>프로젝트마다 포함된 <strong>장비 코드/모델/일련번호</strong>를 자유롭게 등록할 수 있습니다.</p>
+                  <p>· 프로젝트 정보 수정 모달의 <strong>"장비 코드"</strong> 섹션에서 코드 + 장비명 + 비고로 추가/수정/삭제</p>
+                  <p>· 장비 코드만 입력해도 등록 가능 (Enter로 빠르게 추가)</p>
+                  <p>· 프로젝트 리스트에 파란 배지로 4개까지 노출, 그 이상은 "+N" 표시</p>
+                  <p>· ADMIN/PM만 편집 가능</p>
+                </Section>
+                <Section title="간트차트 보기">
+                  <p>프로젝트 관리 우측 상단의 <strong>리스트 / 간트차트</strong> 토글로 전환합니다.</p>
+                  <p>· <strong>단계별 탭</strong>: 각 프로젝트가 한 행, 막대는 8단계 색 분할(완료 = 진하게 / 현재 = 70% opacity / 예정 = 흐림). 막대 외곽선이 프로젝트 색으로 식별</p>
+                  <p>· <strong>셋업 일정 탭</strong>: 모든 프로젝트의 셋업 작업을 프로젝트별 그룹으로 묶어 표시. 그룹 헤더는 프로젝트 색상 배경 + 좌측 색상 띠</p>
+                  <p>· <strong>오늘 표시</strong>: 빨간 점선 + "▼ 오늘" 알약 라벨, 헤더 위 별도 공간에 배치되어 날짜를 가리지 않음</p>
+                  <p>· <strong>마일스톤(SOP)</strong>: 막대 대신 빨간 ◆ 다이아몬드 + 종료일 라벨</p>
+                  <p>· <strong>출장 일정</strong>: 인라인 간트 상단에 인디고 막대로 자동 표시 (담당자 + 출장 일자)</p>
+                </Section>
+                <Section title="간트 줌 / 휠 / 자동 스크롤">
+                  <p>· <strong>휠 = 줌</strong> (0.5x ~ 4x), <strong>Shift+휠 = 가로 이동</strong></p>
+                  <p>· 우측 상단 ZoomIn/Out/오늘 버튼도 제공. "오늘" 버튼 클릭 시 today-1개월 위치로 점프</p>
+                  <p>· 차트 진입 시 자동으로 today-1개월 위치로 스크롤되어 현재/근미래에 집중</p>
+                  <p>· 좌측 단계명/작업명 칸은 가로 스크롤과 무관하게 항상 보이고, 월/일 헤더는 세로 스크롤 시 위에 고정(sticky-top)</p>
+                </Section>
+                <Section title="간트 프로젝트 다중 필터">
+                  <p>간트 뷰 좌상단의 <strong>"프로젝트 필터"</strong> 버튼 클릭 → 체크박스 드롭다운</p>
+                  <p>· 패널 안에 검색창(이름/고객/사이트/담당자), <strong>전체 선택 / 전체 해제</strong> 토글, 개별 체크박스</p>
+                  <p>· 부분 선택 상태에서는 <strong>"전체 보기로 초기화"</strong> 버튼 표시</p>
+                  <p>· 단계별/셋업 일정 양쪽에 동일하게 적용</p>
+                </Section>
+                <Section title="단계 편집에서 마일스톤 (SOP) 표시">
+                  <p>단계 편집 모달의 단계 행에 <strong>"마일스톤"</strong> 별 토글 추가 (PM 이상)</p>
+                  <p>· 켜면 간트차트에서 해당 단계가 일반 막대 대신 빨간 ◆ 다이아몬드 + 종료일 (SOP) 라벨로 표시됨</p>
+                  <p>· 셋업 작업도 별도로 마일스톤 토글 가능 — 셋업 일정 탭의 작업 편집 영역에서</p>
                 </Section>
               </>
             )}
@@ -415,6 +451,9 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                         ['이슈 삭제', '✅', '✅', '❌', '❌'],
                         ['프로젝트 산업군(도메인) 수정', '✅', '❌', '❌', '❌'],
                         ['2차전지 스펙(전압/전류/사양) 입력·수정', '✅', '✅', '❌', '❌'],
+                        ['장비 코드 추가/수정/삭제', '✅', '✅', '❌', '❌'],
+                        ['단계 마일스톤(SOP) 토글', '✅', '✅', '❌', '❌'],
+                        ['간트차트 보기/줌/필터', '✅', '✅', '✅', '✅'],
                         ['고객 요청 등록', '✅', '✅', '✅', '✅'],
                         ['고객 요청 처리', '✅', '✅', '✅', '❌'],
                         ['AS 등록/처리', '✅', '✅', '✅', '❌'],
@@ -440,6 +479,64 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                     </tbody>
                   </table>
                 </div>
+              </>
+            )}
+
+            {tab === 'changelog' && (
+              <>
+                <h2 className="text-base font-bold text-slate-800 mb-3">{t('업데이트 내역', "What's New")}</h2>
+                <p className="text-xs text-slate-500 mb-4">{t('v1.0 베타 출시 이후 추가/개선된 기능을 시간 역순으로 정리합니다.', 'Recent improvements since v1.0 beta release.')}</p>
+
+                <Section title={t('간트차트 / 일정 관리 개편', 'Gantt & Schedule Overhaul')}>
+                  <p>· <strong>단계별 / 셋업 일정 탭 분리</strong> — 인라인 간트와 간트차트 보기 모두 동일한 탭 구조</p>
+                  <p>· <strong>오늘 표시 통일</strong> — 빨간 점선 + "▼ 오늘" 알약. 헤더 위 별도 공간에 배치되어 날짜를 가리지 않음</p>
+                  <p>· <strong>픽셀 단위 줌 (0.5x ~ 4x)</strong> — 휠로 줌, Shift+휠로 가로 이동. ZoomIn/Out/오늘 버튼 제공</p>
+                  <p>· <strong>자동 초기 스크롤</strong> — 차트 진입 시 today-1개월 위치로 자동 이동, 현재 시점에 집중</p>
+                  <p>· <strong>좌측 칸 / 헤더 고정</strong> — 작업명/단계명 칸은 가로 스크롤 무관하게 항상 보이고, 월/일 헤더는 sticky-top</p>
+                  <p>· <strong>차트 범위 자동 확장</strong> — 프로젝트 + 셋업 작업 + 출장 일정을 모두 포함하도록 자동 계산. 일정 미정 안전 처리</p>
+                  <p>· <strong>날짜 라벨 100% 채움</strong> — 우측 빈 영역 없이 마지막 날짜까지 항상 표시</p>
+                </Section>
+
+                <Section title={t('간트차트 — 시각 강화', 'Gantt — Visual Enhancements')}>
+                  <p>· <strong>프로젝트별 색상 자동 부여</strong> — 10가지 색 자동 회전, 좌측 칸/막대/그룹 헤더에 일관 적용</p>
+                  <p>· <strong>단계별 탭 막대 분할</strong> — 8단계 색 분할(완료=진하게 / 현재=70% / 예정=흐림), 외곽선이 프로젝트 색</p>
+                  <p>· <strong>셋업 일정 그룹 헤더</strong> — 프로젝트 색상 배경/테두리/좌측 띠로 그룹 구분 강화</p>
+                  <p>· <strong>마일스톤 (SOP) 마커</strong> — 단계/셋업 작업에 별 토글 → 막대 대신 빨간 ◆ 다이아몬드 + 종료일 라벨</p>
+                  <p>· <strong>출장 일정 자동 표시</strong> — 인라인 간트 상단에 인디고 막대 (담당자명 + 일자)</p>
+                  <p>· <strong>프로젝트 다중 필터</strong> — 간트차트 탭 좌상단의 체크박스 드롭다운. 검색 + 전체 선택/해제 + 부분 선택 표시</p>
+                </Section>
+
+                <Section title={t('프로젝트 정보', 'Project Info')}>
+                  <p>· <strong>장비 코드 관리</strong> — 코드/장비명/비고 자유 추가/수정/삭제, 프로젝트 리스트에 파란 배지 (4개까지 + 더보기)</p>
+                  <p>· <strong>2차전지 장비 스펙</strong> — 사이클러/EOL 도메인은 전압/전류/사양 입력 (보라 배지)</p>
+                  <p>· <strong>산업군(도메인) 수정 (관리자)</strong> — 잘못 입력한 도메인을 사후 변경, 활동 로그 기록</p>
+                  <p>· <strong>일정 미정(TBD) 옵션</strong> — 시작일/납기일 비워두기 가능 (체크박스 토글)</p>
+                </Section>
+
+                <Section title={t('단계 / 일정 관리', 'Phase & Schedule')}>
+                  <p>· <strong>단계 자유 편집</strong> — 이름/순서/추가/삭제, 단계마다 시작/종료일 직접 지정</p>
+                  <p>· <strong>균등 분배 / 일정 비우기 버튼</strong> — 프로젝트 기간을 단계 수로 자동 분배 또는 일괄 초기화</p>
+                  <p>· <strong>마일스톤 토글</strong> — 단계 행에 별 버튼, 켜면 간트에서 다이아몬드로 표시</p>
+                </Section>
+
+                <Section title={t('이슈 / 출장 / 활동', 'Issue / Trip / Activity')}>
+                  <p>· <strong>출장 등록 후 수정</strong> — 인력/일정/메모 변경 + 사유 입력, 수정 이력 자동 누적</p>
+                  <p>· <strong>이슈 제목·담당자 수정 (관리자 전용)</strong> — 변경 전/후 + 사유가 이력에 기록</p>
+                  <p>· <strong>활동 이력 (담당자별 통합 타임라인)</strong> — 인력/리소스 페이지에서 시계 아이콘 클릭 → 출장/이슈/노트/버전/AS/요청/PM변경 시간순 모아보기</p>
+                </Section>
+
+                <Section title={t('자격 / 사용자', 'Qualifications / Users')}>
+                  <p>· <strong>안전교육 만료없음 옵션</strong> — 상시 이수 교육은 만료일 비워두기 가능 (자동 만료 카운트 제외)</p>
+                  <p>· <strong>사용자 직급 필드</strong> — 사원/주임/대리/과장/차장/부장/이사 자동완성, 자유 입력 가능. 사용자 관리 테이블 이름 옆에 자동 표시</p>
+                </Section>
+
+                <Section title={t('UI / 사용성', 'UI / Usability')}>
+                  <p>· <strong>수정/삭제 버튼 칩 통일</strong> — 모든 페이지에서 색상 칩 + 라벨로 표시되어 hover 없이도 명확</p>
+                  <p>· <strong>버전 카테고리 인덱스 통일</strong> — 도메인 표준 순서로 정렬</p>
+                  <p>· <strong>알림 센터 / 공유 노트 가시성 / Drive 첨부</strong> — 이전 라운드의 주요 추가</p>
+                </Section>
+
+                <Note>{t('각 기능의 자세한 사용법은 좌측의 해당 탭(프로젝트/팀/검수표 등)에서 확인하세요.', 'See the corresponding tab on the left for detailed usage.')}</Note>
               </>
             )}
           </div>

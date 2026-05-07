@@ -1,13 +1,13 @@
 import React, { useState, memo } from 'react';
-import { X, Settings, Plus, Trash, ArrowUp, ArrowDown, RotateCcw, AlertTriangle, Info, Check, Calendar, Sparkles } from 'lucide-react';
+import { X, Settings, Plus, Trash, ArrowUp, ArrowDown, RotateCcw, AlertTriangle, Info, Check, Calendar, Sparkles, Star } from 'lucide-react';
 import { PROJECT_PHASES, DOMAIN_VERSION_CATEGORIES } from '../../constants';
 
 const PhaseEditModal = memo(function PhaseEditModal({ project, onClose, onSubmit, t }) {
   const [phases, setPhases] = useState(() => {
     if (project && project.phases && project.phases.length > 0) {
-      return project.phases.map(p => ({ ...p, startDate: p.startDate || '', endDate: p.endDate || '' }));
+      return project.phases.map(p => ({ ...p, startDate: p.startDate || '', endDate: p.endDate || '', isMilestone: !!p.isMilestone }));
     }
-    return PROJECT_PHASES.map((name, idx) => ({ id: `p${idx}`, name, startDate: '', endDate: '' }));
+    return PROJECT_PHASES.map((name, idx) => ({ id: `p${idx}`, name, startDate: '', endDate: '', isMilestone: false }));
   });
   const [newName, setNewName] = useState('');
   const [error, setError] = useState('');
@@ -16,11 +16,12 @@ const PhaseEditModal = memo(function PhaseEditModal({ project, onClose, onSubmit
 
   const updateName = (id, name) => setPhases(phases.map(p => p.id === id ? { ...p, name } : p));
   const updateDate = (id, key, value) => setPhases(phases.map(p => p.id === id ? { ...p, [key]: value } : p));
+  const toggleMilestone = (id) => setPhases(phases.map(p => p.id === id ? { ...p, isMilestone: !p.isMilestone } : p));
   const addPhase = () => {
     setError('');
     if (!newName.trim()) { setError(t('단계 이름을 입력하세요.', 'Enter step name.')); return; }
     if (phases.some(p => p.name === newName.trim())) { setError(t('이미 동일한 이름의 단계가 있습니다.', 'Duplicate name.')); return; }
-    setPhases([...phases, { id: `p${Date.now()}`, name: newName.trim(), startDate: '', endDate: '' }]);
+    setPhases([...phases, { id: `p${Date.now()}`, name: newName.trim(), startDate: '', endDate: '', isMilestone: false }]);
     setNewName('');
   };
   const removePhase = (id) => {
@@ -84,7 +85,8 @@ const PhaseEditModal = memo(function PhaseEditModal({ project, onClose, onSubmit
       id: p.id,
       name: p.name.trim(),
       startDate: p.startDate || '',
-      endDate: p.endDate || ''
+      endDate: p.endDate || '',
+      isMilestone: !!p.isMilestone
     })));
     onClose();
   };
@@ -142,6 +144,9 @@ const PhaseEditModal = memo(function PhaseEditModal({ project, onClose, onSubmit
                       <div className="flex items-center gap-1 shrink-0">
                         {isCurrent && <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded">현재</span>}
                         {isLast && <span className="text-[10px] font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">완료</span>}
+                        <button type="button" onClick={() => toggleMilestone(p.id)} className={`inline-flex items-center px-1.5 py-1 rounded text-[10px] font-bold border transition-colors ${p.isMilestone ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200'}`} title={t('마일스톤(중요 표시)', 'Milestone')}>
+                          <Star size={11} className={`mr-0.5 ${p.isMilestone ? 'fill-rose-500 text-rose-500' : ''}`} />{t('마일스톤', 'Milestone')}
+                        </button>
                         <button type="button" disabled={idx === 0} onClick={() => move(idx, -1)} className="inline-flex items-center justify-center w-6 h-6 rounded bg-slate-100 hover:bg-indigo-100 text-slate-600 hover:text-indigo-700 border border-slate-200 hover:border-indigo-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed" title="위로"><ArrowUp size={13} /></button>
                         <button type="button" disabled={idx === phases.length - 1} onClick={() => move(idx, 1)} className="inline-flex items-center justify-center w-6 h-6 rounded bg-slate-100 hover:bg-indigo-100 text-slate-600 hover:text-indigo-700 border border-slate-200 hover:border-indigo-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed" title="아래로"><ArrowDown size={13} /></button>
                         <button type="button" onClick={() => removePhase(p.id)} className="inline-flex items-center px-1.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 transition-colors" title="삭제"><Trash size={11} className="mr-0.5" />삭제</button>

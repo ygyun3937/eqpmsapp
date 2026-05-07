@@ -1,5 +1,5 @@
 import React, { useState, memo } from 'react';
-import { X, ListTodo, CheckSquare, AlertTriangle, CheckCircle, User, Edit, Trash, PenTool, Info, ShieldCheck, FileText, ImageIcon, History, GitCommit as TimelineIcon, Package, Wrench, HardDrive, MessageSquare, Send, LifeBuoy, Plus, ShieldOff, Sparkles, Paperclip, Upload, Download, ExternalLink, Loader, FolderOpen, CalendarDays } from 'lucide-react';
+import { X, ListTodo, CheckSquare, AlertTriangle, CheckCircle, User, Edit, Trash, PenTool, Info, ShieldCheck, FileText, ImageIcon, History, GitCommit as TimelineIcon, Package, Wrench, HardDrive, MessageSquare, Send, LifeBuoy, Plus, ShieldOff, Sparkles, Paperclip, Upload, Download, ExternalLink, Loader, FolderOpen, CalendarDays, Star } from 'lucide-react';
 import { PROJECT_PHASES } from '../../constants';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
 import SignaturePad from '../common/SignaturePad';
@@ -104,6 +104,9 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                           <p className={`text-xs md:text-sm font-bold pr-2 ${task.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>Step {index + 1}. {task.name}</p>
                           {currentUser.role !== 'CUSTOMER' && (
                             <div className="flex items-center gap-1 shrink-0">
+                              <button onClick={(e) => { e.stopPropagation(); onUpdateTaskDates(project.id, task.id, { isMilestone: !task.isMilestone }); }} className={`inline-flex items-center px-1.5 py-1 rounded text-[10px] font-bold border transition-colors ${task.isMilestone ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200'}`} title={t('마일스톤(중요 표시)', 'Milestone')}>
+                                <Star size={11} className={`mr-0.5 ${task.isMilestone ? 'fill-rose-500 text-rose-500' : ''}`} />{task.isMilestone ? 'SOP' : t('마일스톤', 'Milestone')}
+                              </button>
                               {!task.isCompleted && (
                                 <button onClick={(e) => { e.stopPropagation(); setEditingTaskId(task.id); setEditingTaskName(task.name); }} className="inline-flex items-center px-1.5 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] font-bold border border-blue-200 transition-colors" title={t('수정', 'Edit')}>
                                   <Edit size={11} className="mr-0.5"/>{t('수정', 'Edit')}

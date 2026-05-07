@@ -1,7 +1,14 @@
-import React, { useState, useMemo, memo } from 'react';
-import { Plus, Filter, AlignJustify, CalendarDays, Clock, User, HardDrive, Monitor, Cpu, Edit, ListTodo, Trash, Download, History, ChevronDown, ChevronUp, Plane, Users } from 'lucide-react';
+import React, { useState, useMemo, memo, useRef, useEffect } from 'react';
+import { Plus, Filter, AlignJustify, CalendarDays, Clock, User, HardDrive, Monitor, Cpu, Edit, ListTodo, Trash, Download, History, ChevronDown, ChevronUp, Plane, Users, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import { PROJECT_PHASES, BATTERY_DOMAINS, DOMAIN_VERSION_CATEGORIES, DEFAULT_VERSION_CATEGORIES } from '../../constants';
 import { fmtYMD } from '../../utils/calc';
+
+const safeDate = (v) => {
+  const ymd = fmtYMD(v);
+  if (!ymd) return null;
+  const d = new Date(ymd);
+  return isNaN(d.getTime()) ? null : d;
+};
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
 import ProjectIssueBadge from '../common/ProjectIssueBadge';
 import ProjectNotesBadge from '../common/ProjectNotesBadge';
@@ -13,6 +20,16 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
   const [openIssueDropdownId, setOpenIssueDropdownId] = useState(null);
   const [openNotesDropdownId, setOpenNotesDropdownId] = useState(null);
   const [expandedGanttId, setExpandedGanttId] = useState(null);
+  const [expandedGanttTab, setExpandedGanttTab] = useState('phase');
+  const [ganttViewTab, setGanttViewTab] = useState('phase');
+  const [ganttZoom, setGanttZoom] = useState(1); // 1=기본, 0.5x~4x
+  const [ganttFilterIds, setGanttFilterIds] = useState(null); // null=전체, [id...]=선택된 ID들
+  const [ganttFilterOpen, setGanttFilterOpen] = useState(false);
+  const [ganttFilterSearch, setGanttFilterSearch] = useState('');
+  const ganttScrollRef = useRef(null);
+  const ganttInitialScrolled = useRef(false);
+  const inlineGanttScrollRef = useRef(null);
+  const [inlineGanttZoom, setInlineGanttZoom] = useState(1);
 
   const managers = ['all', ...new Set(projects.map(p => p.manager).filter(Boolean))];
 
@@ -27,14 +44,111 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
   }, [projects, filterManager, currentUser]);
 
   const ganttRange = useMemo(() => {
-    if (filteredProjects.length === 0) return { minDate: new Date(), maxDate: new Date(), totalDays: 1 };
-    const minDate = new Date(Math.min(...filteredProjects.map(p => new Date(p.startDate))));
-    const maxDate = new Date(Math.max(...filteredProjects.map(p => new Date(p.dueDate))));
+    const starts = [];
+    const ends = [];
+    filteredProjects.forEach(p => {
+      const ps = safeDate(p.startDate); if (ps) starts.push(ps.getTime());
+      const pd = safeDate(p.dueDate); if (pd) ends.push(pd.getTime());
+      (p.tasks || []).forEach(tk => {
+        const ts = safeDate(tk.startDate); if (ts) starts.push(ts.getTime());
+        const te = safeDate(tk.endDate); if (te) ends.push(te.getTime());
+      });
+      (p.trips || []).forEach(tr => {
+        const ts = safeDate(tr.departureDate); if (ts) starts.push(ts.getTime());
+        const te = safeDate(tr.returnDate); if (te) ends.push(te.getTime());
+      });
+    });
+    if (starts.length === 0 || ends.length === 0) {
+      const today = new Date();
+      return { minDate: today, maxDate: today, totalDays: 1 };
+    }
+    const minDate = new Date(Math.min(...starts));
+    const maxDate = new Date(Math.max(...ends));
     minDate.setDate(minDate.getDate() - 15);
     maxDate.setDate(maxDate.getDate() + 15);
     const totalDays = (maxDate - minDate) / (1000 * 60 * 60 * 24);
     return { minDate, maxDate, totalDays };
   }, [filteredProjects]);
+
+  // 간트 뷰가 활성화되면 초기 스크롤을 today - 1개월 위치로 이동
+  useEffect(() => {
+    if (viewMode !== 'gantt') { ganttInitialScrolled.current = false; return; }
+    const id = setTimeout(() => {
+      const node = ganttScrollRef.current;
+      if (!node) return;
+      const inner = node.firstElementChild;
+      if (!inner) return;
+      const innerWidth = inner.scrollWidth;
+      const minD = ganttRange.minDate;
+      const fullD = ganttRange.totalDays;
+      if (!fullD || fullD <= 0) return;
+      const today = new Date();
+      const todayPct = ((today - minD) / (1000 * 60 * 60 * 24) / fullD);
+      const oneMonthPct = 30 / fullD;
+      const targetPct = Math.max(0, todayPct - oneMonthPct);
+      node.scrollLeft = targetPct * innerWidth;
+      ganttInitialScrolled.current = true;
+    }, 80);
+    return () => clearTimeout(id);
+  }, [viewMode, ganttZoom, ganttViewTab, ganttRange.minDate, ganttRange.totalDays]);
+
+  // 휠 줌 — 차트 영역 위에서 휠 굴리면 줌 (Shift+휠 = 가로 스크롤, 그 외 휠 = 줌)
+  useEffect(() => {
+    if (viewMode !== 'gantt') return;
+    const node = ganttScrollRef.current;
+    if (!node) return;
+    const handler = (e) => {
+      if (e.shiftKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const delta = e.deltaY > 0 ? -0.2 : 0.2;
+      setGanttZoom(z => Math.max(0.5, Math.min(4, +((z + delta).toFixed(2)))));
+    };
+    node.addEventListener('wheel', handler, { passive: false });
+    return () => node.removeEventListener('wheel', handler);
+  }, [viewMode]);
+
+  // 인라인 간트 휠 줌 + 초기 스크롤
+  useEffect(() => {
+    if (!expandedGanttId) return;
+    const node = inlineGanttScrollRef.current;
+    if (!node) return;
+    const handler = (e) => {
+      if (e.shiftKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const delta = e.deltaY > 0 ? -0.2 : 0.2;
+      setInlineGanttZoom(z => Math.max(0.5, Math.min(4, +((z + delta).toFixed(2)))));
+    };
+    node.addEventListener('wheel', handler, { passive: false });
+    // 초기 스크롤 to today - 1month
+    const id = setTimeout(() => {
+      if (!inlineGanttScrollRef.current) return;
+      const n = inlineGanttScrollRef.current;
+      const inner = n.firstElementChild;
+      if (!inner) return;
+      const prj = projects.find(p => p.id === expandedGanttId);
+      if (!prj) return;
+      const ps = prj.startDate ? new Date(prj.startDate) : null;
+      const pd = prj.dueDate ? new Date(prj.dueDate) : null;
+      if (!ps || !pd || isNaN(ps.getTime()) || isNaN(pd.getTime())) return;
+      const allStarts = [ps];
+      const allEnds = [pd];
+      (prj.tasks || []).forEach(tk => { const s = tk.startDate ? new Date(tk.startDate) : null; const e = tk.endDate ? new Date(tk.endDate) : null; if (s && !isNaN(s.getTime())) allStarts.push(s); if (e && !isNaN(e.getTime())) allEnds.push(e); });
+      const minTime = Math.min(...allStarts.map(d => d.getTime()));
+      const maxTime = Math.max(...allEnds.map(d => d.getTime()));
+      const gMin = new Date(minTime); gMin.setDate(1);
+      const gMax = new Date(maxTime); gMax.setMonth(gMax.getMonth() + 1, 0);
+      const fullD = (gMax - gMin) / (1000 * 60 * 60 * 24);
+      if (fullD <= 0) return;
+      const today = new Date();
+      const todayPctVal = ((today - gMin) / (1000 * 60 * 60 * 24) / fullD);
+      const oneMonth = 30 / fullD;
+      const tgt = Math.max(0, todayPctVal - oneMonth);
+      n.scrollLeft = tgt * inner.scrollWidth;
+    }, 80);
+    return () => { clearTimeout(id); node.removeEventListener('wheel', handler); };
+  }, [expandedGanttId, inlineGanttZoom, expandedGanttTab, projects]);
 
   // 간단 리스트 Excel (1 시트)
   const handleExportList = () => {
@@ -307,6 +421,19 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                         </button>
                       )}
                     </div>
+                    {Array.isArray(prj.equipments) && prj.equipments.length > 0 && (
+                      <div className="flex items-center flex-wrap gap-1 mt-1.5">
+                        <span className="text-[10px] text-slate-400 font-bold mr-0.5">{t('장비', 'Eq.')}</span>
+                        {prj.equipments.slice(0, 4).map(eq => (
+                          <span key={eq.id} className="inline-flex items-center bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-[10px] font-bold border border-blue-200 font-mono" title={eq.name ? `${eq.code} — ${eq.name}${eq.note ? ` (${eq.note})` : ''}` : eq.code}>
+                            {eq.code}
+                          </span>
+                        ))}
+                        {prj.equipments.length > 4 && (
+                          <span className="text-[10px] text-slate-500 font-bold">+{prj.equipments.length - 4}</span>
+                        )}
+                      </div>
+                    )}
                     <div className="text-xs text-slate-500 flex items-center mt-1"><Clock size={12} className="mr-1" /> {fmtYMD(prj.startDate) || <span className="italic text-amber-600">미정</span>} ~ {fmtYMD(prj.dueDate) || <span className="italic text-amber-600">미정</span>}</div>
                     <ProjectPipelineStepper phases={prj.phases} currentPhase={prj.phaseIndex || 0} onUpdatePhase={onUpdatePhase} projectId={prj.id} role={currentUser.role} onEditPhases={onEditPhases} />
                   </td>
@@ -455,19 +582,45 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                   <tr className="bg-slate-50">
                     <td colSpan="7" className="px-6 py-5">
                       {(() => {
-                        const pStartDate = new Date(prj.startDate);
-                        const pDueDate = new Date(prj.dueDate);
+                        const pStartDate = safeDate(prj.startDate);
+                        const pDueDate = safeDate(prj.dueDate);
+                        if (!pStartDate || !pDueDate) {
+                          return (
+                            <div className="bg-white rounded-xl border border-amber-200 shadow-sm p-6 text-center">
+                              <div className="text-3xl mb-2">📅</div>
+                              <p className="text-sm font-bold text-amber-700">{t('프로젝트 일정이 미정입니다.', 'Project schedule is TBD.')}</p>
+                              <p className="text-xs text-slate-500 mt-1">{t('시작일/납기일을 입력하면 단계별 간트가 표시됩니다.', 'Set start/due dates to see the phase Gantt chart.')}</p>
+                            </div>
+                          );
+                        }
                         const totalDays = (pDueDate - pStartDate) / (1000 * 60 * 60 * 24);
                         const currentPhaseIdx = typeof prj.phaseIndex === 'number' ? prj.phaseIndex : 0;
                         const phaseCount = PROJECT_PHASES.length;
                         const daysPerPhase = totalDays / phaseCount;
                         const phaseColors = ['bg-slate-400', 'bg-blue-400', 'bg-cyan-400', 'bg-indigo-400', 'bg-amber-400', 'bg-purple-400', 'bg-emerald-400'];
 
-                        const gMinDate = new Date(pStartDate); gMinDate.setDate(1);
-                        const gMaxDate = new Date(pDueDate); gMaxDate.setMonth(gMaxDate.getMonth() + 1, 0);
+                        // 차트 범위 — 프로젝트 일정 + 모든 셋업 작업 일정 + 모든 출장 일정 포함하도록 확장 (빈 영역 방지)
+                        const allStarts = [pStartDate];
+                        const allEnds = [pDueDate];
+                        (prj.tasks || []).forEach(tk => {
+                          const s = safeDate(tk.startDate);
+                          const e = safeDate(tk.endDate);
+                          if (s) allStarts.push(s);
+                          if (e) allEnds.push(e);
+                        });
+                        (prj.trips || []).forEach(tr => {
+                          const s = safeDate(tr.departureDate);
+                          const e = safeDate(tr.returnDate);
+                          if (s) allStarts.push(s);
+                          if (e) allEnds.push(e);
+                        });
+                        const minTime = Math.min(...allStarts.map(d => d.getTime()));
+                        const maxTime = Math.max(...allEnds.map(d => d.getTime()));
+                        const gMinDate = new Date(minTime); gMinDate.setDate(1);
+                        const gMaxDate = new Date(maxTime); gMaxDate.setMonth(gMaxDate.getMonth() + 1, 0);
                         const fullDays = (gMaxDate - gMinDate) / (1000 * 60 * 60 * 24);
 
-                        // 월별 + 일별 눈금 (주 단위)
+                        // 월별 + 일별 눈금 (주 단위) — 0~100% 구간을 빠짐없이 채움
                         const months = [];
                         const days = [];
                         const cursor = new Date(gMinDate);
@@ -484,6 +637,10 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                           days.push({ label: String(dCursor.getDate()).padStart(2, '0'), pos });
                           dCursor.setDate(dCursor.getDate() + dayStep);
                         }
+                        // 마지막 라벨이 100%에 못 미치면 gMaxDate 라벨을 100%에 추가 (우측 빈 공간 방지)
+                        if (!days.length || days[days.length - 1].pos < 99) {
+                          days.push({ label: String(gMaxDate.getDate()).padStart(2, '0'), pos: 100 });
+                        }
 
                         const today = new Date();
                         const todayPercent = Math.max(0, Math.min(100, ((today - gMinDate) / (1000 * 60 * 60 * 24) / fullDays) * 100));
@@ -493,11 +650,18 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                         const remainingDays = Math.max(0, Math.floor((pDueDate - today) / (1000 * 60 * 60 * 24)));
                         const totalDaysInt = Math.floor(totalDays);
 
+                        const setupTasks = (prj.tasks || []).map((tk, ix) => {
+                          const s = safeDate(tk.startDate);
+                          const e = safeDate(tk.endDate);
+                          return { name: tk.name || `Step ${ix + 1}`, start: s, end: e, isCompleted: !!tk.isCompleted, hasSchedule: !!(s && e), isMilestone: !!tk.isMilestone };
+                        });
+                        const setupWithSchedule = setupTasks.filter(t => t.hasSchedule).length;
+
                         return (
                           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
                             <div className="flex justify-between items-start mb-4">
                               <div>
-                                <h3 className="text-base font-bold text-slate-800 mb-1">{t('단계별 간트 차트', 'Phase Gantt Chart')}</h3>
+                                <h3 className="text-base font-bold text-slate-800 mb-1">{t('간트 차트', 'Gantt Chart')}</h3>
                                 <p className="text-xs text-slate-500">{prj.name}  ·  {fmtYMD(prj.startDate) || '미정'} ~ {fmtYMD(prj.dueDate) || '미정'}  ({t('총', 'Total')} {totalDaysInt}{t('일', 'd')})</p>
                               </div>
                               <div className="flex space-x-2 text-xs">
@@ -510,80 +674,230 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                               </div>
                             </div>
 
-                            {/* 월 헤더 + 일 눈금 */}
-                            <div className="flex">
-                              <div className="w-52 shrink-0"></div>
-                              <div className="flex-1 relative">
-                                {/* 월 행 */}
-                                <div className="relative h-5">
-                                  {months.map((m, i) => (
-                                    <div key={i} className="absolute text-xs font-bold text-slate-700 border-l-2 border-slate-300 pl-1" style={{ left: `${m.pos}%` }}>{m.label}</div>
-                                  ))}
-                                </div>
-                                {/* 일 행 */}
-                                <div className="relative h-4 border-b border-slate-200">
-                                  {days.map((d, i) => (
-                                    <div key={i} className="absolute text-[9px] text-slate-400 border-l border-slate-200 pl-0.5" style={{ left: `${d.pos}%` }}>{d.label}</div>
-                                  ))}
-                                </div>
+                            {/* 탭 — 단계별 / 셋업 + 줌 컨트롤 */}
+                            <div className="flex border-b border-slate-200 mb-4 items-center">
+                              <button
+                                onClick={() => setExpandedGanttTab('phase')}
+                                className={`px-4 py-2 text-xs font-bold border-b-2 transition-colors ${expandedGanttTab === 'phase' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+                              >
+                                {t('단계별', 'Phases')} <span className="text-[10px] text-slate-400 font-medium ml-0.5">({phaseCount})</span>
+                              </button>
+                              <button
+                                onClick={() => setExpandedGanttTab('setup')}
+                                className={`px-4 py-2 text-xs font-bold border-b-2 transition-colors ${expandedGanttTab === 'setup' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+                              >
+                                {t('셋업 일정', 'Setup Tasks')} <span className="text-[10px] text-slate-400 font-medium ml-0.5">({setupWithSchedule}/{setupTasks.length})</span>
+                              </button>
+                              <div className="ml-auto flex items-center gap-1.5 pb-1">
+                                <span className="text-[10px] text-slate-400 mr-1 hidden md:inline">{t('휠 = 줌', 'Wheel = zoom')}</span>
+                                <button onClick={() => setInlineGanttZoom(Math.max(0.5, +(inlineGanttZoom - 0.25).toFixed(2)))} disabled={inlineGanttZoom <= 0.5} className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-300 hover:border-indigo-400 shadow-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed" title={t('축소', 'Zoom out')}>
+                                  <ZoomOut size={14} />
+                                </button>
+                                <span className="text-xs font-bold text-slate-700 px-2 py-1 min-w-[3rem] text-center bg-white border border-slate-200 rounded-md shadow-sm">{Math.round(inlineGanttZoom * 100)}%</span>
+                                <button onClick={() => setInlineGanttZoom(Math.min(4, +(inlineGanttZoom + 0.25).toFixed(2)))} disabled={inlineGanttZoom >= 4} className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-300 hover:border-indigo-400 shadow-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed" title={t('확대', 'Zoom in')}>
+                                  <ZoomIn size={14} />
+                                </button>
+                                <button onClick={() => { setTimeout(() => { const n = inlineGanttScrollRef.current; if (!n) return; const inner = n.firstElementChild; if (!inner) return; const today = new Date(); const todayPctVal = ((today - gMinDate) / (1000 * 60 * 60 * 24) / fullDays); const oneMonth = 30 / fullDays; const tgt = Math.max(0, todayPctVal - oneMonth); n.scrollLeft = tgt * inner.scrollWidth; }, 30); }} className="inline-flex items-center px-2.5 h-7 rounded-md bg-red-500 hover:bg-red-600 text-white text-xs font-bold shadow-sm transition-colors ml-1" title={t('오늘로 이동', 'Jump to today')}>
+                                  <Maximize2 size={12} className="mr-1" />{t('오늘', 'Today')}
+                                </button>
                               </div>
                             </div>
 
-                            {/* 단계별 바 */}
-                            <div className="space-y-3 mt-2 relative">
-                              {/* 오늘선 */}
-                              <div className="absolute w-px bg-orange-400 z-10" style={{ left: `calc(13rem + (100% - 13rem) * ${todayPercent} / 100)`, top: '-0.5rem', bottom: '-0.5rem' }}>
-                                <div className="absolute -top-3 -translate-x-1/2 text-orange-500 text-xs font-bold">{t('오늘', 'Today')}</div>
-                              </div>
+                            {(() => {
+                              // 좌측 행 데이터 + 우측 바 데이터를 같은 인덱스로 동기화
+                              const ROW_H = 'h-12';
+                              const HEADER_H = 'h-14'; // pt-6(오늘 라벨 자리) + 헤더
+                              // 차트 최소 너비 — 부모가 더 넓으면 부모 폭으로 늘어남(w-full)
+                              // days 배열은 위에서 이미 0~100% 채움
+                              const daysFilled = days;
 
-                              {PROJECT_PHASES.map((phase, idx) => {
+                              // 출장 데이터 (현재 프로젝트 trips) — 상단 별도 행으로 표시
+                              const tripRows = (prj.trips || [])
+                                .map(tr => {
+                                  const s = safeDate(tr.departureDate);
+                                  const e = safeDate(tr.returnDate);
+                                  if (!s || !e) return null;
+                                  return {
+                                    kind: 'trip',
+                                    name: `${tr.engineerName || '담당자'} ${t('출장', 'Trip')}`,
+                                    start: s, end: e, hasSch: true,
+                                    leftPercent: ((s - gMinDate) / (1000 * 60 * 60 * 24) / fullDays) * 100,
+                                    widthPercent: ((e - s) / (1000 * 60 * 60 * 24) / fullDays) * 100,
+                                    barBg: 'bg-indigo-400'
+                                  };
+                                })
+                                .filter(Boolean);
+
+                              const phaseRows = PROJECT_PHASES.map((phase, idx) => {
+                                const def = (prj.phases || [])[idx];
+                                const isMilestone = !!(def && def.isMilestone);
                                 const phaseStart = new Date(pStartDate.getTime() + daysPerPhase * idx * 24 * 60 * 60 * 1000);
                                 const phaseEnd = new Date(pStartDate.getTime() + daysPerPhase * (idx + 1) * 24 * 60 * 60 * 1000);
-                                const leftPercent = ((phaseStart - gMinDate) / (1000 * 60 * 60 * 24) / fullDays) * 100;
-                                const widthPercent = ((phaseEnd - phaseStart) / (1000 * 60 * 60 * 24) / fullDays) * 100;
                                 const isPast = idx < currentPhaseIdx;
                                 const isCurrent = idx === currentPhaseIdx;
+                                return {
+                                  kind: 'phase', name: phase, start: phaseStart, end: phaseEnd,
+                                  isPast, isCurrent, hasSch: true, isMilestone,
+                                  leftPercent: ((phaseStart - gMinDate) / (1000 * 60 * 60 * 24) / fullDays) * 100,
+                                  widthPercent: ((phaseEnd - phaseStart) / (1000 * 60 * 60 * 24) / fullDays) * 100,
+                                  barBg: isPast ? 'bg-emerald-300' : isCurrent ? 'bg-teal-500' : 'bg-slate-200'
+                                };
+                              });
 
-                                // 색상: 완료=sage green, 현재=teal, 예정=light gray
-                                const barBg = isPast ? 'bg-emerald-300' : isCurrent ? 'bg-teal-500' : 'bg-slate-200';
+                              // 셋업 작업별 색 회전 팔레트 (작업끼리 시각 구분)
+                              const SETUP_PALETTE = ['bg-blue-400', 'bg-amber-400', 'bg-purple-400', 'bg-rose-400', 'bg-cyan-400', 'bg-orange-400', 'bg-teal-400', 'bg-pink-400'];
+                              const setupRows = setupTasks.map((tk, ix) => ({
+                                kind: 'setup', name: tk.name, start: tk.start, end: tk.end,
+                                isCompleted: tk.isCompleted, hasSch: tk.hasSchedule,
+                                isMilestone: !!tk.isMilestone,
+                                leftPercent: tk.hasSchedule ? ((tk.start - gMinDate) / (1000 * 60 * 60 * 24) / fullDays) * 100 : 0,
+                                widthPercent: tk.hasSchedule ? ((tk.end - tk.start) / (1000 * 60 * 60 * 24) / fullDays) * 100 : 0,
+                                barBg: tk.isCompleted ? 'bg-emerald-300' : SETUP_PALETTE[ix % SETUP_PALETTE.length]
+                              }));
 
-                                return (
-                                  <div key={idx} className="flex items-center h-7">
-                                    {/* 왼쪽: 아이콘 + 단계명 + 날짜 */}
-                                    <div className="w-52 shrink-0 pr-3 flex items-center">
-                                      <span className="w-5 h-5 flex items-center justify-center mr-2 shrink-0">
-                                        {isPast ? (
-                                          <span className="text-emerald-500 text-sm font-bold">✓</span>
-                                        ) : isCurrent ? (
-                                          <span className="text-teal-600 text-sm">▶</span>
-                                        ) : (
-                                          <span className="w-3 h-3 rounded-full border-2 border-slate-300 inline-block"></span>
-                                        )}
-                                      </span>
-                                      <span className={`text-sm font-semibold truncate ${isPast ? 'text-slate-400' : isCurrent ? 'text-slate-800' : 'text-slate-500'}`}>{phase}</span>
-                                      <span className="text-xs text-slate-400 ml-3 shrink-0 whitespace-nowrap">{phaseStart.toISOString().split('T')[0].slice(5)} ~ {phaseEnd.toISOString().split('T')[0].slice(5)}</span>
+                              const rows = [...tripRows, ...(expandedGanttTab === 'phase' ? phaseRows : setupRows)];
+
+                              if (expandedGanttTab === 'setup' && setupTasks.length === 0) {
+                                return <div className="text-center py-8 text-sm text-slate-400 italic">{t('셋업 일정이 없습니다.', 'No setup tasks.')}</div>;
+                              }
+                              if (expandedGanttTab === 'setup' && setupWithSchedule === 0) {
+                                return <div className="text-center py-8 text-sm text-amber-600">{t('등록된 셋업 항목에 시작일/종료일이 없습니다. 프로젝트 상세에서 일정을 입력하세요.', 'No setup tasks have schedules. Set start/end dates in project details.')}</div>;
+                              }
+
+                              return (
+                                <div className="flex border border-slate-200 rounded-lg overflow-hidden">
+                                  {/* 좌측 고정 칸 — 이름/날짜, 가로 스크롤과 무관 */}
+                                  <div className="w-64 shrink-0 bg-white border-r border-slate-200">
+                                    <div className={`${HEADER_H} bg-slate-50 px-3 flex items-end pb-1 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase`}>
+                                      {expandedGanttTab === 'phase' ? t('단계 / 일정', 'Phase / Date') : t('작업 / 일정', 'Task / Date')}
                                     </div>
+                                    {rows.map((r, idx) => (
+                                      <div key={idx} className={`${ROW_H} px-2 flex items-center border-b border-slate-100 last:border-b-0 ${r.kind === 'trip' ? 'bg-indigo-50/60' : ''}`}>
+                                        <span className="w-5 h-5 flex items-center justify-center mr-2 shrink-0">
+                                          {r.kind === 'trip' ? (
+                                            <Plane size={13} className="text-indigo-500" />
+                                          ) : r.isMilestone ? (
+                                            <span className="text-rose-500 text-base leading-none">◆</span>
+                                          ) : r.kind === 'phase' ? (
+                                            r.isPast ? <span className="text-emerald-500 text-sm font-bold">✓</span>
+                                            : r.isCurrent ? <span className="text-teal-600 text-sm">▶</span>
+                                            : <span className="w-3 h-3 rounded-full border-2 border-slate-300 inline-block"></span>
+                                          ) : (
+                                            r.isCompleted ? <span className="text-emerald-500 text-sm font-bold">✓</span>
+                                            : r.hasSch ? <span className="w-3 h-3 rounded-full border-2 border-blue-400 inline-block"></span>
+                                            : <span className="w-3 h-3 rounded-full border-2 border-slate-200 inline-block"></span>
+                                          )}
+                                        </span>
+                                        <div className="min-w-0 flex-1">
+                                          <div className={`text-sm font-semibold truncate ${
+                                            r.kind === 'trip' ? 'text-indigo-700'
+                                            : r.isMilestone ? 'text-rose-700'
+                                            : r.kind === 'phase'
+                                              ? (r.isPast ? 'text-slate-400' : r.isCurrent ? 'text-slate-800' : 'text-slate-500')
+                                              : (r.isCompleted ? 'text-slate-400 line-through' : r.hasSch ? 'text-slate-800' : 'text-slate-400')
+                                          }`} title={r.name}>
+                                            {r.name}
+                                            {r.isMilestone && <span className="ml-1 text-[9px] bg-rose-50 text-rose-700 px-1 py-0.5 rounded font-bold border border-rose-200">SOP</span>}
+                                          </div>
+                                          {r.hasSch ? (
+                                            <div className="text-[10px] text-slate-400 mt-0.5 whitespace-nowrap">{fmtYMD(r.start)} ~ {fmtYMD(r.end)}</div>
+                                          ) : (
+                                            <div className="text-[10px] text-amber-600 font-bold mt-0.5">{t('일정 미정', 'No schedule')}</div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
 
-                                    {/* 오른쪽: 바 */}
-                                    <div className="flex-1 relative h-full flex items-center">
-                                      <div
-                                        className={`absolute h-5 rounded-sm ${barBg}`}
-                                        style={{ left: `${leftPercent}%`, width: `${Math.max(widthPercent, 1)}%` }}
-                                      ></div>
-                                      {isCurrent && (
-                                        <span className="absolute text-xs text-teal-700 font-bold" style={{ left: `calc(${leftPercent + widthPercent}% + 0.5rem)` }}>{t('진행중', 'Active')}</span>
-                                      )}
+                                  {/* 우측 차트 영역 — 픽셀 단위 너비 + 휠 줌 */}
+                                  <div className="flex-1 overflow-x-auto min-w-0" ref={inlineGanttScrollRef}>
+                                    <div className="relative" style={{ width: `${Math.max(700, Math.round(fullDays * 10 * inlineGanttZoom))}px`, minWidth: '100%' }}>
+                                      {/* 월/일 헤더 (sticky-top) — 위쪽 pt-6 영역에 오늘 라벨이 별도로 표시됨 */}
+                                      <div className={`sticky top-0 z-30 bg-slate-50 border-b border-slate-200 ${HEADER_H} relative pt-6`}>
+                                        <div className="relative h-5">
+                                          {months.map((m, i) => {
+                                            const next = months[i + 1];
+                                            const widthPct = next ? next.pos - m.pos : 100 - m.pos;
+                                            return (
+                                              <div key={i} className="absolute h-full" style={{ left: `${m.pos}%`, width: `${widthPct}%` }}>
+                                                <div className="sticky left-0 inline-block whitespace-nowrap text-xs font-bold text-slate-700 border-l-2 border-slate-300 pl-1 bg-slate-50">{m.label}</div>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                        <div className="relative h-5">
+                                          {daysFilled.map((d, i) => (
+                                            <div key={i} className="absolute text-[9px] text-slate-400 border-l border-slate-200 pl-0.5" style={{ left: `${d.pos}%`, transform: d.pos >= 99 ? 'translateX(-100%)' : 'none' }}>{d.label}</div>
+                                          ))}
+                                        </div>
+                                      </div>
+
+                                      {/* 오늘 라벨 — 헤더 pt-6 공간 안쪽에 위치(잘림 방지), 점선은 헤더~막대 끝까지 */}
+                                      <div className="absolute z-40 pointer-events-none" style={{ left: `${todayPercent}%`, top: 0, bottom: 0 }}>
+                                        <div className="absolute top-0.5 -translate-x-1/2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md whitespace-nowrap border border-red-600 leading-tight">
+                                          ▼ {t('오늘', 'Today')}
+                                        </div>
+                                        <div className="absolute top-7 bottom-0 left-0 border-l-2 border-dashed border-red-500 -translate-x-1/2"></div>
+                                      </div>
+
+                                      {/* 막대 행들 */}
+                                      {rows.map((r, idx) => (
+                                        <div key={idx} className={`${ROW_H} relative border-b border-slate-100 last:border-b-0 ${r.kind === 'trip' ? 'bg-indigo-50/40' : ''}`}>
+                                          {months.map((m, i) => (
+                                            <div key={i} className="absolute top-0 bottom-0 border-l border-slate-100" style={{ left: `${m.pos}%` }}></div>
+                                          ))}
+                                          {r.hasSch && (
+                                            <div className="absolute inset-y-0 flex items-center" style={{ left: 0, right: 0 }}>
+                                              {!r.isMilestone && (
+                                                <>
+                                                  <div className={`absolute h-5 rounded-sm ${r.barBg} ${r.kind === 'trip' ? 'ring-1 ring-indigo-500' : ''}`} style={{ left: `${r.leftPercent}%`, width: `${Math.max(r.widthPercent, 1)}%` }} title={r.name}></div>
+                                                  {r.kind === 'setup' && (
+                                                    <span className="absolute text-[10px] font-bold text-slate-700 whitespace-nowrap pointer-events-none" style={{ left: `calc(${r.leftPercent + Math.max(r.widthPercent, 1)}% + 0.5rem)` }}>{r.name}</span>
+                                                  )}
+                                                  {r.kind === 'trip' && (
+                                                    <span className="absolute text-[10px] font-bold text-indigo-700 whitespace-nowrap pointer-events-none" style={{ left: `calc(${r.leftPercent + Math.max(r.widthPercent, 1)}% + 0.5rem)` }}>
+                                                      {fmtYMD(r.start).slice(5).replace('-','/')} ~ {fmtYMD(r.end).slice(5).replace('-','/')}
+                                                    </span>
+                                                  )}
+                                                </>
+                                              )}
+                                              {/* 마일스톤 — 종료일 위치에 다이아몬드 + 라벨 */}
+                                              {r.isMilestone && (
+                                                <div className="absolute" style={{ left: `${r.leftPercent + r.widthPercent}%`, transform: 'translateX(-50%)' }}>
+                                                  <div className="flex flex-col items-center">
+                                                    <span className="text-[10px] text-rose-700 font-bold whitespace-nowrap mb-0.5">{fmtYMD(r.end).slice(5).replace('-', '/')} (SOP)</span>
+                                                    <span className="text-rose-500 text-xl leading-none drop-shadow">◆</span>
+                                                  </div>
+                                                </div>
+                                              )}
+                                              {r.isCurrent && !r.isMilestone && (
+                                                <span className="absolute text-xs text-teal-700 font-bold" style={{ left: `calc(${r.leftPercent + r.widthPercent}% + 0.5rem)` }}>{t('진행중', 'Active')}</span>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      ))}
                                     </div>
                                   </div>
-                                );
-                              })}
-                            </div>
+                                </div>
+                              );
+                            })()}
 
                             {/* 범례 */}
-                            <div className="flex items-center mt-6 pt-4 border-t border-slate-100 space-x-6 text-xs text-slate-500">
-                              <div className="flex items-center"><span className="w-4 h-2.5 rounded-sm bg-emerald-300 mr-2"></span>{t('완료된 단계', 'Completed')}</div>
-                              <div className="flex items-center"><span className="w-4 h-2.5 rounded-sm bg-teal-500 mr-2"></span>{t('현재 단계', 'Current')}</div>
-                              <div className="flex items-center"><span className="w-4 h-2.5 rounded-sm bg-slate-200 mr-2"></span>{t('예정 단계', 'Planned')}</div>
+                            <div className="flex items-center mt-6 pt-4 border-t border-slate-100 space-x-6 text-xs text-slate-500 flex-wrap gap-y-1">
+                              {expandedGanttTab === 'phase' ? (
+                                <>
+                                  <div className="flex items-center"><span className="w-4 h-2.5 rounded-sm bg-emerald-300 mr-2"></span>{t('완료된 단계', 'Completed')}</div>
+                                  <div className="flex items-center"><span className="w-4 h-2.5 rounded-sm bg-teal-500 mr-2"></span>{t('현재 단계', 'Current')}</div>
+                                  <div className="flex items-center"><span className="w-4 h-2.5 rounded-sm bg-slate-200 mr-2"></span>{t('예정 단계', 'Planned')}</div>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="flex items-center"><span className="w-4 h-2.5 rounded-sm bg-emerald-300 mr-2"></span>{t('완료된 작업', 'Completed task')}</div>
+                                  <div className="flex items-center"><span className="w-4 h-2.5 rounded-sm bg-blue-400 mr-2"></span>{t('진행 예정', 'Planned task')}</div>
+                                  <div className="flex items-center"><span className="text-amber-600 font-bold">●</span><span className="ml-1">{t('일정 미정 항목은 막대 표시 안 됨', 'Tasks without schedule are not drawn')}</span></div>
+                                </>
+                              )}
                             </div>
                           </div>
                         );
@@ -597,73 +911,348 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
             </tbody>
           </table>
           </div>
-        ) : (
-          <div className="p-6 overflow-x-auto">
-            <div className="min-w-[800px]">
-              <div className="flex border-b border-slate-200 pb-2 mb-4 relative h-6">
-                <div className="absolute left-0 text-xs font-bold text-slate-400">{ganttRange.minDate.toISOString().split('T')[0]}</div>
-                <div className="absolute right-0 text-xs font-bold text-slate-400">{ganttRange.maxDate.toISOString().split('T')[0]}</div>
-                <div className="absolute left-1/2 -translate-x-1/2 text-xs font-bold text-slate-400 bg-white px-2">{t('프로젝트 일정 타임라인', 'Project Timeline')}</div>
-              </div>
-              <div className="space-y-4">
-                {filteredProjects.length === 0 ? (
-                  <div className="text-center py-8 text-slate-400 text-sm">{t('표시할 프로젝트가 없습니다.', 'No projects to display.')}</div>
-                ) : (
-                  filteredProjects.map((prj) => {
-                    const pStart = new Date(prj.startDate);
-                    const pDue = new Date(prj.dueDate);
-                    const leftPercent = ((pStart - ganttRange.minDate) / (1000 * 60 * 60 * 24) / ganttRange.totalDays) * 100;
-                    const widthPercent = ((pDue - pStart) / (1000 * 60 * 60 * 24) / ganttRange.totalDays) * 100;
-                    const actual = calcAct(prj.tasks);
-                    const projectIssues = issues.filter(i => i.projectId === prj.id && i.status !== '조치 완료');
+        ) : (() => {
+          // 간트차트 탭 — 인라인 간트와 동일 스타일 적용
+          const PROJECT_BAR_COLORS = ['bg-blue-400', 'bg-emerald-400', 'bg-amber-400', 'bg-purple-400', 'bg-rose-400', 'bg-cyan-400', 'bg-indigo-400', 'bg-orange-400', 'bg-teal-400', 'bg-pink-400'];
+          // 동적 Tailwind 클래스 회피 위해 명시적 매핑
+          const COLOR_HEADER = {
+            'bg-blue-400': { bg: 'bg-blue-50', border: 'border-blue-300', stripe: 'bg-blue-400' },
+            'bg-emerald-400': { bg: 'bg-emerald-50', border: 'border-emerald-300', stripe: 'bg-emerald-400' },
+            'bg-amber-400': { bg: 'bg-amber-50', border: 'border-amber-300', stripe: 'bg-amber-400' },
+            'bg-purple-400': { bg: 'bg-purple-50', border: 'border-purple-300', stripe: 'bg-purple-400' },
+            'bg-rose-400': { bg: 'bg-rose-50', border: 'border-rose-300', stripe: 'bg-rose-400' },
+            'bg-cyan-400': { bg: 'bg-cyan-50', border: 'border-cyan-300', stripe: 'bg-cyan-400' },
+            'bg-indigo-400': { bg: 'bg-indigo-50', border: 'border-indigo-300', stripe: 'bg-indigo-400' },
+            'bg-orange-400': { bg: 'bg-orange-50', border: 'border-orange-300', stripe: 'bg-orange-400' },
+            'bg-teal-400': { bg: 'bg-teal-50', border: 'border-teal-300', stripe: 'bg-teal-400' },
+            'bg-pink-400': { bg: 'bg-pink-50', border: 'border-pink-300', stripe: 'bg-pink-400' }
+          };
+          const minD = ganttRange.minDate;
+          const maxD = ganttRange.maxDate;
+          const fullD = ganttRange.totalDays;
+          const todayD = new Date();
+          const todayPct = Math.max(0, Math.min(100, ((todayD - minD) / (1000 * 60 * 60 * 24) / fullD) * 100));
 
+          // 월별 / 일별 라벨 생성
+          const monthsArr = [];
+          const cur = new Date(minD); cur.setDate(1);
+          while (cur <= maxD) {
+            const pos = ((cur - minD) / (1000 * 60 * 60 * 24) / fullD) * 100;
+            if (pos >= 0 && pos <= 100) monthsArr.push({ label: `${cur.getFullYear()}.${String(cur.getMonth() + 1).padStart(2, '0')}`, pos });
+            cur.setMonth(cur.getMonth() + 1);
+          }
+          const dayStep = fullD > 180 ? 14 : fullD > 90 ? 7 : fullD > 30 ? 3 : 1;
+          const daysArr = [];
+          const dC = new Date(minD);
+          while (dC <= maxD) {
+            const pos = ((dC - minD) / (1000 * 60 * 60 * 24) / fullD) * 100;
+            daysArr.push({ label: String(dC.getDate()).padStart(2, '0'), pos });
+            dC.setDate(dC.getDate() + dayStep);
+          }
+          if (!daysArr.length || daysArr[daysArr.length - 1].pos < 99) {
+            daysArr.push({ label: String(maxD.getDate()).padStart(2, '0'), pos: 100 });
+          }
+
+          // 프로젝트 다중 선택 필터 — null이면 전체, 배열이면 그 ID만
+          const ganttFiltered = ganttFilterIds === null
+            ? filteredProjects
+            : filteredProjects.filter(p => ganttFilterIds.includes(p.id));
+          const filterKw = ganttFilterSearch.trim().toLowerCase();
+          const filterableProjects = filterKw
+            ? filteredProjects.filter(p => [p.name, p.customer, p.site, p.manager].filter(Boolean).some(v => String(v).toLowerCase().includes(filterKw)))
+            : filteredProjects;
+
+          // 셋업 탭 — 필터된 프로젝트의 셋업 작업을 프로젝트별 그룹으로 표시
+          const setupGroups = ganttFiltered.map((prj, pidx) => {
+            const projColor = PROJECT_BAR_COLORS[pidx % PROJECT_BAR_COLORS.length];
+            const tasks = (prj.tasks || [])
+              .map(tk => {
+                const ts = safeDate(tk.startDate);
+                const te = safeDate(tk.endDate);
+                if (!ts || !te) return null;
+                return {
+                  taskName: tk.name,
+                  start: ts, end: te,
+                  isCompleted: !!tk.isCompleted, isMilestone: !!tk.isMilestone,
+                  leftPercent: ((ts - minD) / (1000 * 60 * 60 * 24) / fullD) * 100,
+                  widthPercent: ((te - ts) / (1000 * 60 * 60 * 24) / fullD) * 100
+                };
+              })
+              .filter(Boolean);
+            return { projectName: prj.name, projectId: prj.id, color: projColor, tasks };
+          }).filter(g => g.tasks.length > 0);
+          const totalSetupCount = setupGroups.reduce((acc, g) => acc + g.tasks.length, 0);
+          const selectedCount = ganttFilterIds === null ? filteredProjects.length : ganttFilterIds.length;
+          return (
+          <div className="p-6">
+            {/* 프로젝트 필터 (다중 선택) */}
+            <div className="mb-3 relative">
+              <button
+                type="button"
+                onClick={() => setGanttFilterOpen(!ganttFilterOpen)}
+                className="inline-flex items-center px-3 py-1.5 bg-white border border-slate-300 hover:border-indigo-400 rounded-lg text-sm font-medium text-slate-700 shadow-sm"
+              >
+                <Filter size={14} className="mr-1.5 text-slate-500" />
+                {t('프로젝트 필터', 'Project Filter')}
+                <span className="ml-2 text-xs font-bold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded">{selectedCount}/{filteredProjects.length}</span>
+                <ChevronDown size={14} className="ml-1 text-slate-500" />
+              </button>
+              {ganttFilterIds !== null && ganttFilterIds.length < filteredProjects.length && (
+                <button
+                  type="button"
+                  onClick={() => setGanttFilterIds(null)}
+                  className="ml-2 inline-flex items-center px-2 py-1 text-[10px] font-bold text-slate-600 hover:text-indigo-700 bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded"
+                >
+                  {t('전체 보기로 초기화', 'Show all')}
+                </button>
+              )}
+              {ganttFilterOpen && (
+                <div className="absolute z-50 mt-1 w-80 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden">
+                  <div className="p-2 border-b border-slate-200 bg-slate-50 flex items-center gap-1">
+                    <input
+                      autoFocus
+                      type="text"
+                      placeholder={t('프로젝트 검색...', 'Search projects...')}
+                      className="flex-1 text-xs p-1.5 border border-slate-200 rounded bg-white outline-none focus:border-indigo-400"
+                      value={ganttFilterSearch}
+                      onChange={e => setGanttFilterSearch(e.target.value)}
+                    />
+                  </div>
+                  <div className="px-2 py-1.5 border-b border-slate-100 flex items-center gap-2 bg-white text-[11px]">
+                    <button type="button" onClick={() => setGanttFilterIds(null)} className="font-bold text-indigo-600 hover:text-indigo-800">{t('전체 선택', 'Select all')}</button>
+                    <span className="text-slate-300">·</span>
+                    <button type="button" onClick={() => setGanttFilterIds([])} className="font-bold text-slate-500 hover:text-slate-700">{t('전체 해제', 'Clear all')}</button>
+                    <span className="ml-auto text-slate-400">{selectedCount}{t('개 선택', ' selected')}</span>
+                  </div>
+                  <div className="max-h-72 overflow-y-auto">
+                    {filterableProjects.length === 0 ? (
+                      <div className="text-center py-4 text-xs text-slate-400">{t('검색 결과가 없습니다', 'No matches')}</div>
+                    ) : filterableProjects.map((p, pidx) => {
+                      const projColor = PROJECT_BAR_COLORS[filteredProjects.indexOf(p) % PROJECT_BAR_COLORS.length];
+                      const isChecked = ganttFilterIds === null || ganttFilterIds.includes(p.id);
+                      return (
+                        <label key={p.id} className="flex items-center px-3 py-1.5 hover:bg-indigo-50 cursor-pointer text-xs">
+                          <input
+                            type="checkbox"
+                            className="mr-2"
+                            checked={isChecked}
+                            onChange={() => {
+                              if (ganttFilterIds === null) {
+                                // 전체 → 이 항목 빼고 나머지
+                                setGanttFilterIds(filteredProjects.map(x => x.id).filter(id => id !== p.id));
+                              } else if (isChecked) {
+                                setGanttFilterIds(ganttFilterIds.filter(id => id !== p.id));
+                              } else {
+                                setGanttFilterIds([...ganttFilterIds, p.id]);
+                              }
+                            }}
+                          />
+                          <span className={`w-2 h-2 rounded-full mr-2 shrink-0 ${projColor}`}></span>
+                          <span className="font-bold text-slate-800 truncate flex-1">{p.name}</span>
+                          <span className="text-slate-400 ml-2 truncate max-w-[6rem]">{p.customer}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <div className="p-2 border-t border-slate-200 bg-slate-50 flex justify-end">
+                    <button type="button" onClick={() => { setGanttFilterOpen(false); setGanttFilterSearch(''); }} className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded">{t('완료', 'Done')}</button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 단계별 / 셋업 탭 + 줌 컨트롤 */}
+            <div className="flex border-b border-slate-200 mb-4 items-center">
+              <button onClick={() => setGanttViewTab('phase')} className={`px-4 py-2 text-xs font-bold border-b-2 transition-colors ${ganttViewTab === 'phase' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+                {t('단계별', 'Phases')} <span className="text-[10px] text-slate-400 font-medium ml-0.5">({ganttFiltered.length})</span>
+              </button>
+              <button onClick={() => setGanttViewTab('setup')} className={`px-4 py-2 text-xs font-bold border-b-2 transition-colors ${ganttViewTab === 'setup' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+                {t('셋업 일정', 'Setup Tasks')} <span className="text-[10px] text-slate-400 font-medium ml-0.5">({totalSetupCount})</span>
+              </button>
+              {/* 줌 컨트롤 */}
+              <div className="ml-auto flex items-center gap-1.5 pb-1">
+                <span className="text-[10px] text-slate-400 mr-1 hidden md:inline">{t('휠 = 줌 / Shift+휠 = 가로 이동', 'Wheel = zoom / Shift+wheel = scroll')}</span>
+                <button onClick={() => setGanttZoom(Math.max(0.5, +(ganttZoom - 0.25).toFixed(2)))} disabled={ganttZoom <= 0.5} className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-300 hover:border-indigo-400 shadow-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed" title={t('축소', 'Zoom out')}>
+                  <ZoomOut size={14} />
+                </button>
+                <span className="text-xs font-bold text-slate-700 px-2 py-1 min-w-[3rem] text-center bg-white border border-slate-200 rounded-md shadow-sm">{Math.round(ganttZoom * 100)}%</span>
+                <button onClick={() => setGanttZoom(Math.min(4, +(ganttZoom + 0.25).toFixed(2)))} disabled={ganttZoom >= 4} className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-300 hover:border-indigo-400 shadow-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed" title={t('확대', 'Zoom in')}>
+                  <ZoomIn size={14} />
+                </button>
+                <button onClick={() => { ganttInitialScrolled.current = false; setGanttZoom(z => z); /* trigger effect */ setTimeout(() => { const node = ganttScrollRef.current; if (!node) return; const inner = node.firstElementChild; if (!inner) return; const fullD = ganttRange.totalDays; const minD = ganttRange.minDate; const today = new Date(); const todayPct = ((today - minD) / (1000 * 60 * 60 * 24) / fullD); const oneMonthPct = 30 / fullD; const targetPct = Math.max(0, todayPct - oneMonthPct); node.scrollLeft = targetPct * inner.scrollWidth; }, 30); }} className="inline-flex items-center px-2.5 h-7 rounded-md bg-red-500 hover:bg-red-600 text-white text-xs font-bold shadow-sm transition-colors ml-1" title={t('오늘로 이동', 'Jump to today')}>
+                  <Maximize2 size={12} className="mr-1" />{t('오늘', 'Today')}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex border border-slate-200 rounded-lg overflow-hidden">
+              {/* 좌측 고정 칸 */}
+              <div className="w-72 shrink-0 bg-white border-r border-slate-200">
+                <div className="h-14 bg-slate-50 px-3 flex items-end pb-1 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase">{ganttViewTab === 'phase' ? t('프로젝트 / 담당자', 'Project / Manager') : t('프로젝트 / 작업', 'Project / Task')}</div>
+                {ganttViewTab === 'phase' ? (
+                  ganttFiltered.length === 0 ? (
+                    <div className="text-center py-8 text-slate-400 text-sm">{ganttFilterIds !== null && ganttFilterIds.length === 0 ? t('필터에서 선택된 프로젝트가 없습니다.', 'No projects selected in filter.') : t('표시할 프로젝트가 없습니다.', 'No projects to display.')}</div>
+                  ) : ganttFiltered.map((prj, pidx) => {
+                    const projectIssues = issues.filter(i => i.projectId === prj.id && i.status !== '조치 완료');
+                    const actual = calcAct(prj.tasks);
+                    const projColor = PROJECT_BAR_COLORS[pidx % PROJECT_BAR_COLORS.length];
                     return (
-                      <div key={prj.id} className="relative h-14 flex items-center group">
-                        <div className="w-1/4 pr-4 border-r border-slate-200 flex flex-col justify-center relative">
-                          <div className="flex justify-between items-start pr-2">
-                            <div className="text-sm font-bold text-slate-800 truncate flex-1" title={prj.name}>{prj.name}</div>
-                            {(currentUser.role === 'ADMIN' || currentUser.role === 'PM') && (
-                              <button onClick={(e) => { e.stopPropagation(); onDeleteProject(prj); }} className="text-slate-300 hover:text-red-500 transition-colors ml-2"><Trash size={14} /></button>
-                            )}
+                      <div key={prj.id} className="h-14 px-3 flex flex-col justify-center border-b border-slate-100 last:border-b-0 hover:bg-indigo-50/30 cursor-pointer" onClick={() => onManageTasks && onManageTasks(prj.id)}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center min-w-0 flex-1">
+                            <span className={`w-2 h-2 rounded-full mr-1.5 shrink-0 ${projColor}`}></span>
+                            <div className="text-sm font-bold text-slate-800 truncate" title={prj.name}>{prj.name}</div>
                           </div>
-                          <div className="flex items-center space-x-1 mt-0.5">
-                            <div className="text-[10px] text-indigo-600 bg-indigo-50 inline-block px-1.5 py-0.5 rounded font-bold">{PROJECT_PHASES[prj.phaseIndex || 0]} {t('단계', '')}</div>
-                            <ProjectIssueBadge prjId={prj.id} projectIssues={projectIssues} openIssueDropdownId={openIssueDropdownId} setOpenIssueDropdownId={setOpenIssueDropdownId} onIssueClick={onIssueClick} getStatusColor={getStatusColor} isGanttView={true} t={t} />
-                            <ProjectNotesBadge prjId={prj.id} notes={prj.notes} openId={openNotesDropdownId} setOpenId={setOpenNotesDropdownId} onJump={() => onManageTasks && onManageTasks(prj.id)} isGanttView={true} t={t} />
-                          </div>
-                          <div className="text-xs text-slate-500 flex justify-between mt-1 pr-2">
-                            <span>{prj.manager || t('미지정', 'Unassigned')}</span>
-                            <span className="text-blue-600 font-bold">{actual}%</span>
-                          </div>
+                          <span className="text-xs text-blue-600 font-bold ml-2 shrink-0">{actual}%</span>
                         </div>
-                        <div className="w-3/4 relative h-full flex items-center mx-4">
-                          <div className="absolute w-full h-px bg-slate-200"></div>
-                          <div className="absolute h-8 bg-slate-50 border border-slate-300 rounded-md overflow-hidden cursor-pointer hover:border-blue-400 hover:shadow-md transition-all flex" style={{ left: `${leftPercent}%`, width: `${widthPercent}%` }} onClick={() => onManageTasks(prj.id)}>
-                            {(() => {
-                              const phaseColors = ['bg-slate-300','bg-blue-300','bg-cyan-300','bg-indigo-300','bg-amber-300','bg-purple-300','bg-emerald-300'];
-                              const currentPhase = typeof prj.phaseIndex === 'number' ? prj.phaseIndex : 0;
-                              const totalPhases = PROJECT_PHASES.length;
-                              return PROJECT_PHASES.map((phase, idx) => {
-                                const isPast = idx < currentPhase;
-                                const isCurrent = idx === currentPhase;
-                                return (
-                                  <div key={idx} className={`h-full relative ${isPast ? phaseColors[idx] : isCurrent ? phaseColors[idx] + ' opacity-70' : 'bg-slate-100'} ${idx < totalPhases - 1 ? 'border-r border-white/50' : ''}`} style={{ width: `${100 / totalPhases}%` }} title={phase}>
-                                    <span className="absolute inset-0 flex items-center justify-center text-[7px] font-bold text-slate-700 whitespace-nowrap overflow-hidden">{phase.length > 3 ? phase.substring(0, 3) : phase}</span>
-                                  </div>
-                                );
-                              });
-                            })()}
-                          </div>
-                          <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 text-white text-xs py-1.5 px-3 rounded-lg -top-3 z-10 pointer-events-none whitespace-nowrap shadow-lg" style={{ left: `${leftPercent}%` }}>{fmtYMD(prj.startDate) || '미정'} ~ {fmtYMD(prj.dueDate) || '미정'}</div>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <span className="text-[10px] text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded font-bold">{PROJECT_PHASES[prj.phaseIndex || 0]}</span>
+                          <ProjectIssueBadge prjId={prj.id} projectIssues={projectIssues} openIssueDropdownId={openIssueDropdownId} setOpenIssueDropdownId={setOpenIssueDropdownId} onIssueClick={onIssueClick} getStatusColor={getStatusColor} isGanttView={true} t={t} />
+                          <ProjectNotesBadge prjId={prj.id} notes={prj.notes} openId={openNotesDropdownId} setOpenId={setOpenNotesDropdownId} onJump={() => onManageTasks && onManageTasks(prj.id)} isGanttView={true} t={t} />
+                          <span className="text-[10px] text-slate-500 ml-auto truncate">{prj.manager || t('미지정', 'Unassigned')}</span>
                         </div>
                       </div>
                     );
                   })
+                ) : (
+                  setupGroups.length === 0 ? (
+                    <div className="text-center py-8 text-slate-400 text-sm">{t('일정이 등록된 셋업 작업이 없습니다.', 'No setup tasks with schedules.')}</div>
+                  ) : setupGroups.map((g, gidx) => {
+                    const meta = COLOR_HEADER[g.color] || { bg: 'bg-slate-100', border: 'border-slate-300', stripe: 'bg-slate-400' };
+                    return (
+                    <React.Fragment key={g.projectId}>
+                      {/* 프로젝트 헤더 — 그룹 구분 (색상 띠 포함) */}
+                      <div className={`h-10 px-3 flex items-center ${meta.bg} border-b-2 ${meta.border} ${gidx > 0 ? 'border-t-4 border-t-slate-200' : ''} relative`}>
+                        <span className={`absolute left-0 top-0 bottom-0 w-1 ${g.color}`}></span>
+                        <span className={`w-3 h-3 rounded-full mr-2 shrink-0 ${g.color}`}></span>
+                        <span className="text-xs font-extrabold text-slate-800 truncate" title={g.projectName}>{g.projectName}</span>
+                        <span className={`ml-auto text-[10px] text-white font-bold px-1.5 py-0.5 rounded ${g.color}`}>{g.tasks.length}{t('건', '')}</span>
+                      </div>
+                      {g.tasks.map((r, idx) => (
+                        <div key={idx} className={`h-14 pl-4 pr-3 flex flex-col justify-center border-b border-slate-100 hover:bg-indigo-50/30 cursor-pointer relative`} onClick={() => onManageTasks && onManageTasks(g.projectId)}>
+                          <span className={`absolute left-0 top-0 bottom-0 w-1 ${g.color} opacity-60`}></span>
+                          <div className="flex items-center min-w-0">
+                            {r.isMilestone ? <span className="text-rose-500 text-base leading-none mr-1.5">◆</span>
+                              : r.isCompleted ? <span className="text-emerald-500 text-sm font-bold mr-1.5">✓</span>
+                              : <span className={`w-2 h-2 rounded-full mr-1.5 shrink-0 ${g.color}`}></span>}
+                            <div className={`text-sm font-bold truncate ${r.isMilestone ? 'text-rose-700' : r.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`} title={r.taskName}>{r.taskName}</div>
+                            {r.isMilestone && <span className="ml-1 text-[9px] bg-rose-50 text-rose-700 px-1 py-0.5 rounded font-bold border border-rose-200 shrink-0">SOP</span>}
+                          </div>
+                          <div className="text-[10px] text-slate-500 truncate mt-0.5">{fmtYMD(r.start)} ~ {fmtYMD(r.end)}</div>
+                        </div>
+                      ))}
+                    </React.Fragment>
+                    );
+                  })
                 )}
+              </div>
+
+              {/* 우측 차트 영역 (휠 줌은 useEffect에서 native passive:false로 등록) */}
+              <div className="flex-1 overflow-x-auto min-w-0" ref={ganttScrollRef}>
+                <div className="relative" style={{ width: `${Math.max(800, Math.round(fullD * 10 * ganttZoom))}px`, minWidth: '100%' }}>
+                  {/* 월/일 헤더 (sticky) */}
+                  <div className="sticky top-0 z-30 bg-slate-50 border-b border-slate-200 h-14 pt-6">
+                    <div className="relative h-5">
+                      {monthsArr.map((m, i) => {
+                        const next = monthsArr[i + 1];
+                        const widthPct = next ? next.pos - m.pos : 100 - m.pos;
+                        return (
+                          <div key={i} className="absolute h-full" style={{ left: `${m.pos}%`, width: `${widthPct}%` }}>
+                            <div className="sticky left-0 inline-block whitespace-nowrap text-xs font-bold text-slate-700 border-l-2 border-slate-300 pl-1 bg-slate-50">{m.label}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="relative h-5">
+                      {daysArr.map((d, i) => (
+                        <div key={i} className="absolute text-[9px] text-slate-400 border-l border-slate-200 pl-0.5" style={{ left: `${d.pos}%`, transform: d.pos >= 99 ? 'translateX(-100%)' : 'none' }}>{d.label}</div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 오늘 라벨 */}
+                  <div className="absolute z-40 pointer-events-none" style={{ left: `${todayPct}%`, top: 0, bottom: 0 }}>
+                    <div className="absolute top-0.5 -translate-x-1/2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md whitespace-nowrap border border-red-600 leading-tight">
+                      ▼ {t('오늘', 'Today')}
+                    </div>
+                    <div className="absolute top-7 bottom-0 left-0 border-l-2 border-dashed border-red-500 -translate-x-1/2"></div>
+                  </div>
+
+                  {/* 막대 행들 — 단계별 또는 셋업에 따라 다르게 */}
+                  {ganttViewTab === 'phase' ? (
+                    ganttFiltered.map((prj, pidx) => {
+                      const pStart = safeDate(prj.startDate);
+                      const pDue = safeDate(prj.dueDate);
+                      const hasValidRange = !!(pStart && pDue);
+                      const leftPercent = hasValidRange ? ((pStart - minD) / (1000 * 60 * 60 * 24) / fullD) * 100 : 0;
+                      const widthPercent = hasValidRange ? ((pDue - pStart) / (1000 * 60 * 60 * 24) / fullD) * 100 : 0;
+                      const projectColor = PROJECT_BAR_COLORS[pidx % PROJECT_BAR_COLORS.length];
+                      const phaseColors = ['bg-slate-400', 'bg-blue-400', 'bg-cyan-400', 'bg-indigo-400', 'bg-amber-400', 'bg-purple-400', 'bg-pink-400', 'bg-emerald-400'];
+                      const currentPhase = typeof prj.phaseIndex === 'number' ? prj.phaseIndex : 0;
+                      const totalPhases = PROJECT_PHASES.length;
+                      return (
+                        <div key={prj.id} className="h-14 relative border-b border-slate-100 last:border-b-0">
+                          {monthsArr.map((m, i) => (
+                            <div key={i} className="absolute top-0 bottom-0 border-l border-slate-100" style={{ left: `${m.pos}%` }}></div>
+                          ))}
+                          {!hasValidRange ? (
+                            <div className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-amber-600 italic bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">{t('일정 미정', 'Schedule TBD')}</div>
+                          ) : (
+                            <div className={`absolute h-8 rounded-md overflow-hidden border-2 shadow-sm hover:shadow-md hover:brightness-110 transition-all cursor-pointer flex ${projectColor.replace('bg-', 'border-')}`} style={{ left: `${leftPercent}%`, width: `${Math.max(widthPercent, 1)}%`, top: '50%', transform: 'translateY(-50%)' }} onClick={() => onManageTasks(prj.id)} title={`${fmtYMD(prj.startDate)} ~ ${fmtYMD(prj.dueDate)} | ${PROJECT_PHASES[currentPhase]}`}>
+                              {PROJECT_PHASES.map((phase, idx) => {
+                                const isPast = idx < currentPhase;
+                                const isCurrent = idx === currentPhase;
+                                return (
+                                  <div key={idx} className={`h-full relative ${isPast ? phaseColors[idx % phaseColors.length] : isCurrent ? phaseColors[idx % phaseColors.length] + ' opacity-70' : 'bg-slate-50'} ${idx < totalPhases - 1 ? 'border-r border-white/60' : ''}`} style={{ width: `${100 / totalPhases}%` }} title={phase}>
+                                    <span className={`absolute inset-0 flex items-center justify-center text-[8px] font-bold whitespace-nowrap overflow-hidden ${isPast || isCurrent ? 'text-white' : 'text-slate-400'}`}>{phase.length > 4 ? phase.substring(0, 3) : phase}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    setupGroups.map((g, gidx) => {
+                      const meta = COLOR_HEADER[g.color] || { bg: 'bg-slate-100', border: 'border-slate-300', stripe: 'bg-slate-400' };
+                      return (
+                      <React.Fragment key={g.projectId}>
+                        <div className={`h-10 relative ${meta.bg} border-b-2 ${meta.border} ${gidx > 0 ? 'border-t-4 border-t-slate-200' : ''}`}>
+                          {monthsArr.map((m, i) => (
+                            <div key={i} className="absolute top-0 bottom-0 border-l border-slate-200" style={{ left: `${m.pos}%` }}></div>
+                          ))}
+                        </div>
+                        {g.tasks.map((r, idx) => (
+                          <div key={idx} className="h-14 relative border-b border-slate-100">
+                            {monthsArr.map((m, i) => (
+                              <div key={i} className="absolute top-0 bottom-0 border-l border-slate-100" style={{ left: `${m.pos}%` }}></div>
+                            ))}
+                            {r.isMilestone ? (
+                              <div className="absolute" style={{ left: `${r.leftPercent + r.widthPercent}%`, top: '50%', transform: 'translate(-50%, -50%)' }}>
+                                <div className="flex flex-col items-center">
+                                  <span className="text-[10px] text-rose-700 font-bold whitespace-nowrap mb-0.5">{fmtYMD(r.end).slice(5).replace('-', '/')} (SOP)</span>
+                                  <span className="text-rose-500 text-xl leading-none drop-shadow">◆</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <div className={`absolute h-6 rounded-sm ${r.isCompleted ? 'bg-emerald-300' : g.color} shadow-sm hover:shadow-md hover:brightness-110 transition-all cursor-pointer`} style={{ left: `${r.leftPercent}%`, width: `${Math.max(r.widthPercent, 1)}%`, top: '50%', transform: 'translateY(-50%)' }} onClick={() => onManageTasks(g.projectId)} title={r.taskName}></div>
+                                <span className="absolute text-[10px] font-bold text-slate-700 whitespace-nowrap pointer-events-none" style={{ left: `calc(${r.leftPercent + Math.max(r.widthPercent, 1)}% + 0.5rem)`, top: '50%', transform: 'translateY(-50%)' }}>{r.taskName}</span>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </React.Fragment>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );

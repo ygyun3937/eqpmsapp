@@ -268,7 +268,7 @@ export default function App() {
           }
           return [];
         };
-        const PROJECT_ARRAYS = ['tasks', 'checklist', 'activityLog', 'managerHistory', 'trips', 'extraTasks', 'asRecords', 'customerRequests', 'notes', 'versions', 'phases', 'attachments'];
+        const PROJECT_ARRAYS = ['tasks', 'checklist', 'activityLog', 'managerHistory', 'trips', 'extraTasks', 'asRecords', 'customerRequests', 'notes', 'versions', 'phases', 'attachments', 'equipments'];
         const sanitizeProject = (p) => {
           const next = { ...p };
           PROJECT_ARRAYS.forEach(f => { next[f] = ensureArr(next[f]); });
@@ -944,6 +944,16 @@ export default function App() {
       if (data.voltage !== undefined && (p.voltage || '') !== (data.voltage || '')) changes.push(`전압: ${p.voltage || '-'} → ${data.voltage || '-'}`);
       if (data.current !== undefined && (p.current || '') !== (data.current || '')) changes.push(`전류: ${p.current || '-'} → ${data.current || '-'}`);
       if (data.spec !== undefined && (p.spec || '') !== (data.spec || '')) changes.push(`사양: ${p.spec || '-'} → ${data.spec || '-'}`);
+      if (data.equipments !== undefined) {
+        const before = Array.isArray(p.equipments) ? p.equipments : [];
+        const after = Array.isArray(data.equipments) ? data.equipments : [];
+        if (before.length !== after.length) {
+          changes.push(`장비: ${before.length}대 → ${after.length}대`);
+        } else {
+          const sig = (a) => a.map(x => `${x.code}|${x.name || ''}|${x.note || ''}`).join(',');
+          if (sig(before) !== sig(after)) changes.push(`장비 코드 수정 (${after.length}대)`);
+        }
+      }
       const updated = { ...p, ...data };
       return changes.length > 0 ? addLog(updated, 'PROJECT_EDIT', `프로젝트 수정: ${changes.join(', ')}`) : updated;
     }));

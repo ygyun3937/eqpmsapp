@@ -10,14 +10,16 @@ const UserModal = memo(function UserModal({ user, users, projects, onClose, onSu
     name: user.name || '',
     role: user.role || 'ENGINEER',
     dept: user.dept || '',
+    position: user.position || '',
     customer: user.customer || '',
     assignedProjectIds: Array.isArray(user.assignedProjectIds) ? user.assignedProjectIds : [],
     active: user.active !== false,
     mustChangePassword: !!user.mustChangePassword
   } : {
-    id: '', name: '', role: 'ENGINEER', dept: '', customer: '',
+    id: '', name: '', role: 'ENGINEER', dept: '', position: '', customer: '',
     assignedProjectIds: [], active: true, mustChangePassword: true
   });
+  const POSITION_OPTIONS = ['', '사원', '주임', '대리', '과장', '차장', '부장', '이사', '상무', '전무', '대표'];
   const [pw, setPw] = useState('');
   const [pw2, setPw2] = useState('');
   const [error, setError] = useState('');
@@ -88,7 +90,7 @@ const UserModal = memo(function UserModal({ user, users, projects, onClose, onSu
           <input required className="w-full p-2.5 border rounded-lg" value={data.name} onChange={e => setData({ ...data, name: e.target.value })} />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <div>
           <label className="block text-sm font-bold mb-1">{t('권한', 'Role')}</label>
           <select className="w-full p-2.5 border rounded-lg" value={data.role} onChange={e => setData({ ...data, role: e.target.value })}>
@@ -97,7 +99,20 @@ const UserModal = memo(function UserModal({ user, users, projects, onClose, onSu
         </div>
         <div>
           <label className="block text-sm font-bold mb-1">{t('부서', 'Dept')}</label>
-          <input className="w-full p-2.5 border rounded-lg" value={data.dept} onChange={e => setData({ ...data, dept: e.target.value })} />
+          <input className="w-full p-2.5 border rounded-lg" value={data.dept} onChange={e => setData({ ...data, dept: e.target.value })} placeholder={t('예: AX 혁신실', 'e.g. R&D')} />
+        </div>
+        <div>
+          <label className="block text-sm font-bold mb-1">{t('직급', 'Position')}</label>
+          <input
+            list="position-options"
+            className="w-full p-2.5 border rounded-lg"
+            value={data.position}
+            onChange={e => setData({ ...data, position: e.target.value })}
+            placeholder={t('예: 과장', 'e.g. Manager')}
+          />
+          <datalist id="position-options">
+            {POSITION_OPTIONS.filter(Boolean).map(p => <option key={p} value={p} />)}
+          </datalist>
         </div>
       </div>
 
