@@ -1024,7 +1024,12 @@ export default function App() {
       uploadedBy: currentUser.name,
       uploadedAt: new Date().toLocaleString()
     };
-    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, attachments: [...(p.attachments || []), attachment] }, 'ATTACH_ADD', `참고자료 업로드: ${attachment.fileName}`)));
+    // 여러 파일 연속 업로드 시 stale closure 방지 — 함수형 setState로 최신 상태 읽기
+    setProjects(prev => {
+      const next = prev.map(p => p.id !== projectId ? p : addLog({ ...p, attachments: [...(p.attachments || []), attachment] }, 'ATTACH_ADD', `참고자료 업로드: ${attachment.fileName}`));
+      saveToGoogleDB('UPDATE_PROJECTS', next);
+      return next;
+    });
     if (onProgress) onProgress({ stage: 'done', percent: 100 });
     showToast(t('업로드 완료', 'Upload complete'));
     return attachment;
@@ -1039,7 +1044,11 @@ export default function App() {
     if (target.fileId) {
       await callGoogleAction('DELETE_FILE', { fileId: target.fileId });
     }
-    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, attachments: (p.attachments || []).filter(a => a.id !== attachmentId) }, 'ATTACH_DELETE', `참고자료 삭제: ${target.fileName}`)));
+    setProjects(prev => {
+      const next = prev.map(p => p.id !== projectId ? p : addLog({ ...p, attachments: (p.attachments || []).filter(a => a.id !== attachmentId) }, 'ATTACH_DELETE', `참고자료 삭제: ${target.fileName}`));
+      saveToGoogleDB('UPDATE_PROJECTS', next);
+      return next;
+    });
     showToast(t('참고자료가 삭제되었습니다.', 'Attachment deleted.'));
   };
 
