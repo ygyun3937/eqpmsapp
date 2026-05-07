@@ -92,13 +92,17 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
     return () => clearTimeout(id);
   }, [viewMode, ganttZoom, ganttViewTab, ganttRange.minDate, ganttRange.totalDays]);
 
-  // 휠 줌 — 차트 영역 위에서 휠 굴리면 줌 (Shift+휠 = 가로 스크롤, 그 외 휠 = 줌)
+  // 휠 줌 — 차트 영역 위에서 휠 굴리면 줌 (Shift+휠 = 가로 스크롤 직접 처리)
   useEffect(() => {
     if (viewMode !== 'gantt') return;
     const node = ganttScrollRef.current;
     if (!node) return;
     const handler = (e) => {
-      if (e.shiftKey) return;
+      if (e.shiftKey) {
+        e.preventDefault();
+        node.scrollLeft += (e.deltaY || e.deltaX);
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
       const delta = e.deltaY > 0 ? -0.2 : 0.2;
@@ -108,13 +112,17 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
     return () => node.removeEventListener('wheel', handler);
   }, [viewMode]);
 
-  // 인라인 간트 휠 줌 + 초기 스크롤
+  // 인라인 간트 휠 줌 + Shift+휠 가로 스크롤 + 초기 스크롤
   useEffect(() => {
     if (!expandedGanttId) return;
     const node = inlineGanttScrollRef.current;
     if (!node) return;
     const handler = (e) => {
-      if (e.shiftKey) return;
+      if (e.shiftKey) {
+        e.preventDefault();
+        node.scrollLeft += (e.deltaY || e.deltaX);
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
       const delta = e.deltaY > 0 ? -0.2 : 0.2;
@@ -689,7 +697,7 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                                 {t('셋업 일정', 'Setup Tasks')} <span className="text-[10px] text-slate-400 font-medium ml-0.5">({setupWithSchedule}/{setupTasks.length})</span>
                               </button>
                               <div className="ml-auto flex items-center gap-1.5 pb-1">
-                                <span className="text-[10px] text-slate-400 mr-1 hidden md:inline">{t('휠 = 줌', 'Wheel = zoom')}</span>
+                                <span className="text-[10px] text-slate-400 mr-1 hidden md:inline">{t('휠 = 줌 / Shift+휠 = 가로 이동', 'Wheel = zoom / Shift+wheel = scroll')}</span>
                                 <button onClick={() => setInlineGanttZoom(Math.max(0.5, +(inlineGanttZoom - 0.25).toFixed(2)))} disabled={inlineGanttZoom <= 0.5} className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-300 hover:border-indigo-400 shadow-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed" title={t('축소', 'Zoom out')}>
                                   <ZoomOut size={14} />
                                 </button>
@@ -809,9 +817,9 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                                     ))}
                                   </div>
 
-                                  {/* 우측 차트 영역 — 픽셀 단위 너비 + 휠 줌 */}
+                                  {/* 우측 차트 영역 — 퍼센트 기반 너비 (zoom = % 배수) + 휠 줌 */}
                                   <div className="flex-1 overflow-x-auto min-w-0" ref={inlineGanttScrollRef}>
-                                    <div className="relative" style={{ width: `${Math.max(700, Math.round(fullDays * 10 * inlineGanttZoom))}px`, minWidth: '100%' }}>
+                                    <div className="relative" style={{ width: `${100 * inlineGanttZoom}%`, minWidth: '100%' }}>
                                       {/* 월/일 헤더 (sticky-top) — 위쪽 pt-6 영역에 오늘 라벨이 별도로 표시됨 */}
                                       <div className={`sticky top-0 z-30 bg-slate-50 border-b border-slate-200 ${HEADER_H} relative pt-6`}>
                                         <div className="relative h-5">
@@ -979,7 +987,13 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                 };
               })
               .filter(Boolean);
-            return { projectName: prj.name, projectId: prj.id, color: projColor, tasks };
+            return {
+              projectName: prj.name, projectId: prj.id, color: projColor, tasks,
+              manager: prj.manager,
+              phase: PROJECT_PHASES[typeof prj.phaseIndex === 'number' ? prj.phaseIndex : 0] || '',
+              progress: calcAct(prj.tasks),
+              customer: prj.customer
+            };
           }).filter(g => g.tasks.length > 0);
           const totalSetupCount = setupGroups.reduce((acc, g) => acc + g.tasks.length, 0);
           const selectedCount = ganttFilterIds === null ? filteredProjects.length : ganttFilterIds.length;
@@ -1121,12 +1135,23 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                     const meta = COLOR_HEADER[g.color] || { bg: 'bg-slate-100', border: 'border-slate-300', stripe: 'bg-slate-400' };
                     return (
                     <React.Fragment key={g.projectId}>
-                      {/* 프로젝트 헤더 — 그룹 구분 (색상 띠 포함) */}
-                      <div className={`h-10 px-3 flex items-center ${meta.bg} border-b-2 ${meta.border} ${gidx > 0 ? 'border-t-4 border-t-slate-200' : ''} relative`}>
-                        <span className={`absolute left-0 top-0 bottom-0 w-1 ${g.color}`}></span>
-                        <span className={`w-3 h-3 rounded-full mr-2 shrink-0 ${g.color}`}></span>
-                        <span className="text-xs font-extrabold text-slate-800 truncate" title={g.projectName}>{g.projectName}</span>
-                        <span className={`ml-auto text-[10px] text-white font-bold px-1.5 py-0.5 rounded ${g.color}`}>{g.tasks.length}{t('건', '')}</span>
+                      {/* 프로젝트 헤더 — 그룹 구분 (프로젝트명 + 단계 + 담당자 + 진행률) */}
+                      <div className={`h-14 pl-4 pr-3 flex flex-col justify-center ${meta.bg} border-b-2 ${meta.border} ${gidx > 0 ? 'border-t-4 border-t-slate-200' : ''} relative cursor-pointer hover:brightness-95`} onClick={() => onManageTasks && onManageTasks(g.projectId)}>
+                        <span className={`absolute left-0 top-0 bottom-0 w-1.5 ${g.color}`}></span>
+                        <div className="flex items-center min-w-0">
+                          <span className={`w-3 h-3 rounded-full mr-2 shrink-0 ${g.color}`}></span>
+                          <span className="text-xs font-extrabold text-slate-800 truncate" title={g.projectName}>{g.projectName}</span>
+                          <span className="ml-auto flex items-center gap-1.5 shrink-0">
+                            <span className="text-[10px] text-blue-600 font-bold">{g.progress}%</span>
+                            <span className={`text-[10px] text-white font-bold px-1.5 py-0.5 rounded ${g.color}`}>{g.tasks.length}{t('건', '')}</span>
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                          <span className="text-[10px] text-indigo-700 bg-white/70 px-1.5 py-0.5 rounded font-bold border border-indigo-100">{g.phase}</span>
+                          <span className="text-[10px] text-slate-600 truncate">
+                            <span className="font-bold">{t('담당:', 'PM:')}</span> {g.manager || t('미지정', 'Unassigned')}
+                          </span>
+                        </div>
                       </div>
                       {g.tasks.map((r, idx) => (
                         <div key={idx} className={`h-14 pl-4 pr-3 flex flex-col justify-center border-b border-slate-100 hover:bg-indigo-50/30 cursor-pointer relative`} onClick={() => onManageTasks && onManageTasks(g.projectId)}>
@@ -1218,7 +1243,7 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                       const meta = COLOR_HEADER[g.color] || { bg: 'bg-slate-100', border: 'border-slate-300', stripe: 'bg-slate-400' };
                       return (
                       <React.Fragment key={g.projectId}>
-                        <div className={`h-10 relative ${meta.bg} border-b-2 ${meta.border} ${gidx > 0 ? 'border-t-4 border-t-slate-200' : ''}`}>
+                        <div className={`h-14 relative ${meta.bg} border-b-2 ${meta.border} ${gidx > 0 ? 'border-t-4 border-t-slate-200' : ''}`}>
                           {monthsArr.map((m, i) => (
                             <div key={i} className="absolute top-0 bottom-0 border-l border-slate-200" style={{ left: `${m.pos}%` }}></div>
                           ))}

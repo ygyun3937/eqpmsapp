@@ -490,20 +490,22 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                 <Section title={t('간트차트 / 일정 관리 개편', 'Gantt & Schedule Overhaul')}>
                   <p>· <strong>단계별 / 셋업 일정 탭 분리</strong> — 인라인 간트와 간트차트 보기 모두 동일한 탭 구조</p>
                   <p>· <strong>오늘 표시 통일</strong> — 빨간 점선 + "▼ 오늘" 알약. 헤더 위 별도 공간에 배치되어 날짜를 가리지 않음</p>
-                  <p>· <strong>픽셀 단위 줌 (0.5x ~ 4x)</strong> — 휠로 줌, Shift+휠로 가로 이동. ZoomIn/Out/오늘 버튼 제공</p>
+                  <p>· <strong>줌 (0.5x ~ 4x)</strong> — 휠로 줌, <strong>Shift+휠로 가로 이동</strong>. ZoomIn/Out/오늘 버튼 제공 (인라인 간트 + 간트차트 탭 모두)</p>
                   <p>· <strong>자동 초기 스크롤</strong> — 차트 진입 시 today-1개월 위치로 자동 이동, 현재 시점에 집중</p>
                   <p>· <strong>좌측 칸 / 헤더 고정</strong> — 작업명/단계명 칸은 가로 스크롤 무관하게 항상 보이고, 월/일 헤더는 sticky-top</p>
                   <p>· <strong>차트 범위 자동 확장</strong> — 프로젝트 + 셋업 작업 + 출장 일정을 모두 포함하도록 자동 계산. 일정 미정 안전 처리</p>
                   <p>· <strong>날짜 라벨 100% 채움</strong> — 우측 빈 영역 없이 마지막 날짜까지 항상 표시</p>
+                  <p>· <strong>인라인 간트 폭 안전</strong> — 리스트 보기 시 차트가 페이지를 벗어나지 않도록 부모 폭 기반(%) 사이징, 줌 시에도 td 안에서만 스크롤</p>
                 </Section>
 
                 <Section title={t('간트차트 — 시각 강화', 'Gantt — Visual Enhancements')}>
                   <p>· <strong>프로젝트별 색상 자동 부여</strong> — 10가지 색 자동 회전, 좌측 칸/막대/그룹 헤더에 일관 적용</p>
                   <p>· <strong>단계별 탭 막대 분할</strong> — 8단계 색 분할(완료=진하게 / 현재=70% / 예정=흐림), 외곽선이 프로젝트 색</p>
-                  <p>· <strong>셋업 일정 그룹 헤더</strong> — 프로젝트 색상 배경/테두리/좌측 띠로 그룹 구분 강화</p>
+                  <p>· <strong>셋업 일정 그룹 헤더 강화</strong> — 프로젝트 색상 배경/테두리/좌측 띠 + <strong>담당자/현재 단계/진행률/작업 수</strong>를 헤더에 함께 표시 (단계별 탭과 동등한 정보량)</p>
                   <p>· <strong>마일스톤 (SOP) 마커</strong> — 단계/셋업 작업에 별 토글 → 막대 대신 빨간 ◆ 다이아몬드 + 종료일 라벨</p>
                   <p>· <strong>출장 일정 자동 표시</strong> — 인라인 간트 상단에 인디고 막대 (담당자명 + 일자)</p>
                   <p>· <strong>프로젝트 다중 필터</strong> — 간트차트 탭 좌상단의 체크박스 드롭다운. 검색 + 전체 선택/해제 + 부분 선택 표시</p>
+                  <p>· <strong>막대 라벨 우측 외부 표시</strong> — 셋업/출장 막대가 좁아도 작업명이 잘리지 않도록 막대 끝에 라벨 표시</p>
                 </Section>
 
                 <Section title={t('프로젝트 정보', 'Project Info')}>
