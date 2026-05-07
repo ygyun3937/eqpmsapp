@@ -2,6 +2,10 @@ import React, { useState, useMemo, memo, useRef, useEffect } from 'react';
 import { Plus, Filter, AlignJustify, CalendarDays, Clock, User, HardDrive, Monitor, Cpu, Edit, ListTodo, Trash, Download, History, ChevronDown, ChevronUp, Plane, Users, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import { PROJECT_PHASES, BATTERY_DOMAINS, DOMAIN_VERSION_CATEGORIES, DEFAULT_VERSION_CATEGORIES } from '../../constants';
 import { fmtYMD } from '../../utils/calc';
+import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
+import ProjectIssueBadge from '../common/ProjectIssueBadge';
+import ProjectNotesBadge from '../common/ProjectNotesBadge';
+import { exportToExcel, exportSectionedExcel } from '../../utils/export';
 
 const safeDate = (v) => {
   const ymd = fmtYMD(v);
@@ -9,10 +13,6 @@ const safeDate = (v) => {
   const d = new Date(ymd);
   return isNaN(d.getTime()) ? null : d;
 };
-import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
-import ProjectIssueBadge from '../common/ProjectIssueBadge';
-import ProjectNotesBadge from '../common/ProjectNotesBadge';
-import { exportToExcel, exportSectionedExcel } from '../../utils/export';
 
 const ProjectListView = memo(function ProjectListView({ projects, issues, engineers, getStatusColor, onAddClick, onManageTasks, onEditVersion, onChangeManager, onManageTeam, onViewPhaseGantt, onEditProject, onDeleteProject, onUpdatePhase, onEditPhases, onIssueClick, calcExp, calcAct, currentUser, t }) {
   const [viewMode, setViewMode] = useState('list');
