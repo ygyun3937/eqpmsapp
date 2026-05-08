@@ -8,6 +8,15 @@ import SimpleDonutChart from '../common/SimpleDonutChart';
 import SimpleBarChart from '../common/SimpleBarChart';
 import { exportToExcel } from '../../utils/export';
 
+// 사용자 정의(prj.phases) 우선, 없으면 기본 단계명
+const getCurrentPhaseName = (prj) => {
+  const list = (prj && Array.isArray(prj.phases) && prj.phases.length > 0)
+    ? prj.phases
+    : PROJECT_PHASES.map((name, idx) => ({ id: `p${idx}`, name }));
+  const idx = typeof prj?.phaseIndex === 'number' ? prj.phaseIndex : 0;
+  return list[Math.max(0, Math.min(idx, list.length - 1))]?.name || '';
+};
+
 const DashboardView = memo(function DashboardView({ projects: rawProjects, issues: rawIssues, engineers, getStatusColor, calcExp, calcAct, onProjectClick, onIssueClick, currentUser, t }) {
   const [issuePopupOpen, setIssuePopupOpen] = useState(false);
   const [noteSearch, setNoteSearch] = useState('');
@@ -83,7 +92,7 @@ const DashboardView = memo(function DashboardView({ projects: rawProjects, issue
     // 3. 프로젝트별 상세
     const projectRows = projects.map(p => ({
       id: p.id, name: p.name, domain: p.domain, customer: p.customer, site: p.site,
-      manager: p.manager, status: p.status, phase: PROJECT_PHASES[typeof p.phaseIndex === 'number' ? p.phaseIndex : 0] || '',
+      manager: p.manager, status: p.status, phase: getCurrentPhaseName(p),
       startDate: p.startDate, dueDate: p.dueDate,
       expectedProgress: calcExp(p.startDate, p.dueDate) + '%',
       actualProgress: calcAct(p.tasks) + '%',
@@ -664,7 +673,7 @@ const DashboardView = memo(function DashboardView({ projects: rawProjects, issue
                     const actual = calcAct(prj.tasks);
                     const isCompleted = prj.status === '완료';
                     const isDelayed = !isCompleted && actual < calcExp(prj.startDate, prj.dueDate);
-                    const phase = PROJECT_PHASES[typeof prj.phaseIndex === 'number' ? prj.phaseIndex : 0] || '';
+                    const phase = getCurrentPhaseName(prj);
 
                     // 색상 팔레트: 완료(sage green) / 정상(teal) / 지연(coral)
                     const dotColor = isCompleted ? 'bg-emerald-300' : isDelayed ? 'bg-orange-400' : 'bg-teal-500';
@@ -757,7 +766,7 @@ const DashboardView = memo(function DashboardView({ projects: rawProjects, issue
           domain: p.domain,
           status: p.status,
           progress: calcAct(p.tasks),
-          phase: PROJECT_PHASES[typeof p.phaseIndex === 'number' ? p.phaseIndex : 0] || ''
+          phase: getCurrentPhaseName(p)
         })).sort((a, b) => b.progress - a.progress);
 
         // 3. 월별 이슈 트렌드 (최근 6개월)

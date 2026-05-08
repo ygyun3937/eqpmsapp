@@ -26,6 +26,29 @@ export const calcAct = (tasks) => {
   return Math.round((tasks.filter(t => t.isCompleted).length / tasks.length) * 100);
 };
 
+// 단계별 일정 진척률 — 마지막 단계 = 100%
+export const calcPhaseProgress = (project) => {
+  const phases = (project && Array.isArray(project.phases) && project.phases.length > 1) ? project.phases : null;
+  if (!phases) return 0;
+  const idx = typeof project.phaseIndex === 'number' ? project.phaseIndex : 0;
+  const clamped = Math.max(0, Math.min(idx, phases.length - 1));
+  return Math.round((clamped / (phases.length - 1)) * 100);
+};
+
+// 종합 진척률 — 단계별 일정과 셋업 일정 모두 고려한 평균.
+// 단계만 있으면 단계 진척만, 셋업만 있으면 셋업 진척만, 둘 다 있으면 평균.
+export const calcOverallProgress = (project) => {
+  if (!project) return 0;
+  const hasPhases = Array.isArray(project.phases) && project.phases.length > 1;
+  const hasTasks = Array.isArray(project.tasks) && project.tasks.length > 0;
+  const phase = hasPhases ? calcPhaseProgress(project) : null;
+  const setup = hasTasks ? calcAct(project.tasks) : null;
+  if (phase !== null && setup !== null) return Math.round((phase + setup) / 2);
+  if (phase !== null) return phase;
+  if (setup !== null) return setup;
+  return 0;
+};
+
 const daysBetween = (a, b) => Math.floor((a.getTime() - b.getTime()) / (1000 * 60 * 60 * 24));
 
 // 엔지니어가 등록된 모든 출장 일정 모음 (project.trips 기준)

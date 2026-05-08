@@ -58,6 +58,7 @@ const PhaseGanttModal = lazy(() => import('./components/modals/PhaseGanttModal')
 const ProjectEditModal = lazy(() => import('./components/modals/ProjectEditModal'));
 const ProjectTeamModal = lazy(() => import('./components/modals/ProjectTeamModal'));
 const PhaseEditModal = lazy(() => import('./components/modals/PhaseEditModal'));
+const SetupTaskEditModal = lazy(() => import('./components/modals/SetupTaskEditModal'));
 const UserModal = lazy(() => import('./components/modals/UserModal'));
 const PasswordChangeModal = lazy(() => import('./components/modals/PasswordChangeModal'));
 const HelpModal = lazy(() => import('./components/modals/HelpModal'));
@@ -126,6 +127,8 @@ export default function App() {
   const [teamEditProjectId, setTeamEditProjectId] = useState(null);
   const [isPhaseEditOpen, setIsPhaseEditOpen] = useState(false);
   const [phaseEditProjectId, setPhaseEditProjectId] = useState(null);
+  const [isSetupEditOpen, setIsSetupEditOpen] = useState(false);
+  const [setupEditProjectId, setSetupEditProjectId] = useState(null);
   const [taskModalInitialTab, setTaskModalInitialTab] = useState(null);
 
   // Delete confirm states
@@ -521,6 +524,38 @@ export default function App() {
     }));
   };
 
+  // 셋업 파이프라인 클릭 — 클릭한 task를 "현재(미완료)"로, 이전은 모두 완료, 이후는 모두 미완료
+  const handleSetCurrentSetupTask = (projectId, taskId) => {
+    syncProjects(projects.map(p => {
+      if (p.id !== projectId) return p;
+      const list = p.tasks || [];
+      const idx = list.findIndex(tk => tk.id === taskId);
+      if (idx < 0) return p;
+      const target = list[idx];
+      const newTasks = list.map((tk, i) => ({ ...tk, isCompleted: i < idx }));
+      return addLog({ ...p, tasks: newTasks }, 'SETUP_PROGRESS', `현재 셋업 작업: ${target.name}`);
+    }));
+  };
+
+  // 셋업 작업 일괄 편집 (이름·일정·마일스톤·완료·순서·추가·삭제 한번에)
+  const handleSetProjectTasks = (projectId, nextTasks) => {
+    syncProjects(projects.map(p => {
+      if (p.id !== projectId) return p;
+      const prev = p.tasks || [];
+      const prevIds = new Set(prev.map(t => t.id));
+      const nextIds = new Set(nextTasks.map(t => t.id));
+      const added = nextTasks.filter(t => !prevIds.has(t.id)).length;
+      const removed = prev.filter(t => !nextIds.has(t.id)).length;
+      const modified = nextTasks.filter(t => {
+        const old = prev.find(o => o.id === t.id);
+        if (!old) return false;
+        return old.name !== t.name || (old.startDate || '') !== (t.startDate || '') || (old.endDate || '') !== (t.endDate || '') || !!old.isMilestone !== !!t.isMilestone || !!old.isCompleted !== !!t.isCompleted;
+      }).length;
+      const summary = `셋업 일정 편집: 추가 ${added} · 수정 ${modified} · 삭제 ${removed}`;
+      return addLog({ ...p, tasks: nextTasks }, 'SETUP_DEFINE', summary);
+    }));
+  };
+
   // 프로젝트 단계 정의 자체 편집 (이름 변경/추가/삭제/순서)
   const handleSetProjectPhases = (projectId, nextPhases) => {
     syncProjects(projects.map(p => {
@@ -561,8 +596,15 @@ export default function App() {
   };
 
   const handleEditTaskName = (projectId, taskId, newName) => {
-    if (!newName.trim()) return;
-    syncProjects(projects.map(p => p.id === projectId ? { ...p, tasks: p.tasks.map(t => t.id === taskId ? { ...t, name: newName.trim() } : t) } : p));
+    const trimmed = (newName || '').trim();
+    if (!trimmed) return;
+    syncProjects(projects.map(p => {
+      if (p.id !== projectId) return p;
+      const task = (p.tasks || []).find(tk => tk.id === taskId);
+      if (!task || task.name === trimmed) return p;
+      const updated = { ...p, tasks: p.tasks.map(tk => tk.id === taskId ? { ...tk, name: trimmed } : tk) };
+      return addLog(updated, 'TASK_RENAME', `태스크 이름 변경: ${task.name} → ${trimmed}`);
+    }));
   };
 
   const handleDeleteTask = (projectId, taskId) => {
@@ -577,8 +619,31 @@ export default function App() {
     syncProjects(projects.map(p => p.id === projectId ? { ...p, tasks: p.tasks.map(t => t.id === taskId ? { ...t, delayReason: reason } : t) } : p));
   };
 
-  const handleUpdateTaskDates = (projectId, taskId, dates) => {
-    syncProjects(projects.map(p => p.id === projectId ? { ...p, tasks: p.tasks.map(t => t.id === taskId ? { ...t, ...dates } : t) } : p));
+  const handleUpdateTaskDates = (projectId, taskId, changes) => {
+    syncProjects(projects.map(p => {
+      if (p.id !== projectId) return p;
+      const task = (p.tasks || []).find(tk => tk.id === taskId);
+      if (!task) return p;
+      const updated = { ...p, tasks: p.tasks.map(tk => tk.id === taskId ? { ...tk, ...changes } : tk) };
+      // 변경 항목만 추출
+      const parts = [];
+      if ('startDate' in changes && (changes.startDate || '') !== (task.startDate || '')) {
+        parts.push(`시작 ${task.startDate || '미정'} → ${changes.startDate || '미정'}`);
+      }
+      if ('endDate' in changes && (changes.endDate || '') !== (task.endDate || '')) {
+        parts.push(`종료 ${task.endDate || '미정'} → ${changes.endDate || '미정'}`);
+      }
+      // 마일스톤 토글만 들어온 단일 변경은 별도 타입으로 분리해 가독성 ↑
+      if ('isMilestone' in changes && Object.keys(changes).length === 1) {
+        if (!!changes.isMilestone === !!task.isMilestone) return updated;
+        return addLog(updated, 'TASK_MILESTONE', `마일스톤 ${changes.isMilestone ? 'ON' : 'OFF'}: ${task.name}`);
+      }
+      if ('isMilestone' in changes && !!changes.isMilestone !== !!task.isMilestone) {
+        parts.push(`마일스톤 ${changes.isMilestone ? 'ON' : 'OFF'}`);
+      }
+      if (parts.length === 0) return updated;
+      return addLog(updated, 'TASK_DATES', `일정 변경 [${task.name}] · ${parts.join(' · ')}`);
+    }));
   };
 
   const handleUpdateChecklistItem = (projectId, itemId, newStatus, newNote) => {
@@ -987,7 +1052,8 @@ export default function App() {
   // === 참고자료(첨부) — Google Drive 업로드 ===
   // GAS 6MB 요청 한도 → 단일 파일 18MB 정도까지가 안전 (base64로 33% 부풀어짐)
   const ATTACHMENT_MAX_BYTES = 18 * 1024 * 1024;
-  const handleUploadAttachment = async (projectId, file, onProgress) => {
+  // category: '명세서' | '도면' | '기타' (기본 '기타'). 회의록은 handleAddNoteWithFile에서 '회의록'으로 호출.
+  const handleUploadAttachment = async (projectId, file, onProgress, category) => {
     if (!settings.driveRootFolderId) {
       showToast(t('Drive 루트 폴더가 설정되지 않았습니다. 시스템 설정에서 등록하세요.', 'Drive root folder not configured. Please set it in System Settings.'));
       return null;
@@ -998,13 +1064,14 @@ export default function App() {
     }
     const project = projects.find(p => p.id === projectId);
     if (!project) return null;
+    const cat = category || '기타';
     if (onProgress) onProgress({ stage: 'encoding', percent: 10 });
     const base64 = await fileToBase64(file);
     if (onProgress) onProgress({ stage: 'uploading', percent: 50 });
     const result = await callGoogleAction('UPLOAD_FILE', {
       projectId, customer: project.customer, projectName: project.name,
       fileName: file.name, mimeType: file.type || 'application/octet-stream',
-      base64
+      base64, category: cat
     });
     if (!result || result.status !== 'success' || !result.file) {
       showToast(t('업로드 실패: ', 'Upload failed: ') + (result?.message || ''));
@@ -1021,12 +1088,19 @@ export default function App() {
       viewUrl: f.viewUrl,
       downloadUrl: f.downloadUrl,
       folderUrl: f.folderUrl,
+      categoryFolderUrl: f.categoryFolderUrl,
+      category: f.category || cat,
       uploadedBy: currentUser.name,
       uploadedAt: new Date().toLocaleString()
     };
+    // 회의록 카테고리는 별도 흐름이 부르므로 attachments에 넣지 않고 그대로 반환
+    if (cat === '회의록') {
+      if (onProgress) onProgress({ stage: 'done', percent: 100 });
+      return attachment;
+    }
     // 여러 파일 연속 업로드 시 stale closure 방지 — 함수형 setState로 최신 상태 읽기
     setProjects(prev => {
-      const next = prev.map(p => p.id !== projectId ? p : addLog({ ...p, attachments: [...(p.attachments || []), attachment] }, 'ATTACH_ADD', `참고자료 업로드: ${attachment.fileName}`));
+      const next = prev.map(p => p.id !== projectId ? p : addLog({ ...p, attachments: [...(p.attachments || []), attachment] }, 'ATTACH_ADD', `${cat} 업로드: ${attachment.fileName}`));
       saveToGoogleDB('UPDATE_PROJECTS', next);
       return next;
     });
@@ -1052,14 +1126,54 @@ export default function App() {
     showToast(t('참고자료가 삭제되었습니다.', 'Attachment deleted.'));
   };
 
-  const handleAddNote = (projectId, text) => {
-    const note = { id: Date.now(), author: currentUser.name, text, date: new Date().toLocaleString() };
-    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, notes: [...(p.notes || []), note] }, 'NOTE_ADD', `공유 노트: ${text.substring(0, 30)}${text.length > 30 ? '...' : ''}`)));
+  // 회의록 등록: text(본문) + summary(선택) + file(선택, Drive 업로드 후 메타데이터 첨부)
+  const handleAddNote = async (projectId, text, opts) => {
+    const summary = (opts && opts.summary) || '';
+    const file = opts && opts.file;
+    let fileMeta = null;
+    if (file) {
+      // 회의록 카테고리로 Drive 업로드 (목록에는 노출하지 않고 노트에 첨부)
+      fileMeta = await handleUploadAttachment(projectId, file, opts.onProgress, '회의록');
+      if (!fileMeta) return; // 업로드 실패 시 중단
+    }
+    const note = {
+      id: Date.now(),
+      author: currentUser.name,
+      text,
+      summary,
+      file: fileMeta ? {
+        fileId: fileMeta.fileId,
+        fileName: fileMeta.fileName,
+        mimeType: fileMeta.mimeType,
+        size: fileMeta.size,
+        viewUrl: fileMeta.viewUrl,
+        downloadUrl: fileMeta.downloadUrl,
+        folderUrl: fileMeta.categoryFolderUrl || fileMeta.folderUrl
+      } : null,
+      date: new Date().toLocaleString()
+    };
+    const headline = text ? text.substring(0, 30) + (text.length > 30 ? '...' : '') : (fileMeta ? fileMeta.fileName : '회의록');
+    setProjects(prev => {
+      const next = prev.map(p => p.id !== projectId ? p : addLog({ ...p, notes: [...(p.notes || []), note] }, 'NOTE_ADD', `회의록: ${headline}`));
+      saveToGoogleDB('UPDATE_PROJECTS', next);
+      return next;
+    });
   };
 
-  const handleDeleteNote = (projectId, noteId) => {
-    syncProjects(projects.map(p => p.id !== projectId ? p : { ...p, notes: (p.notes || []).filter(n => n.id !== noteId) }));
+  const handleDeleteNote = async (projectId, noteId) => {
+    const project = projects.find(p => p.id === projectId);
+    const target = project && (project.notes || []).find(n => n.id === noteId);
+    // 첨부 파일 있으면 Drive 휴지통으로 (실패해도 메타 삭제는 진행)
+    if (target && target.file && target.file.fileId) {
+      await callGoogleAction('DELETE_FILE', { fileId: target.file.fileId });
+    }
+    setProjects(prev => {
+      const next = prev.map(p => p.id !== projectId ? p : { ...p, notes: (p.notes || []).filter(n => n.id !== noteId) });
+      saveToGoogleDB('UPDATE_PROJECTS', next);
+      return next;
+    });
   };
+
 
   const handleAddDailyReport = (reportData) => {
     setIsDailyReportOpen(false);
@@ -1092,6 +1206,8 @@ export default function App() {
     onDeleteChecklistItem: handleDeleteChecklistItem,
     onUpdatePhase: handleUpdatePhase,
     onEditPhases: (prjId) => { setPhaseEditProjectId(prjId); setIsPhaseEditOpen(true); },
+    onEditSetupTasks: (prjId) => { setSetupEditProjectId(prjId); setIsSetupEditOpen(true); },
+    onSetCurrentSetupTask: handleSetCurrentSetupTask,
     onSignOff: handleSignOff,
     onCancelSignOff: handleCancelSignOff,
     onAddExtraTask: handleAddExtraTask, onUpdateExtraTask: handleUpdateExtraTask, onDeleteExtraTask: handleDeleteExtraTask,
@@ -1314,6 +1430,11 @@ export default function App() {
               const lp = projects.find(p => p.id === phaseEditProjectId);
               if (!lp) return null;
               return <PhaseEditModal project={lp} onClose={() => { setIsPhaseEditOpen(false); setPhaseEditProjectId(null); }} onSubmit={handleSetProjectPhases} t={t} />;
+            })()}
+            {isSetupEditOpen && setupEditProjectId && (() => {
+              const lp = projects.find(p => p.id === setupEditProjectId);
+              if (!lp) return null;
+              return <SetupTaskEditModal project={lp} onClose={() => { setIsSetupEditOpen(false); setSetupEditProjectId(null); }} onSubmit={handleSetProjectTasks} t={t} />;
             })()}
             {isTeamModalOpen && teamEditProjectId && (() => {
               const liveProject = projects.find(p => p.id === teamEditProjectId);

@@ -1,21 +1,28 @@
 import React, { useState, memo } from 'react';
 import { X, ListTodo, CheckSquare, AlertTriangle, CheckCircle, User, Edit, Trash, PenTool, Info, ShieldCheck, FileText, ImageIcon, History, GitCommit as TimelineIcon, Package, Wrench, HardDrive, MessageSquare, Send, LifeBuoy, Plus, ShieldOff, Sparkles, Paperclip, Upload, Download, ExternalLink, Loader, FolderOpen, CalendarDays, Star } from 'lucide-react';
 import { PROJECT_PHASES } from '../../constants';
+import { calcAct as calcSetupProgress, calcPhaseProgress, calcOverallProgress } from '../../utils/calc';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
+import SetupPipelineStepper from '../common/SetupPipelineStepper';
 import SignaturePad from '../common/SignaturePad';
 import { generatePDF } from '../../utils/export';
 import { downloadICS, openGoogleCalendar } from '../../utils/calendar';
 
-const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusColor, onClose, onToggleTask, onAddTask, onEditTaskName, onDeleteTask, onUpdateDelayReason, onUpdateTaskDates, onUpdateChecklistItem, onLoadDefaultChecklist, onAddChecklistItem, onDeleteChecklistItem, onUpdatePhase, onEditPhases, onSignOff, onCancelSignOff, onAddExtraTask, onUpdateExtraTask, onDeleteExtraTask, onAddNote, onDeleteNote, onAddCustomerRequest, onUpdateCustomerRequestStatus, onAddCustomerResponse, onDeleteCustomerRequest, onAddAS, onUpdateAS, onDeleteAS, onUploadAttachment, onDeleteAttachment, onDeleteProject, driveConfigured, calcAct, currentUser, t, initialTab }) {
+const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusColor, onClose, onToggleTask, onAddTask, onEditTaskName, onDeleteTask, onUpdateDelayReason, onUpdateTaskDates, onUpdateChecklistItem, onLoadDefaultChecklist, onAddChecklistItem, onDeleteChecklistItem, onUpdatePhase, onEditPhases, onEditSetupTasks, onSetCurrentSetupTask, onSignOff, onCancelSignOff, onAddExtraTask, onUpdateExtraTask, onDeleteExtraTask, onAddNote, onDeleteNote, onAddCustomerRequest, onUpdateCustomerRequestStatus, onAddCustomerResponse, onDeleteCustomerRequest, onAddAS, onUpdateAS, onDeleteAS, onUploadAttachment, onDeleteAttachment, onDeleteProject, driveConfigured, calcAct, currentUser, t, initialTab }) {
   const [activeModalTab, setActiveModalTab] = useState(initialTab || 'tasks');
+  const [scheduleSubTab, setScheduleSubTab] = useState('phase');
   const [attachUploading, setAttachUploading] = useState(false);
   const [attachDragOver, setAttachDragOver] = useState(false);
   const [attachProgress, setAttachProgress] = useState(0);
   const [attachError, setAttachError] = useState('');
-  const [newTaskName, setNewTaskName] = useState('');
+  const [attachCategory, setAttachCategory] = useState('명세서');
+  const [attachGroupFilter, setAttachGroupFilter] = useState('all');
   const [newNoteText, setNewNoteText] = useState('');
-  const [editingTaskId, setEditingTaskId] = useState(null);
-  const [editingTaskName, setEditingTaskName] = useState('');
+  const [newNoteSummary, setNewNoteSummary] = useState('');
+  const [newNoteFile, setNewNoteFile] = useState(null);
+  const [noteUploading, setNoteUploading] = useState(false);
+  const [noteUploadProgress, setNoteUploadProgress] = useState(0);
+  const [noteError, setNoteError] = useState('');
   const [newChecklistCategory, setNewChecklistCategory] = useState('일반');
   const [newChecklistTask, setNewChecklistTask] = useState('');
   const [newRequestForm, setNewRequestForm] = useState({
@@ -33,7 +40,11 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
 
   if (!project) return null;
 
-  const actualProgress = calcAct(project.tasks);
+  const actualProgress = calcOverallProgress(project);
+  const phasePct = calcPhaseProgress(project);
+  const setupPct = calcSetupProgress(project.tasks);
+  const hasPhases = Array.isArray(project.phases) && project.phases.length > 1;
+  const hasTasks = Array.isArray(project.tasks) && project.tasks.length > 0;
   const checklistCount = project.checklist ? project.checklist.length : 0;
   const checklistCompleted = project.checklist ? project.checklist.filter(c => c.status === 'OK').length : 0;
   const isReadyToSign = checklistCount > 0 && checklistCompleted === checklistCount;
@@ -42,7 +53,7 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
 
   return (
     <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-2 md:p-4 animate-[fadeIn_0.2s_ease-in-out]">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-7xl overflow-hidden flex flex-col max-h-[92vh]">
         <div className="px-4 md:px-6 py-4 border-b border-slate-200 bg-blue-50 flex-shrink-0">
           <div className="flex justify-between items-start gap-3">
             <div className="flex-1 min-w-0">
@@ -67,91 +78,233 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
           </div>
         </div>
         <div className="grid grid-cols-3 md:grid-cols-9 border-b border-slate-200 bg-white shrink-0">
-          <button onClick={() => setActiveModalTab('tasks')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'tasks' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><ListTodo size={16} className="mb-0.5" /><span>{t('셋업 일정', 'Setup Tasks')}</span></button>
+          <button onClick={() => setActiveModalTab('tasks')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'tasks' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><ListTodo size={16} className="mb-0.5" /><span>{t('일정', 'Schedule')}</span></button>
           <button onClick={() => setActiveModalTab('checklist')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'checklist' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><CheckSquare size={16} className="mb-0.5" /><span>{t('검수표', 'Checklist')} ({checklistCompleted}/{checklistCount})</span></button>
           <button onClick={() => setActiveModalTab('extras')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'extras' ? 'border-pink-600 text-pink-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><Sparkles size={16} className="mb-0.5" /><span>{t('추가 대응', 'Extras')} ({(project.extraTasks || []).length})</span></button>
           <button onClick={() => setActiveModalTab('issues')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'issues' ? 'border-red-600 text-red-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><AlertTriangle size={16} className="mb-0.5" /><span>{t('이슈', 'Issues')} ({projectIssues.length})</span></button>
           <button onClick={() => setActiveModalTab('history')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'history' ? 'border-slate-600 text-slate-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><History size={16} className="mb-0.5" /><span>{t('이력', 'History')} ({(project.activityLog || []).length})</span></button>
-          <button onClick={() => setActiveModalTab('notes')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'notes' ? 'border-amber-600 text-amber-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><FileText size={16} className="mb-0.5" /><span>{t('노트', 'Notes')} ({(project.notes || []).length})</span></button>
+          <button onClick={() => setActiveModalTab('notes')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'notes' ? 'border-amber-600 text-amber-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><FileText size={16} className="mb-0.5" /><span>{t('회의록', 'Meetings')} ({(project.notes || []).length})</span></button>
           <button onClick={() => setActiveModalTab('attachments')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'attachments' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><Paperclip size={16} className="mb-0.5" /><span>{t('참고 자료', 'Files')} ({(project.attachments || []).length})</span></button>
           <button onClick={() => setActiveModalTab('requests')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'requests' ? 'border-cyan-600 text-cyan-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><MessageSquare size={16} className="mb-0.5" /><span>{t('고객요청', 'Requests')} ({(project.customerRequests || []).length})</span></button>
           <button onClick={() => setActiveModalTab('as')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'as' ? 'border-purple-600 text-purple-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><LifeBuoy size={16} className="mb-0.5" /><span>{t('AS 관리', 'AS')} ({(project.asRecords || []).length})</span></button>
         </div>
         <div className="p-4 md:p-6 overflow-y-auto flex-1 scroll-smooth bg-slate-50">
-          {activeModalTab === 'tasks' && (
+          {activeModalTab === 'tasks' && (() => {
+            const phaseList = (project.phases && project.phases.length > 0)
+              ? project.phases
+              : PROJECT_PHASES.map((name, idx) => ({ id: `p${idx}`, name, startDate: '', endDate: '', isMilestone: false }));
+            const currentIdx = project.phaseIndex || 0;
+            return (
             <div className="space-y-4">
-              <div className="flex justify-between items-center mb-2"><span className="text-sm font-bold text-slate-700">{t('현재 실적 진척도', 'Actual Progress')}</span><span className="text-2xl font-black text-blue-600">{actualProgress}%</span></div>
-              <div className="mb-4 p-3 bg-indigo-50 border border-indigo-100 rounded-lg">
-                <span className="text-xs font-bold text-slate-500 mb-2 flex items-center">{t('현재 업무 단계:', 'Current Phase:')} <span className="ml-1 text-indigo-600 bg-white px-1.5 py-0.5 border border-indigo-200 rounded">{PROJECT_PHASES[project.phaseIndex || 0]}</span></span>
-                <div className="overflow-x-auto pb-1 scroll-smooth"><ProjectPipelineStepper phases={project.phases} currentPhase={project.phaseIndex || 0} onUpdatePhase={onUpdatePhase} projectId={project.id} role={currentUser.role} onEditPhases={onEditPhases} /></div>
+              {/* 공통: 진척도 */}
+              <div className="flex justify-between items-end gap-3 flex-wrap">
+                <div>
+                  <div className="text-sm font-bold text-slate-700">{t('현재 실적 진척도', 'Actual Progress')}</div>
+                  {(hasPhases || hasTasks) && (
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      {hasPhases && <span>{t('단계', 'Phase')} <strong className="text-indigo-700">{phasePct}%</strong></span>}
+                      {hasPhases && hasTasks && <span className="mx-1.5 text-slate-300">·</span>}
+                      {hasTasks && <span>{t('셋업', 'Setup')} <strong className="text-blue-700">{setupPct}%</strong></span>}
+                      {hasPhases && hasTasks && <span className="ml-1 text-slate-400">→ {t('평균', 'avg')}</span>}
+                    </div>
+                  )}
+                </div>
+                <span className="text-3xl font-black text-blue-600 leading-none">{actualProgress}%</span>
               </div>
-              <div className="space-y-3">
-                {project.tasks.map((task, index) => (
-                  <div key={task.id} className={`flex items-start p-3 rounded-lg border shadow-sm ${task.isCompleted ? 'bg-slate-100 border-slate-200' : 'bg-white border-blue-100 hover:border-blue-300'} transition-colors ${currentUser.role !== 'CUSTOMER' ? 'cursor-pointer' : ''} group`} onClick={() => { if(currentUser.role !== 'CUSTOMER') onToggleTask(project.id, task.id)}}>
-                    <div className="mr-3 md:mr-4 flex-shrink-0 mt-0.5">
-                      <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${task.isCompleted ? 'bg-blue-500 border-blue-500' : 'border-slate-300'}`}>
-                        {task.isCompleted && <CheckCircle size={16} className="text-white" />}
+
+              {/* 서브탭 토글 */}
+              <div className="bg-white border border-slate-200 rounded-xl p-1 flex gap-1 shadow-sm">
+                <button onClick={() => setScheduleSubTab('phase')} className={`flex-1 text-xs md:text-sm font-bold px-3 py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5 ${scheduleSubTab === 'phase' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>
+                  <TimelineIcon size={14} />{t('프로젝트 단계별 일정', 'Phase Schedule')}
+                </button>
+                <button onClick={() => setScheduleSubTab('setup')} className={`flex-1 text-xs md:text-sm font-bold px-3 py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5 ${scheduleSubTab === 'setup' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>
+                  <ListTodo size={14} />{t('셋업 일정', 'Setup Tasks')} ({(project.tasks || []).length})
+                </button>
+              </div>
+
+              {scheduleSubTab === 'phase' && (() => {
+                return (
+                  <div className="space-y-3">
+                    {/* 단계별 헤더 박스 — 현재 단계 + Pipeline + [단계 편집] 모달 진입 */}
+                    <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                        <div className="text-sm font-bold text-slate-700 flex items-center">
+                          <span className="text-slate-500 mr-2">{t('현재 업무 단계', 'Current Phase')}</span>
+                          <span className="text-indigo-700 bg-white px-3 py-1.5 border border-indigo-300 rounded-lg text-base font-black shadow-sm">{phaseList[currentIdx]?.name || PROJECT_PHASES[currentIdx]}</span>
+                        </div>
+                        {currentUser.role !== 'CUSTOMER' && (
+                          <button onClick={() => onEditPhases(project.id)} className="inline-flex items-center text-sm font-bold px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-md hover:shadow-lg transition-all">
+                            <Edit size={16} className="mr-2" />{t('단계 편집', 'Edit Phases')}
+                          </button>
+                        )}
+                      </div>
+                      <div className="overflow-x-auto pb-2 scroll-smooth bg-white rounded-lg p-3 border border-indigo-100">
+                        <ProjectPipelineStepper phases={project.phases} currentPhase={currentIdx} onUpdatePhase={onUpdatePhase} projectId={project.id} role={currentUser.role} onEditPhases={onEditPhases} />
                       </div>
                     </div>
-                    <div className="flex-1 w-full min-w-0">
-                      {editingTaskId === task.id ? (
-                        <div className="flex items-center space-x-2 mb-1" onClick={(e) => e.stopPropagation()}>
-                          <input type="text" value={editingTaskName} onChange={(e) => setEditingTaskName(e.target.value)} className="flex-1 text-xs md:text-sm p-1.5 border border-blue-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-0" autoFocus onKeyDown={(e) => { if (e.key === 'Enter') { onEditTaskName(project.id, task.id, editingTaskName); setEditingTaskId(null); } else if (e.key === 'Escape') setEditingTaskId(null); }} />
-                          <button onClick={() => { onEditTaskName(project.id, task.id, editingTaskName); setEditingTaskId(null); }} className="text-[10px] md:text-xs bg-blue-600 text-white px-2 py-1.5 rounded font-bold shrink-0">{t('저장','Save')}</button>
-                        </div>
-                      ) : (
-                        <div className="flex justify-between items-start">
-                          <p className={`text-xs md:text-sm font-bold pr-2 ${task.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>Step {index + 1}. {task.name}</p>
-                          {currentUser.role !== 'CUSTOMER' && (
-                            <div className="flex items-center gap-1 shrink-0">
-                              <button onClick={(e) => { e.stopPropagation(); onUpdateTaskDates(project.id, task.id, { isMilestone: !task.isMilestone }); }} className={`inline-flex items-center px-1.5 py-1 rounded text-[10px] font-bold border transition-colors ${task.isMilestone ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200'}`} title={t('마일스톤(중요 표시)', 'Milestone')}>
-                                <Star size={11} className={`mr-0.5 ${task.isMilestone ? 'fill-rose-500 text-rose-500' : ''}`} />{task.isMilestone ? 'SOP' : t('마일스톤', 'Milestone')}
-                              </button>
-                              {!task.isCompleted && (
-                                <button onClick={(e) => { e.stopPropagation(); setEditingTaskId(task.id); setEditingTaskName(task.name); }} className="inline-flex items-center px-1.5 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] font-bold border border-blue-200 transition-colors" title={t('수정', 'Edit')}>
-                                  <Edit size={11} className="mr-0.5"/>{t('수정', 'Edit')}
-                                </button>
-                              )}
-                              <button onClick={(e) => { e.stopPropagation(); onDeleteTask(project.id, task.id); }} className="inline-flex items-center px-1.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 transition-colors" title={t('삭제', 'Delete')}>
-                                <Trash size={11} className="mr-0.5"/>{t('삭제', 'Delete')}
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      {/* 시작일 / 종료일 */}
-                      {currentUser.role !== 'CUSTOMER' && (
-                        <div className="flex items-center gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex-1">
-                            <label className="text-[9px] text-slate-400 font-bold block mb-0.5">{t('시작일', 'Start')}</label>
-                            <input type="date" className="w-full text-[10px] md:text-xs p-1 border border-slate-200 rounded bg-slate-50 focus:outline-none focus:border-blue-400 focus:bg-white" value={task.startDate || ''} onChange={(e) => onUpdateTaskDates(project.id, task.id, { startDate: e.target.value })} />
-                          </div>
-                          <div className="flex-1">
-                            <label className="text-[9px] text-slate-400 font-bold block mb-0.5">{t('종료일', 'End')}</label>
-                            <input type="date" className="w-full text-[10px] md:text-xs p-1 border border-slate-200 rounded bg-slate-50 focus:outline-none focus:border-blue-400 focus:bg-white" value={task.endDate || ''} onChange={(e) => onUpdateTaskDates(project.id, task.id, { endDate: e.target.value })} />
-                          </div>
-                        </div>
-                      )}
-                      {currentUser.role === 'CUSTOMER' && (task.startDate || task.endDate) && (
-                        <div className="mt-1 text-[10px] text-slate-500">
-                          {task.startDate || '?'} ~ {task.endDate || '?'}
-                        </div>
-                      )}
 
-                      {!task.isCompleted && currentUser.role !== 'CUSTOMER' && <input type="text" placeholder={t("지연 사유 등 메모 (선택)", "Delay Reason/Notes (Optional)")} className="mt-2 w-full text-[10px] md:text-xs p-1.5 border border-slate-200 rounded bg-slate-50 text-slate-600 focus:outline-none focus:border-blue-400 focus:bg-white transition-colors" value={task.delayReason || ''} onChange={(e) => onUpdateDelayReason(project.id, task.id, e.target.value)} onClick={(e) => e.stopPropagation()} />}
-                      {task.delayReason && <p className="mt-1 text-[10px] md:text-xs text-slate-400">{t('메모:', 'Note:')} {task.delayReason}</p>}
+                    {/* 단계별 일정 표 */}
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                      <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
+                        <span className="text-sm font-bold text-slate-700">{t('단계별 일정', 'Phase Schedule')}</span>
+                        <span className="text-xs text-slate-500">{t('일정·이름·마일스톤 변경은 [단계 편집]에서 진행하면 활동 이력에 자동 기록됩니다.', 'Edit via [Edit Phases] — changes are auto-logged.')}</span>
+                      </div>
+                      <table className="min-w-full divide-y divide-slate-200">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase w-12">#</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">{t('단계명', 'Name')}</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">{t('시작일', 'Start')}</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">{t('종료일', 'End')}</th>
+                            <th className="px-4 py-3 text-center text-xs font-bold text-slate-600 uppercase w-28">{t('마일스톤', 'Milestone')}</th>
+                            <th className="px-4 py-3 text-center text-xs font-bold text-slate-600 uppercase w-24">{t('상태', 'Status')}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-slate-100">
+                          {phaseList.map((p, idx) => {
+                            const isCurrent = idx === currentIdx;
+                            const isPast = idx < currentIdx;
+                            return (
+                              <tr key={p.id || idx} className={`${isCurrent ? 'bg-indigo-50/40' : ''} hover:bg-slate-50/60`}>
+                                <td className="px-4 py-3 text-slate-400 font-mono text-sm">{idx + 1}</td>
+                                <td className="px-4 py-3">
+                                  <span className={`text-sm font-bold ${isCurrent ? 'text-indigo-700' : isPast ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{p.name}</span>
+                                </td>
+                                <td className="px-4 py-3 text-slate-700 font-mono text-sm">{p.startDate || <span className="text-slate-300">—</span>}</td>
+                                <td className="px-4 py-3 text-slate-700 font-mono text-sm">{p.endDate || <span className="text-slate-300">—</span>}</td>
+                                <td className="px-4 py-3 text-center">
+                                  {p.isMilestone
+                                    ? <span className="inline-flex items-center text-rose-600" title={t('마일스톤', 'Milestone')}><Star size={16} className="fill-rose-500 text-rose-500 drop-shadow-sm" /></span>
+                                    : <span className="text-slate-300">—</span>}
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  {isCurrent
+                                    ? <span className="text-xs font-bold px-2 py-1 rounded-md bg-indigo-100 text-indigo-700 border border-indigo-200">{t('진행중', 'Now')}</span>
+                                    : isPast
+                                      ? <span className="text-xs font-bold px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">{t('완료', 'Done')}</span>
+                                      : <span className="text-xs font-bold px-2 py-1 rounded-md bg-slate-50 text-slate-500 border border-slate-200">{t('예정', 'Plan')}</span>}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
-                ))}
-              </div>
-              {currentUser.role !== 'CUSTOMER' && (
-                <div className="mt-4 flex gap-2 items-center">
-                  <input type="text" placeholder={t("새로운 업무 입력...", "New task...")} className="flex-1 text-xs md:text-sm p-2.5 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500" value={newTaskName} onChange={(e) => setNewTaskName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && newTaskName.trim()) { onAddTask(project.id, newTaskName.trim()); setNewTaskName(''); } }} />
-                  <button onClick={() => { if(newTaskName.trim()) { onAddTask(project.id, newTaskName.trim()); setNewTaskName(''); } }} className="px-3 md:px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs md:text-sm font-bold rounded-lg transition-colors whitespace-nowrap shadow-sm">{t('추가', 'Add')}</button>
-                </div>
-              )}
+                );
+              })()}
+
+              {scheduleSubTab === 'setup' && (() => {
+                const tasks = project.tasks || [];
+                const canEdit = currentUser.role !== 'CUSTOMER';
+                const todayStr = new Date().toISOString().slice(0, 10);
+                const computeStatus = (tk) => {
+                  if (tk.isCompleted) return 'done';
+                  if (!tk.startDate && !tk.endDate) return 'plan';
+                  if (tk.endDate && tk.endDate < todayStr) return 'overdue';
+                  if (tk.startDate && tk.startDate <= todayStr && (!tk.endDate || todayStr <= tk.endDate)) return 'now';
+                  return 'plan';
+                };
+                const statusChip = (s) => {
+                  switch (s) {
+                    case 'done': return { label: t('완료', 'Done'), cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+                    case 'now': return { label: t('진행중', 'Now'), cls: 'bg-indigo-100 text-indigo-700 border-indigo-200' };
+                    case 'overdue': return { label: t('지연', 'Late'), cls: 'bg-red-50 text-red-700 border-red-200' };
+                    default: return { label: t('예정', 'Plan'), cls: 'bg-slate-50 text-slate-500 border-slate-200' };
+                  }
+                };
+                return (
+                  <div className="space-y-3">
+                    {/* 셋업 헤더 박스 — 단계별 박스와 동일 구성. 데이터만 셋업 작업 기준 */}
+                    {(() => {
+                      const firstIncompleteIdx = tasks.findIndex(tk => !tk.isCompleted);
+                      const currentSetupIdx = firstIncompleteIdx < 0 ? Math.max(0, tasks.length - 1) : firstIncompleteIdx;
+                      const currentSetupTask = tasks[currentSetupIdx];
+                      const allDone = tasks.length > 0 && firstIncompleteIdx < 0;
+                      return (
+                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                            <div className="text-sm font-bold text-slate-700 flex items-center">
+                              <span className="text-slate-500 mr-2">{t('현재 셋업 작업', 'Current Setup Task')}</span>
+                              {tasks.length === 0 ? (
+                                <span className="text-slate-400 bg-white px-3 py-1.5 border border-slate-200 rounded-lg text-sm italic">{t('작업 없음', 'No tasks')}</span>
+                              ) : allDone ? (
+                                <span className="text-emerald-700 bg-white px-3 py-1.5 border border-emerald-300 rounded-lg text-base font-black shadow-sm inline-flex items-center">
+                                  <CheckCircle size={14} className="mr-1.5" />{t('전체 완료', 'All done')}
+                                </span>
+                              ) : (
+                                <span className="text-blue-700 bg-white px-3 py-1.5 border border-blue-300 rounded-lg text-base font-black shadow-sm">{currentSetupTask?.name || '-'}</span>
+                              )}
+                            </div>
+                            {canEdit && (
+                              <button onClick={() => onEditSetupTasks && onEditSetupTasks(project.id)} className="inline-flex items-center text-sm font-bold px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all">
+                                <Edit size={16} className="mr-2" />{t('셋업 일정 편집', 'Edit Setup Tasks')}
+                              </button>
+                            )}
+                          </div>
+                          <div className="overflow-x-auto pb-2 scroll-smooth bg-white rounded-lg p-3 border border-blue-100">
+                            <SetupPipelineStepper tasks={tasks} onSetCurrentSetupTask={onSetCurrentSetupTask} projectId={project.id} role={currentUser.role} onEditSetupTasks={onEditSetupTasks} />
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* 셋업 일정 표 — 읽기 전용 (편집은 모달에서) */}
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                      <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
+                        <span className="text-sm font-bold text-slate-700">{t('셋업 일정', 'Setup Tasks')}</span>
+                        <span className="text-xs text-slate-500">{t('수정/추가/삭제는 [셋업 일정 편집]에서 진행하면 활동 이력에 자동 기록됩니다.', 'Edit via [Edit Setup Tasks] — changes are auto-logged.')}</span>
+                      </div>
+                      {tasks.length === 0 ? (
+                        <div className="text-center py-10 text-sm text-slate-400">
+                          {t('등록된 셋업 일정이 없습니다. [셋업 일정 편집]을 눌러 추가하세요.', 'No setup tasks yet. Click [Edit Setup Tasks] to add.')}
+                        </div>
+                      ) : (
+                        <table className="min-w-full divide-y divide-slate-200">
+                          <thead className="bg-slate-50">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase w-12">#</th>
+                              <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">{t('작업명', 'Name')}</th>
+                              <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase w-36">{t('시작일', 'Start')}</th>
+                              <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase w-36">{t('종료일', 'End')}</th>
+                              <th className="px-4 py-3 text-center text-xs font-bold text-slate-600 uppercase w-28">{t('마일스톤', 'Milestone')}</th>
+                              <th className="px-4 py-3 text-center text-xs font-bold text-slate-600 uppercase w-24">{t('상태', 'Status')}</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-slate-100">
+                            {tasks.map((task, index) => {
+                              const status = computeStatus(task);
+                              const chip = statusChip(status);
+                              return (
+                                <tr key={task.id} className={`${task.isCompleted ? 'bg-slate-50/60' : ''} hover:bg-slate-50/60`}>
+                                  <td className="px-4 py-3 text-slate-400 font-mono text-sm">{index + 1}</td>
+                                  <td className="px-4 py-3">
+                                    <div className={`text-sm font-bold ${task.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{task.name}</div>
+                                    {task.delayReason && <p className="mt-1 text-xs text-slate-500">{t('메모:', 'Note:')} {task.delayReason}</p>}
+                                  </td>
+                                  <td className="px-4 py-3 text-slate-700 font-mono text-sm">{task.startDate || <span className="text-slate-300">—</span>}</td>
+                                  <td className="px-4 py-3 text-slate-700 font-mono text-sm">{task.endDate || <span className="text-slate-300">—</span>}</td>
+                                  <td className="px-4 py-3 text-center">
+                                    {task.isMilestone
+                                      ? <Star size={16} className="fill-rose-500 text-rose-500 mx-auto drop-shadow-sm" />
+                                      : <span className="text-slate-300">—</span>}
+                                  </td>
+                                  <td className="px-4 py-3 text-center">
+                                    <span className={`text-xs font-bold px-2 py-1 rounded-md border ${chip.cls}`}>{chip.label}</span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
-          )}
+            );
+          })()}
           {activeModalTab === 'checklist' && (
             <div className="space-y-4">
               <div className="bg-indigo-100 text-indigo-800 p-3 rounded-lg text-xs md:text-sm font-bold border border-indigo-200 mb-4 shadow-sm flex items-center justify-between"><span className="flex items-center"><Info size={16} className="mr-1.5" /> {t('현장 셋업 완료 전 필수 점검 항목입니다.', 'Mandatory checklist before sign-off.')}</span><span>{t('진행률', 'Progress')}: {Math.round((checklistCompleted/checklistCount)*100 || 0)}%</span></div>
@@ -265,13 +418,13 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                 const HISTORY_GROUPS = [
                   { key: 'all', label: t('전체', 'All'), types: null },
                   { key: 'project', label: t('프로젝트', 'Project'), types: ['PROJECT_CREATE', 'PROJECT_EDIT', 'PHASE_CHANGE', 'PHASE_DEFINE', 'MANAGER_CHANGE', 'VERSION_CHANGE', 'VERSION_DELETE', 'SIGN_OFF', 'SIGN_CANCEL', 'TRIP_ADD', 'TRIP_DELETE'] },
-                  { key: 'task', label: t('셋업 일정', 'Setup'), types: ['TASK_ADD', 'TASK_COMPLETE', 'TASK_DELETE'] },
+                  { key: 'task', label: t('셋업 일정', 'Setup'), types: ['TASK_ADD', 'TASK_COMPLETE', 'TASK_DELETE', 'TASK_DATES', 'TASK_RENAME', 'TASK_MILESTONE', 'SETUP_PROGRESS', 'SETUP_DEFINE'] },
                   { key: 'extra', label: t('추가 대응', 'Extras'), types: ['EXTRA_ADD', 'EXTRA_UPDATE', 'EXTRA_DELETE'] },
                   { key: 'checklist', label: t('검수', 'Checklist'), types: ['CHECKLIST_CHANGE'] },
                   { key: 'issue', label: t('이슈', 'Issues'), types: ['ISSUE_ADD'] },
                   { key: 'request', label: t('고객요청', 'Requests'), types: ['REQUEST_ADD', 'REQUEST_STATUS'] },
                   { key: 'as', label: t('AS', 'AS'), types: ['AS_ADD', 'AS_UPDATE'] },
-                  { key: 'note', label: t('노트', 'Notes'), types: ['NOTE_ADD'] },
+                  { key: 'note', label: t('회의록', 'Meetings'), types: ['NOTE_ADD'] },
                   { key: 'part', label: t('자재', 'Parts'), types: ['PART_ADD'] },
                 ];
                 const counts = {};
@@ -301,7 +454,7 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
               ) : (() => {
                 const HISTORY_GROUPS = {
                   project: ['PROJECT_CREATE', 'PROJECT_EDIT', 'PHASE_CHANGE', 'PHASE_DEFINE', 'MANAGER_CHANGE', 'VERSION_CHANGE', 'VERSION_DELETE', 'SIGN_OFF', 'SIGN_CANCEL', 'TRIP_ADD', 'TRIP_DELETE'],
-                  task: ['TASK_ADD', 'TASK_COMPLETE', 'TASK_DELETE'],
+                  task: ['TASK_ADD', 'TASK_COMPLETE', 'TASK_DELETE', 'TASK_DATES', 'TASK_RENAME', 'TASK_MILESTONE', 'SETUP_PROGRESS', 'SETUP_DEFINE'],
                   extra: ['EXTRA_ADD', 'EXTRA_UPDATE', 'EXTRA_DELETE'],
                   checklist: ['CHECKLIST_CHANGE'],
                   issue: ['ISSUE_ADD'],
@@ -329,13 +482,18 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                         TASK_COMPLETE: { icon: <CheckCircle size={14}/>, color: 'bg-emerald-100 text-emerald-600 border-emerald-200', label: t('태스크 완료', 'Task Done') },
                         TASK_ADD: { icon: <ListTodo size={14}/>, color: 'bg-slate-100 text-slate-600 border-slate-200', label: t('태스크 추가', 'Task Add') },
                         TASK_DELETE: { icon: <Trash size={14}/>, color: 'bg-slate-100 text-slate-500 border-slate-200', label: t('태스크 삭제', 'Task Del') },
+                        TASK_DATES: { icon: <CalendarDays size={14}/>, color: 'bg-blue-100 text-blue-700 border-blue-200', label: t('일정 변경', 'Date Change') },
+                        TASK_RENAME: { icon: <Edit size={14}/>, color: 'bg-slate-100 text-slate-700 border-slate-200', label: t('이름 변경', 'Rename') },
+                        TASK_MILESTONE: { icon: <Star size={14}/>, color: 'bg-rose-100 text-rose-700 border-rose-200', label: t('마일스톤', 'Milestone') },
+                        SETUP_PROGRESS: { icon: <ListTodo size={14}/>, color: 'bg-blue-100 text-blue-700 border-blue-200', label: t('셋업 진행', 'Setup Progress') },
+                        SETUP_DEFINE: { icon: <ListTodo size={14}/>, color: 'bg-blue-100 text-blue-700 border-blue-200', label: t('셋업 편집', 'Setup Edit') },
                         ISSUE_ADD: { icon: <AlertTriangle size={14}/>, color: 'bg-red-100 text-red-600 border-red-200', label: t('이슈 등록', 'Issue') },
                         PART_ADD: { icon: <Package size={14}/>, color: 'bg-amber-100 text-amber-600 border-amber-200', label: t('자재 청구', 'Part') },
                         CHECKLIST_CHANGE: { icon: <CheckSquare size={14}/>, color: 'bg-indigo-100 text-indigo-600 border-indigo-200', label: t('체크리스트', 'Checklist') },
                         VERSION_CHANGE: { icon: <HardDrive size={14}/>, color: 'bg-slate-100 text-slate-600 border-slate-200', label: t('버전 등록', 'Version') },
                         VERSION_DELETE: { icon: <HardDrive size={14}/>, color: 'bg-slate-100 text-slate-500 border-slate-200', label: t('버전 삭제', 'Version Del') },
                         SIGN_OFF: { icon: <ShieldCheck size={14}/>, color: 'bg-emerald-100 text-emerald-700 border-emerald-300', label: t('Buy-off 서명', 'Sign-off') },
-                        NOTE_ADD: { icon: <FileText size={14}/>, color: 'bg-amber-100 text-amber-600 border-amber-200', label: t('공유 노트', 'Note') },
+                        NOTE_ADD: { icon: <FileText size={14}/>, color: 'bg-amber-100 text-amber-600 border-amber-200', label: t('회의록', 'Meeting') },
                         REQUEST_ADD: { icon: <MessageSquare size={14}/>, color: 'bg-cyan-100 text-cyan-600 border-cyan-200', label: t('고객 요청', 'Request') },
                         REQUEST_STATUS: { icon: <MessageSquare size={14}/>, color: 'bg-cyan-100 text-cyan-600 border-cyan-200', label: t('요청 처리', 'Req Status') },
                         AS_ADD: { icon: <LifeBuoy size={14}/>, color: 'bg-purple-100 text-purple-600 border-purple-200', label: t('AS 등록', 'AS') },
@@ -368,47 +526,157 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
               })()}
             </div>
           )}
-          {activeModalTab === 'notes' && (
-            <div className="space-y-4">
-              {currentUser.role !== 'CUSTOMER' && (
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                  <textarea rows="3" className="w-full text-sm p-3 border border-slate-300 rounded-lg resize-none focus:outline-none focus:border-amber-500" value={newNoteText} onChange={(e) => setNewNoteText(e.target.value)} placeholder={t('공유할 내용을 입력하세요...\n예: 고객사 담당자 요청으로 설치 위치 변경', 'Enter notes to share...')}></textarea>
-                  <div className="flex justify-end mt-2">
-                    <button onClick={() => { if (newNoteText.trim()) { onAddNote(project.id, newNoteText.trim()); setNewNoteText(''); } }} disabled={!newNoteText.trim()} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 text-white text-sm font-bold rounded-lg transition-colors flex items-center"><FileText size={14} className="mr-1.5" />{t('노트 등록', 'Add Note')}</button>
+          {activeModalTab === 'notes' && (() => {
+            const fmtSize = (b) => {
+              if (!b && b !== 0) return '';
+              if (b < 1024) return b + ' B';
+              if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+              return (b / 1024 / 1024).toFixed(2) + ' MB';
+            };
+            const handleSubmitNote = async () => {
+              if (!newNoteText.trim() && !newNoteFile) return;
+              setNoteError('');
+              if (newNoteFile && !driveConfigured) {
+                setNoteError(t('Drive 연동이 설정되지 않아 파일을 업로드할 수 없습니다.', 'Drive not configured — cannot upload file.'));
+                return;
+              }
+              setNoteUploading(true);
+              try {
+                await onAddNote(project.id, newNoteText.trim(), {
+                  summary: newNoteSummary.trim(),
+                  file: newNoteFile,
+                  onProgress: ({ percent }) => setNoteUploadProgress(percent || 0)
+                });
+                setNewNoteText(''); setNewNoteSummary(''); setNewNoteFile(null); setNoteUploadProgress(0);
+              } catch (e) {
+                setNoteError((e && e.message) || String(e));
+              }
+              setNoteUploading(false);
+            };
+            return (
+              <div className="space-y-4">
+                <div className="bg-amber-50 text-amber-800 p-3 rounded-lg text-xs font-medium border border-amber-200 flex items-start">
+                  <Info size={14} className="mr-1.5 shrink-0 mt-0.5" />
+                  <div>
+                    {t('회의록 본문, 요약, 첨부 파일(원본 회의록 PDF/문서)을 함께 등록하세요. 파일은 ', 'Record meeting body, summary, and an attached file. Files go to ')}
+                    <code className="bg-white px-1 rounded text-[11px]">[프로젝트]/회의록</code>
+                    {t(' 폴더에 저장됩니다.', ' folder.')}
                   </div>
                 </div>
-              )}
-              {(!project.notes || project.notes.length === 0) ? (
-                <div className="text-center py-10 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl bg-white">{t('등록된 공유 노트가 없습니다.', 'No notes yet.')}</div>
-              ) : (
-                <div className="space-y-3">
-                  {[...project.notes].reverse().map((note) => (
-                    <div key={note.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="flex items-center">
-                          <div className="w-7 h-7 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-xs font-bold mr-2">{note.author.charAt(0)}</div>
-                          <div>
-                            <span className="text-sm font-bold text-slate-800">{note.author}</span>
-                            <span className="text-[10px] text-slate-400 ml-2">{note.date}</span>
+
+                {currentUser.role !== 'CUSTOMER' && (
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">{t('회의록 본문', 'Meeting Body')}</label>
+                      <textarea rows="4" className="w-full text-sm p-3 border border-slate-300 rounded-lg resize-none focus:outline-none focus:border-amber-500" value={newNoteText} onChange={(e) => setNewNoteText(e.target.value)} placeholder={t('회의 일시·참석자·논의·결정사항·후속 액션 등을 입력하세요.', 'Date, attendees, discussions, decisions, action items...')}></textarea>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">{t('요약 (선택)', 'Summary (optional)')}</label>
+                      <textarea rows="3" className="w-full text-sm p-3 border border-slate-300 rounded-lg resize-none focus:outline-none focus:border-amber-500" value={newNoteSummary} onChange={(e) => setNewNoteSummary(e.target.value)} placeholder={t('주요 논의·결정·후속 액션을 간결히 직접 요약하세요.', 'Brief summary of discussions/decisions/actions.')}></textarea>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">{t('첨부 파일 (선택, 회의록 원본)', 'Attached File (optional)')}</label>
+                      {newNoteFile ? (
+                        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2">
+                          <Paperclip size={14} className="text-amber-600 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-bold text-slate-800 truncate">{newNoteFile.name}</div>
+                            <div className="text-[10px] text-slate-500">{fmtSize(newNoteFile.size)}</div>
                           </div>
+                          <button type="button" onClick={() => setNewNoteFile(null)} className="text-slate-400 hover:text-red-600 p-1" title={t('제거', 'Remove')}><X size={12} /></button>
                         </div>
-                        {(currentUser.role === 'ADMIN' || currentUser.name === note.author) && (
-                          <button onClick={() => onDeleteNote(project.id, note.id)} className="inline-flex items-center px-1.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 transition-colors" title={t('삭제', 'Delete')}>
-                            <Trash size={11} className="mr-0.5" />{t('삭제', 'Delete')}
-                          </button>
+                      ) : (
+                        <label className={`block border-2 border-dashed rounded-lg p-3 text-center cursor-pointer transition-colors ${driveConfigured ? 'border-slate-300 bg-white hover:border-amber-400 hover:bg-amber-50/40' : 'border-slate-200 bg-slate-50 cursor-not-allowed opacity-60'}`}>
+                          <input type="file" className="hidden" disabled={!driveConfigured} onChange={(e) => { const f = (e.target.files || [])[0]; if (f) setNewNoteFile(f); e.target.value = ''; }} />
+                          <Upload size={18} className="mx-auto mb-1 text-amber-500" />
+                          <div className="text-xs font-bold text-slate-600">{driveConfigured ? t('파일을 선택해 첨부 (PDF/문서/이미지)', 'Click to attach a file') : t('Drive 미연동 — 첨부 불가', 'Drive not configured')}</div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">{t('최대 18MB · 본문/요약 없이 파일만 등록도 가능', 'Up to 18MB · file-only allowed')}</div>
+                        </label>
+                      )}
+                    </div>
+                    {noteError && (
+                      <div className="bg-red-50 border border-red-200 text-red-800 text-xs rounded-lg p-2 flex items-center">
+                        <AlertTriangle size={12} className="mr-1.5 shrink-0" />{noteError}
+                      </div>
+                    )}
+                    {noteUploading && (
+                      <div className="text-xs text-amber-700 font-bold flex items-center"><Loader size={12} className="animate-spin mr-1.5" />{t('등록 중...', 'Saving...')} {newNoteFile ? `${noteUploadProgress}%` : ''}</div>
+                    )}
+                    <div className="flex justify-end">
+                      <button onClick={handleSubmitNote} disabled={noteUploading || (!newNoteText.trim() && !newNoteFile)} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 text-white text-sm font-bold rounded-lg transition-colors flex items-center"><FileText size={14} className="mr-1.5" />{t('회의록 등록', 'Add Meeting')}</button>
+                    </div>
+                  </div>
+                )}
+
+                {(!project.notes || project.notes.length === 0) ? (
+                  <div className="text-center py-10 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl bg-white">{t('등록된 회의록이 없습니다.', 'No meeting notes yet.')}</div>
+                ) : (
+                  <div className="space-y-3">
+                    {[...project.notes].reverse().map((note) => (
+                      <div key={note.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex items-center">
+                            <div className="w-7 h-7 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-xs font-bold mr-2">{note.author.charAt(0)}</div>
+                            <div>
+                              <span className="text-sm font-bold text-slate-800">{note.author}</span>
+                              <span className="text-[10px] text-slate-400 ml-2">{note.date}</span>
+                            </div>
+                          </div>
+                          {(currentUser.role === 'ADMIN' || currentUser.name === note.author) && (
+                            <button onClick={() => onDeleteNote(project.id, note.id)} className="inline-flex items-center px-1.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 transition-colors" title={t('삭제', 'Delete')}>
+                              <Trash size={11} className="mr-0.5" />{t('삭제', 'Delete')}
+                            </button>
+                          )}
+                        </div>
+                        {note.summary && (
+                          <div className="ml-9 mb-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                            <div className="text-[10px] font-bold text-amber-700 mb-1">{t('요약', 'Summary')}</div>
+                            <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{note.summary}</p>
+                          </div>
+                        )}
+                        {note.text && <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed ml-9">{note.text}</p>}
+                        {note.file && (
+                          <div className="ml-9 mt-3 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0">
+                              <Paperclip size={13} className="text-amber-600" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-bold text-slate-800 truncate" title={note.file.fileName}>{note.file.fileName}</div>
+                              <div className="text-[10px] text-slate-500 font-mono">{fmtSize(note.file.size)}</div>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              {note.file.viewUrl && (
+                                <a href={note.file.viewUrl} target="_blank" rel="noreferrer" className="p-1.5 rounded-md text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 border border-transparent hover:border-emerald-200 transition-colors" title={t('Drive에서 열기', 'Open in Drive')}><ExternalLink size={13} /></a>
+                              )}
+                              {note.file.downloadUrl && (
+                                <a href={note.file.downloadUrl} target="_blank" rel="noreferrer" className="p-1.5 rounded-md text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-200 transition-colors" title={t('다운로드', 'Download')}><Download size={13} /></a>
+                              )}
+                            </div>
+                          </div>
                         )}
                       </div>
-                      <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed ml-9">{note.text}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {activeModalTab === 'attachments' && (() => {
-            const attachments = [...(project.attachments || [])].sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
+            const attachments = [...(project.attachments || [])]
+              .filter(a => (a.category || '기타') !== '회의록') // 회의록은 회의록 탭에서 별도 관리
+              .sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
             const canEdit = currentUser.role !== 'CUSTOMER';
+            const ATTACH_CATEGORIES = ['명세서', '도면', '기타'];
+            const visible = attachGroupFilter === 'all' ? attachments : attachments.filter(a => (a.category || '기타') === attachGroupFilter);
+            const counts = ATTACH_CATEGORIES.reduce((acc, k) => { acc[k] = attachments.filter(a => (a.category || '기타') === k).length; return acc; }, {});
+            const catBadge = (cat) => {
+              switch (cat) {
+                case '명세서': return 'bg-blue-100 text-blue-700 border-blue-200';
+                case '도면': return 'bg-amber-100 text-amber-700 border-amber-200';
+                default: return 'bg-slate-100 text-slate-700 border-slate-200';
+              }
+            };
             const fmtSize = (b) => {
               if (!b && b !== 0) return '';
               if (b < 1024) return b + ' B';
@@ -421,7 +689,7 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
               setAttachUploading(true);
               for (const f of files) {
                 try {
-                  await onUploadAttachment(project.id, f, ({ percent }) => setAttachProgress(percent || 0));
+                  await onUploadAttachment(project.id, f, ({ percent }) => setAttachProgress(percent || 0), attachCategory);
                 } catch (e) {
                   setAttachError((e && e.message) || String(e));
                 }
@@ -434,9 +702,13 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                 <div className="bg-emerald-50 text-emerald-800 p-3 rounded-lg text-xs font-medium border border-emerald-200 flex items-start">
                   <Info size={14} className="mr-1.5 shrink-0 mt-0.5" />
                   <div>
-                    {t('회의록·PDF·도면 등 참고자료를 Google Drive에 업로드합니다. 파일은 ', 'Upload reference files (meeting notes, PDFs, drawings) to Google Drive. Stored under ')}
-                    <code className="bg-white px-1 rounded text-[11px]">[루트]/[고객사]/[프로젝트]</code>
-                    {t(' 폴더에 자동 저장됩니다.', '.')}
+                    {t('명세서·도면·PDF 등 참고자료를 업로드합니다. ', 'Upload spec sheets, drawings, PDFs. ')}
+                    <strong className="text-emerald-900">{t('회의록은 [회의록] 탭에서 별도로 관리하세요.', 'Meeting minutes go in the [Meetings] tab.')}</strong>
+                    <br />
+                    <span className="text-[11px] text-emerald-700">
+                      {t('Drive 저장 위치: ', 'Drive path: ')}
+                      <code className="bg-white px-1 rounded text-[11px]">[루트]/[고객사]/[프로젝트]/[카테고리]</code>
+                    </span>
                   </div>
                 </div>
 
@@ -449,39 +721,54 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                     </div>
                   </div>
                 ) : canEdit ? (
-                  <label
-                    onDragOver={(e) => { e.preventDefault(); setAttachDragOver(true); }}
-                    onDragLeave={() => setAttachDragOver(false)}
-                    onDrop={async (e) => {
-                      e.preventDefault();
-                      setAttachDragOver(false);
-                      await handleFiles(Array.from(e.dataTransfer.files || []));
-                    }}
-                    className={`block border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer ${attachDragOver ? 'border-emerald-500 bg-emerald-50' : 'border-slate-300 bg-white hover:border-emerald-400 hover:bg-emerald-50/40'} ${attachUploading ? 'pointer-events-none opacity-70' : ''}`}
-                  >
-                    <input
-                      type="file"
-                      multiple
-                      className="hidden"
-                      disabled={attachUploading}
-                      onChange={async (e) => { await handleFiles(Array.from(e.target.files || [])); e.target.value = ''; }}
-                    />
-                    {attachUploading ? (
-                      <div className="flex flex-col items-center">
-                        <Loader size={28} className="text-emerald-500 animate-spin mb-2" />
-                        <div className="text-sm font-bold text-emerald-700">{t('업로드 중...', 'Uploading...')} {attachProgress}%</div>
-                        <div className="w-48 h-1.5 bg-slate-200 rounded-full mt-2 overflow-hidden">
-                          <div className="h-1.5 bg-emerald-500 transition-all" style={{ width: `${attachProgress}%` }}></div>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-slate-600">{t('업로드 카테고리:', 'Category:')}</span>
+                      {ATTACH_CATEGORIES.map(c => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setAttachCategory(c)}
+                          className={`text-xs font-bold px-2.5 py-1 rounded-lg border transition-colors ${attachCategory === c ? `${catBadge(c)} ring-2 ring-offset-1 ring-emerald-300` : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+                    <label
+                      onDragOver={(e) => { e.preventDefault(); setAttachDragOver(true); }}
+                      onDragLeave={() => setAttachDragOver(false)}
+                      onDrop={async (e) => {
+                        e.preventDefault();
+                        setAttachDragOver(false);
+                        await handleFiles(Array.from(e.dataTransfer.files || []));
+                      }}
+                      className={`block border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer ${attachDragOver ? 'border-emerald-500 bg-emerald-50' : 'border-slate-300 bg-white hover:border-emerald-400 hover:bg-emerald-50/40'} ${attachUploading ? 'pointer-events-none opacity-70' : ''}`}
+                    >
+                      <input
+                        type="file"
+                        multiple
+                        className="hidden"
+                        disabled={attachUploading}
+                        onChange={async (e) => { await handleFiles(Array.from(e.target.files || [])); e.target.value = ''; }}
+                      />
+                      {attachUploading ? (
+                        <div className="flex flex-col items-center">
+                          <Loader size={28} className="text-emerald-500 animate-spin mb-2" />
+                          <div className="text-sm font-bold text-emerald-700">{t('업로드 중...', 'Uploading...')} {attachProgress}%</div>
+                          <div className="w-48 h-1.5 bg-slate-200 rounded-full mt-2 overflow-hidden">
+                            <div className="h-1.5 bg-emerald-500 transition-all" style={{ width: `${attachProgress}%` }}></div>
+                          </div>
                         </div>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center">
-                        <Upload size={28} className="text-emerald-500 mb-2" />
-                        <div className="text-sm font-bold text-slate-700">{t('파일을 드래그하거나 클릭하여 업로드', 'Drag files here or click to upload')}</div>
-                        <div className="text-[11px] text-slate-500 mt-1">{t('최대 18MB · PDF/이미지/문서 등 모든 형식 지원', 'Up to 18MB · all file types')}</div>
-                      </div>
-                    )}
-                  </label>
+                      ) : (
+                        <div className="flex flex-col items-center">
+                          <Upload size={28} className="text-emerald-500 mb-2" />
+                          <div className="text-sm font-bold text-slate-700">{t('파일을 드래그하거나 클릭하여 업로드', 'Drag files here or click to upload')}</div>
+                          <div className="text-[11px] text-slate-500 mt-1">{t('업로드 카테고리: ', 'Will be uploaded as: ')}<span className={`px-1.5 py-0.5 rounded border text-[11px] font-bold ${catBadge(attachCategory)}`}>{attachCategory}</span></div>
+                        </div>
+                      )}
+                    </label>
+                  </div>
                 ) : null}
 
                 {attachError && (
@@ -496,50 +783,69 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {attachments[0] && attachments[0].folderUrl && (
-                      <a
-                        href={attachments[0].folderUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center text-xs font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors mb-1"
-                      >
-                        <FolderOpen size={12} className="mr-1.5" /> {t('Drive 프로젝트 폴더 열기', 'Open Drive folder')} <ExternalLink size={11} className="ml-1.5" />
-                      </a>
-                    )}
-                    {attachments.map(a => (
-                      <div key={a.id} className="bg-white border border-slate-200 rounded-lg p-3 flex items-center gap-3 hover:border-emerald-300 transition-colors group">
-                        <div className="w-10 h-10 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0">
-                          <Paperclip size={16} className="text-emerald-600" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-bold text-slate-800 truncate" title={a.fileName}>{a.fileName}</div>
-                          <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5 flex-wrap">
-                            <span className="font-mono">{fmtSize(a.size)}</span>
-                            <span>·</span>
-                            <span className="flex items-center"><User size={10} className="mr-0.5" />{a.uploadedBy}</span>
-                            <span>·</span>
-                            <span>{a.uploadedAt}</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {attachments[0] && attachments[0].folderUrl && (
+                        <a
+                          href={attachments[0].folderUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center text-xs font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors"
+                        >
+                          <FolderOpen size={12} className="mr-1.5" /> {t('Drive 프로젝트 폴더', 'Open project folder')} <ExternalLink size={11} className="ml-1.5" />
+                        </a>
+                      )}
+                      <span className="ml-1 text-[11px] text-slate-400">|</span>
+                      <button onClick={() => setAttachGroupFilter('all')} className={`text-[11px] px-2 py-1 rounded-lg font-bold border transition-colors ${attachGroupFilter === 'all' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>{t('전체', 'All')} <span className={`ml-0.5 px-1 rounded ${attachGroupFilter === 'all' ? 'bg-white/20' : 'bg-slate-100'}`}>{attachments.length}</span></button>
+                      {ATTACH_CATEGORIES.map(c => (
+                        counts[c] > 0 && (
+                          <button key={c} onClick={() => setAttachGroupFilter(c)} className={`text-[11px] px-2 py-1 rounded-lg font-bold border transition-colors ${attachGroupFilter === c ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
+                            {c} <span className={`ml-0.5 px-1 rounded ${attachGroupFilter === c ? 'bg-white/20' : 'bg-slate-100'}`}>{counts[c]}</span>
+                          </button>
+                        )
+                      ))}
+                    </div>
+                    {visible.length === 0 ? (
+                      <div className="text-center py-6 text-slate-400 text-xs border-2 border-dashed border-slate-200 rounded-xl bg-white">{t('해당 카테고리의 파일이 없습니다.', 'No files in this category.')}</div>
+                    ) : visible.map(a => {
+                      const cat = a.category || '기타';
+                      return (
+                        <div key={a.id} className="bg-white border border-slate-200 rounded-lg p-3 flex items-center gap-3 hover:border-emerald-300 transition-colors group">
+                          <div className="w-10 h-10 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0">
+                            <Paperclip size={16} className="text-emerald-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-bold text-slate-800 truncate flex items-center gap-1.5" title={a.fileName}>
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${catBadge(cat)}`}>{cat}</span>
+                              <span className="truncate">{a.fileName}</span>
+                            </div>
+                            <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5 flex-wrap">
+                              <span className="font-mono">{fmtSize(a.size)}</span>
+                              <span>·</span>
+                              <span className="flex items-center"><User size={10} className="mr-0.5" />{a.uploadedBy}</span>
+                              <span>·</span>
+                              <span>{a.uploadedAt}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {a.viewUrl && (
+                              <a href={a.viewUrl} target="_blank" rel="noreferrer" className="p-1.5 rounded-md text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 border border-transparent hover:border-emerald-200 transition-colors" title={t('Drive에서 열기', 'Open in Drive')}>
+                                <ExternalLink size={14} />
+                              </a>
+                            )}
+                            {a.downloadUrl && (
+                              <a href={a.downloadUrl} target="_blank" rel="noreferrer" className="p-1.5 rounded-md text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-200 transition-colors" title={t('다운로드', 'Download')}>
+                                <Download size={14} />
+                              </a>
+                            )}
+                            {canEdit && onDeleteAttachment && (
+                              <button onClick={() => { if (window.confirm(t('이 참고자료를 삭제할까요? Drive 휴지통으로 이동합니다.', 'Delete this attachment? File will be moved to Drive trash.'))) onDeleteAttachment(project.id, a.id); }} className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors" title={t('삭제', 'Delete')}>
+                                <Trash size={14} />
+                              </button>
+                            )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          {a.viewUrl && (
-                            <a href={a.viewUrl} target="_blank" rel="noreferrer" className="p-1.5 rounded-md text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 border border-transparent hover:border-emerald-200 transition-colors" title={t('Drive에서 열기', 'Open in Drive')}>
-                              <ExternalLink size={14} />
-                            </a>
-                          )}
-                          {a.downloadUrl && (
-                            <a href={a.downloadUrl} target="_blank" rel="noreferrer" className="p-1.5 rounded-md text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-200 transition-colors" title={t('다운로드', 'Download')}>
-                              <Download size={14} />
-                            </a>
-                          )}
-                          {canEdit && onDeleteAttachment && (
-                            <button onClick={() => { if (window.confirm(t('이 참고자료를 삭제할까요? Drive 휴지통으로 이동합니다.', 'Delete this attachment? File will be moved to Drive trash.'))) onDeleteAttachment(project.id, a.id); }} className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors" title={t('삭제', 'Delete')}>
-                              <Trash size={14} />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

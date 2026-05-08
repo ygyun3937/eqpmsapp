@@ -14,9 +14,22 @@ const safeDate = (v) => {
   return isNaN(d.getTime()) ? null : d;
 };
 
+// 프로젝트의 단계 목록 — 사용자 정의(prj.phases)를 우선, 없으면 기본 PROJECT_PHASES.
+// 단계 이름 변경/추가/삭제가 즉시 반영되도록 모든 표시는 이 헬퍼를 거친다.
+const getPhaseList = (prj) => {
+  if (prj && Array.isArray(prj.phases) && prj.phases.length > 0) return prj.phases;
+  return PROJECT_PHASES.map((name, idx) => ({ id: `p${idx}`, name }));
+};
+const getCurrentPhaseName = (prj) => {
+  const list = getPhaseList(prj);
+  const idx = typeof prj?.phaseIndex === 'number' ? prj.phaseIndex : 0;
+  return list[Math.max(0, Math.min(idx, list.length - 1))]?.name || '';
+};
+
 const ProjectListView = memo(function ProjectListView({ projects, issues, engineers, getStatusColor, onAddClick, onManageTasks, onEditVersion, onChangeManager, onManageTeam, onViewPhaseGantt, onEditProject, onDeleteProject, onUpdatePhase, onEditPhases, onIssueClick, calcExp, calcAct, currentUser, t }) {
   const [viewMode, setViewMode] = useState('list');
   const [filterManager, setFilterManager] = useState('all');
+  const [filterDomain, setFilterDomain] = useState('all');
   const [openIssueDropdownId, setOpenIssueDropdownId] = useState(null);
   const [openNotesDropdownId, setOpenNotesDropdownId] = useState(null);
   const [expandedGanttId, setExpandedGanttId] = useState(null);
@@ -32,6 +45,7 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
   const [inlineGanttZoom, setInlineGanttZoom] = useState(1);
 
   const managers = ['all', ...new Set(projects.map(p => p.manager).filter(Boolean))];
+  const domains = ['all', ...new Set(projects.map(p => p.domain).filter(Boolean))];
 
   const filteredProjects = useMemo(() => {
     let result = projects;
@@ -40,8 +54,9 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
       result = result.filter(p => allowed.includes(p.id));
     }
     if (filterManager !== 'all') result = result.filter(p => p.manager === filterManager);
+    if (filterDomain !== 'all') result = result.filter(p => p.domain === filterDomain);
     return result;
-  }, [projects, filterManager, currentUser]);
+  }, [projects, filterManager, filterDomain, currentUser]);
 
   const ganttRange = useMemo(() => {
     const starts = [];
@@ -163,7 +178,7 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
     const exportData = filteredProjects.map(p => ({
       id: p.id, domain: p.domain, name: p.name, customer: p.customer, site: p.site,
       startDate: p.startDate, dueDate: p.dueDate, manager: p.manager, status: p.status,
-      phase: PROJECT_PHASES[typeof p.phaseIndex === 'number' ? p.phaseIndex : 0] || '',
+      phase: getCurrentPhaseName(p),
       expected: calcExp(p.startDate, p.dueDate) + '%', actual: calcAct(p.tasks) + '%'
     }));
     exportToExcel('프로젝트_리스트', [{
@@ -190,7 +205,7 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
         rows: filteredProjects.map(p => ({
           id: p.id, domain: p.domain, name: p.name, customer: p.customer, site: p.site,
           startDate: p.startDate, dueDate: p.dueDate, manager: p.manager, status: p.status,
-          phase: PROJECT_PHASES[typeof p.phaseIndex === 'number' ? p.phaseIndex : 0] || '',
+          phase: getCurrentPhaseName(p),
           expected: calcExp(p.startDate, p.dueDate) + '%', actual: calcAct(p.tasks) + '%'
         })),
         columns: [
@@ -221,7 +236,7 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
           { field: '시작일', value: p.startDate },
           { field: '납기일', value: p.dueDate },
           { field: '상태', value: p.status },
-          { field: '현재 단계', value: PROJECT_PHASES[typeof p.phaseIndex === 'number' ? p.phaseIndex : 0] || '' },
+          { field: '현재 단계', value: getCurrentPhaseName(p) },
           { field: '담당자', value: p.manager || '-' },
           { field: '계획 진행률', value: calcExp(p.startDate, p.dueDate) + '%' },
           { field: '실적 진행률', value: calcAct(p.tasks) + '%' },
@@ -358,13 +373,22 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
           <button onClick={handleExportList} className="flex items-center bg-slate-100 text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors shadow-sm" title={t('간단 리스트 Excel', 'Simple list Excel')}><Download size={16} className="mr-1.5" /> {t('리스트 (Excel)', 'List (Excel)')}</button>
           <button onClick={handleExportDetail} className="flex items-center bg-indigo-50 text-indigo-600 border border-indigo-200 px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-indigo-100 transition-colors shadow-sm" title={t('프로젝트별 시트 분리 Excel', 'Per-project sheets')}><Download size={16} className="mr-1.5" /> {t('상세 (Excel)', 'Detail (Excel)')}</button>
           {currentUser.role !== 'CUSTOMER' && (
-            <div className="flex items-center bg-white rounded-lg px-3 py-1.5 shadow-sm border border-slate-200">
-              <Filter size={16} className="text-slate-400 mr-2" />
-              <select className="text-sm border-none outline-none bg-transparent text-slate-700 font-medium cursor-pointer" value={filterManager} onChange={(e) => setFilterManager(e.target.value)}>
-                <option value="all">{t('전체 담당자', 'All Managers')}</option>
-                {managers.filter(m => m !== 'all').map(m => (<option key={m} value={m}>{m}</option>))}
-              </select>
-            </div>
+            <>
+              <div className="flex items-center bg-white rounded-lg px-3 py-1.5 shadow-sm border border-slate-200">
+                <Filter size={16} className="text-slate-400 mr-2" />
+                <select className="text-sm border-none outline-none bg-transparent text-slate-700 font-medium cursor-pointer" value={filterDomain} onChange={(e) => setFilterDomain(e.target.value)} title={t('산업 도메인 필터', 'Domain filter')}>
+                  <option value="all">{t('전체 도메인', 'All Domains')}</option>
+                  {domains.filter(d => d !== 'all').map(d => (<option key={d} value={d}>{d}</option>))}
+                </select>
+              </div>
+              <div className="flex items-center bg-white rounded-lg px-3 py-1.5 shadow-sm border border-slate-200">
+                <User size={16} className="text-slate-400 mr-2" />
+                <select className="text-sm border-none outline-none bg-transparent text-slate-700 font-medium cursor-pointer" value={filterManager} onChange={(e) => setFilterManager(e.target.value)} title={t('담당자 필터', 'Manager filter')}>
+                  <option value="all">{t('전체 담당자', 'All Managers')}</option>
+                  {managers.filter(m => m !== 'all').map(m => (<option key={m} value={m}>{m}</option>))}
+                </select>
+              </div>
+            </>
           )}
           <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
             <button onClick={() => setViewMode('list')} className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'list' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}><AlignJustify size={16} className="mr-1.5" /> {t('리스트', 'List')}</button>
@@ -603,7 +627,8 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                         }
                         const totalDays = (pDueDate - pStartDate) / (1000 * 60 * 60 * 24);
                         const currentPhaseIdx = typeof prj.phaseIndex === 'number' ? prj.phaseIndex : 0;
-                        const phaseCount = PROJECT_PHASES.length;
+                        const phaseList = getPhaseList(prj);
+                        const phaseCount = phaseList.length;
                         const daysPerPhase = totalDays / phaseCount;
                         const phaseColors = ['bg-slate-400', 'bg-blue-400', 'bg-cyan-400', 'bg-indigo-400', 'bg-amber-400', 'bg-purple-400', 'bg-emerald-400'];
 
@@ -736,15 +761,17 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                                 })
                                 .filter(Boolean);
 
-                              const phaseRows = PROJECT_PHASES.map((phase, idx) => {
-                                const def = (prj.phases || [])[idx];
-                                const isMilestone = !!(def && def.isMilestone);
-                                const phaseStart = new Date(pStartDate.getTime() + daysPerPhase * idx * 24 * 60 * 60 * 1000);
-                                const phaseEnd = new Date(pStartDate.getTime() + daysPerPhase * (idx + 1) * 24 * 60 * 60 * 1000);
+                              const phaseRows = phaseList.map((p, idx) => {
+                                const isMilestone = !!p.isMilestone;
+                                // 단계가 직접 시작/종료를 가지면 그것을 우선, 없으면 균등 분배(fallback)
+                                const definedStart = safeDate(p.startDate);
+                                const definedEnd = safeDate(p.endDate);
+                                const phaseStart = definedStart || new Date(pStartDate.getTime() + daysPerPhase * idx * 24 * 60 * 60 * 1000);
+                                const phaseEnd = definedEnd || new Date(pStartDate.getTime() + daysPerPhase * (idx + 1) * 24 * 60 * 60 * 1000);
                                 const isPast = idx < currentPhaseIdx;
                                 const isCurrent = idx === currentPhaseIdx;
                                 return {
-                                  kind: 'phase', name: phase, start: phaseStart, end: phaseEnd,
+                                  kind: 'phase', name: p.name, start: phaseStart, end: phaseEnd,
                                   isPast, isCurrent, hasSch: true, isMilestone,
                                   leftPercent: ((phaseStart - gMinDate) / (1000 * 60 * 60 * 24) / fullDays) * 100,
                                   widthPercent: ((phaseEnd - phaseStart) / (1000 * 60 * 60 * 24) / fullDays) * 100,
@@ -869,11 +896,11 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                                                   )}
                                                 </>
                                               )}
-                                              {/* 마일스톤 — 종료일 위치에 다이아몬드 + 라벨 */}
+                                              {/* 마일스톤 — 종료일 위치에 다이아몬드 + 단계명/작업명 라벨 */}
                                               {r.isMilestone && (
                                                 <div className="absolute" style={{ left: `${r.leftPercent + r.widthPercent}%`, transform: 'translateX(-50%)' }}>
                                                   <div className="flex flex-col items-center">
-                                                    <span className="text-[10px] text-rose-700 font-bold whitespace-nowrap mb-0.5">{fmtYMD(r.end).slice(5).replace('-', '/')} (SOP)</span>
+                                                    <span className="text-[10px] text-rose-700 font-bold whitespace-nowrap mb-0.5">{fmtYMD(r.end).slice(5).replace('-', '/')} ({r.name})</span>
                                                     <span className="text-rose-500 text-xl leading-none drop-shadow">◆</span>
                                                   </div>
                                                 </div>
@@ -990,7 +1017,7 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
             return {
               projectName: prj.name, projectId: prj.id, color: projColor, tasks,
               manager: prj.manager,
-              phase: PROJECT_PHASES[typeof prj.phaseIndex === 'number' ? prj.phaseIndex : 0] || '',
+              phase: getCurrentPhaseName(prj),
               progress: calcAct(prj.tasks),
               customer: prj.customer
             };
@@ -1120,7 +1147,7 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                           <span className="text-xs text-blue-600 font-bold ml-2 shrink-0">{actual}%</span>
                         </div>
                         <div className="flex items-center gap-1 mt-0.5">
-                          <span className="text-[10px] text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded font-bold">{PROJECT_PHASES[prj.phaseIndex || 0]}</span>
+                          <span className="text-[10px] text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded font-bold">{getCurrentPhaseName(prj)}</span>
                           <ProjectIssueBadge prjId={prj.id} projectIssues={projectIssues} openIssueDropdownId={openIssueDropdownId} setOpenIssueDropdownId={setOpenIssueDropdownId} onIssueClick={onIssueClick} getStatusColor={getStatusColor} isGanttView={true} t={t} />
                           <ProjectNotesBadge prjId={prj.id} notes={prj.notes} openId={openNotesDropdownId} setOpenId={setOpenNotesDropdownId} onJump={() => onManageTasks && onManageTasks(prj.id)} isGanttView={true} t={t} />
                           <span className="text-[10px] text-slate-500 ml-auto truncate">{prj.manager || t('미지정', 'Unassigned')}</span>
@@ -1214,7 +1241,8 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                       const projectColor = PROJECT_BAR_COLORS[pidx % PROJECT_BAR_COLORS.length];
                       const phaseColors = ['bg-slate-400', 'bg-blue-400', 'bg-cyan-400', 'bg-indigo-400', 'bg-amber-400', 'bg-purple-400', 'bg-pink-400', 'bg-emerald-400'];
                       const currentPhase = typeof prj.phaseIndex === 'number' ? prj.phaseIndex : 0;
-                      const totalPhases = PROJECT_PHASES.length;
+                      const phaseListLocal = getPhaseList(prj);
+                      const totalPhases = phaseListLocal.length;
                       return (
                         <div key={prj.id} className="h-14 relative border-b border-slate-100 last:border-b-0">
                           {monthsArr.map((m, i) => (
@@ -1223,13 +1251,14 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                           {!hasValidRange ? (
                             <div className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-amber-600 italic bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">{t('일정 미정', 'Schedule TBD')}</div>
                           ) : (
-                            <div className={`absolute h-8 rounded-md overflow-hidden border-2 shadow-sm hover:shadow-md hover:brightness-110 transition-all cursor-pointer flex ${projectColor.replace('bg-', 'border-')}`} style={{ left: `${leftPercent}%`, width: `${Math.max(widthPercent, 1)}%`, top: '50%', transform: 'translateY(-50%)' }} onClick={() => onManageTasks(prj.id)} title={`${fmtYMD(prj.startDate)} ~ ${fmtYMD(prj.dueDate)} | ${PROJECT_PHASES[currentPhase]}`}>
-                              {PROJECT_PHASES.map((phase, idx) => {
+                            <div className={`absolute h-8 rounded-md overflow-hidden border-2 shadow-sm hover:shadow-md hover:brightness-110 transition-all cursor-pointer flex ${projectColor.replace('bg-', 'border-')}`} style={{ left: `${leftPercent}%`, width: `${Math.max(widthPercent, 1)}%`, top: '50%', transform: 'translateY(-50%)' }} onClick={() => onManageTasks(prj.id)} title={`${fmtYMD(prj.startDate)} ~ ${fmtYMD(prj.dueDate)} | ${phaseListLocal[currentPhase]?.name || ''}`}>
+                              {phaseListLocal.map((p, idx) => {
                                 const isPast = idx < currentPhase;
                                 const isCurrent = idx === currentPhase;
+                                const phName = p.name || '';
                                 return (
-                                  <div key={idx} className={`h-full relative ${isPast ? phaseColors[idx % phaseColors.length] : isCurrent ? phaseColors[idx % phaseColors.length] + ' opacity-70' : 'bg-slate-50'} ${idx < totalPhases - 1 ? 'border-r border-white/60' : ''}`} style={{ width: `${100 / totalPhases}%` }} title={phase}>
-                                    <span className={`absolute inset-0 flex items-center justify-center text-[8px] font-bold whitespace-nowrap overflow-hidden ${isPast || isCurrent ? 'text-white' : 'text-slate-400'}`}>{phase.length > 4 ? phase.substring(0, 3) : phase}</span>
+                                  <div key={p.id || idx} className={`h-full relative ${isPast ? phaseColors[idx % phaseColors.length] : isCurrent ? phaseColors[idx % phaseColors.length] + ' opacity-70' : 'bg-slate-50'} ${idx < totalPhases - 1 ? 'border-r border-white/60' : ''}`} style={{ width: `${100 / totalPhases}%` }} title={phName}>
+                                    <span className={`absolute inset-0 flex items-center justify-center text-[8px] font-bold whitespace-nowrap overflow-hidden ${isPast || isCurrent ? 'text-white' : 'text-slate-400'}`}>{phName.length > 4 ? phName.substring(0, 3) : phName}</span>
                                   </div>
                                 );
                               })}
@@ -1256,7 +1285,7 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                             {r.isMilestone ? (
                               <div className="absolute" style={{ left: `${r.leftPercent + r.widthPercent}%`, top: '50%', transform: 'translate(-50%, -50%)' }}>
                                 <div className="flex flex-col items-center">
-                                  <span className="text-[10px] text-rose-700 font-bold whitespace-nowrap mb-0.5">{fmtYMD(r.end).slice(5).replace('-', '/')} (SOP)</span>
+                                  <span className="text-[10px] text-rose-700 font-bold whitespace-nowrap mb-0.5">{fmtYMD(r.end).slice(5).replace('-', '/')} ({r.taskName})</span>
                                   <span className="text-rose-500 text-xl leading-none drop-shadow">◆</span>
                                 </div>
                               </div>

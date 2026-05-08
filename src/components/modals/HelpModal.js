@@ -125,19 +125,18 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                   <p>대시보드 상단 <strong>"미해결 이슈"</strong> 카드를 클릭하면 전체 이슈 목록 팝업이 열립니다 (심각도 순).</p>
                   <p>· 다른 페이지로 이동하지 않고도 즉시 확인 가능, 항목 클릭 시 상세 모달로 진입합니다.</p>
                 </Section>
-                <Section title="공유 노트 가시성">
-                  <p>· 대시보드에 <strong>"최근 공유 노트"</strong> 섹션이 추가되어 전사 직원이 빠뜨리지 않고 확인할 수 있습니다.</p>
-                  <p>· 검색바 + 프로젝트/작성자 필터 제공 — 카드에는 노트 전체 내용이 표시됩니다.</p>
-                  <p>· 카드 클릭 시 해당 프로젝트의 <strong>노트 탭으로 직접 진입</strong>합니다.</p>
-                  <p>· 프로젝트 리스트에도 노트 건수 배지(노란색)가 표시됩니다.</p>
-                  <p>· 신규 노트는 알림 센터에도 자동으로 올라갑니다.</p>
+                <Section title="회의록 (구 공유 노트)">
+                  <p>· 프로젝트 상세 → <strong>"회의록"</strong> 탭에서 본문/요약/원본 파일을 함께 등록합니다.</p>
+                  <p>· <strong>요약</strong>: 주요 논의/결정/후속 액션을 직접 간결히 입력 (대외유출 방지 위해 자동 요약 미사용)</p>
+                  <p>· <strong>원본 파일 첨부</strong> — Drive의 <code className="bg-slate-100 px-1 rounded text-[11px]">[프로젝트]/회의록</code> 폴더에 별도 보관, 카드에서 바로 열기/다운로드</p>
+                  <p>· 대시보드 "최근 공유 노트"에 자동 노출, 알림 센터에도 표시. 카드 클릭 시 회의록 탭으로 바로 이동.</p>
                 </Section>
-                <Section title="참고 자료 (Google Drive 첨부)">
-                  <p>프로젝트 상세 → <strong>"참고 자료"</strong> 탭에서 회의록·PDF·도면을 직접 업로드할 수 있습니다.</p>
-                  <p>· 드래그&드롭 또는 클릭 → 자동으로 <code className="bg-slate-100 px-1 rounded text-[11px]">[루트]/[고객사]/[프로젝트]</code> Drive 폴더에 저장</p>
+                <Section title="참고 자료 (명세서·도면 / 회의록 제외)">
+                  <p>프로젝트 상세 → <strong>"참고 자료"</strong> 탭에서 명세서·도면·기타 자료를 업로드합니다 (<strong>회의록은 회의록 탭에서 별도 관리</strong>).</p>
+                  <p>· 업로드 전 <strong>카테고리 선택</strong>(명세서 / 도면 / 기타) → Drive의 <code className="bg-slate-100 px-1 rounded text-[11px]">[루트]/[고객사]/[프로젝트]/[카테고리]</code> 하위 폴더로 자동 분류</p>
+                  <p>· 목록 화면에서 카테고리 필터 칩으로 그룹별 보기 가능</p>
                   <p>· 단일 파일 최대 18MB (GAS 한도). 큰 파일은 Drive에 직접 올리고 링크를 공유하세요.</p>
-                  <p>· 신규 첨부는 알림 센터에 자동 표시되고, 클릭 시 참고 자료 탭으로 직접 진입합니다.</p>
-                  <p>· <strong>관리자 전 사전 작업</strong>: [시스템 설정 → Google Drive 연동]에서 루트 폴더 ID/URL 등록 + 연결 테스트 필수.</p>
+                  <p>· <strong>관리자 사전 작업</strong>: [시스템 설정 → Google Drive 연동]에서 루트 폴더 등록 + 연결 테스트 필수.</p>
                 </Section>
                 <Section title="사이트 추가 스펙 (케이블 두께/길이 등)">
                   <p>사이트/유틸리티 마스터는 <strong>Power + 특이사항</strong>을 기본으로 두고, 그 외 모든 항목은 <strong>"추가 스펙"</strong>에 자유롭게 등록합니다.</p>
@@ -486,6 +485,27 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
               <>
                 <h2 className="text-base font-bold text-slate-800 mb-3">{t('업데이트 내역', "What's New")}</h2>
                 <p className="text-xs text-slate-500 mb-4">{t('v1.0 베타 출시 이후 추가/개선된 기능을 시간 역순으로 정리합니다.', 'Recent improvements since v1.0 beta release.')}</p>
+
+                <Section title={t('일정 탭 — 단계별 / 셋업 두 모달 패턴 통일', 'Schedule Tab — Two Modal-Based Editors')}>
+                  <p>· <strong>"셋업 일정" 탭 → "일정" 탭</strong>으로 변경. 내부에 [프로젝트 단계별 일정] / [셋업 일정] 두 서브탭.</p>
+                  <p>· <strong>두 서브탭 모두 동일 패턴</strong>: 위쪽 보라/파랑 헤더 박스에 진척 정보 + <strong>[단계 편집] / [셋업 일정 편집]</strong> 버튼. 클릭 시 모달이 열려 일괄 추가·수정·삭제·순서·일정·마일스톤·완료 토글까지 한꺼번에 편집.</p>
+                  <p>· <strong>표는 읽기 전용</strong> (양 탭 동일 컬럼: # / 이름 / 시작일 / 종료일 / 마일스톤 / 상태). 표에서 직접 수정하다가 의도치 않게 바뀌는 일 방지.</p>
+                  <p>· <strong>SetupTaskEditModal 신규</strong>: 균등 분배 / 일정 비우기 / 위↑↓ 순서 / Enter로 빠른 추가 등 PhaseEditModal과 동일한 UX.</p>
+                  <p>· <strong>모든 변경은 활동 이력 자동 기록</strong>: 단계 편집 → <code>PHASE_DEFINE</code>, 셋업 편집 → <code>SETUP_DEFINE</code> ("추가 N · 수정 M · 삭제 K" 요약). 이력 탭에서 각각 그룹 칩으로 모아보기 가능.</p>
+                  <p>· 모달 폭 확대 (1280px) — 표·컬럼 가독성 확보.</p>
+                </Section>
+
+                <Section title={t('프로젝트 관리 — 산업 도메인 필터 추가', 'Projects — Domain Filter')}>
+                  <p>· 프로젝트 관리 페이지 우측 상단에 <strong>도메인 필터</strong> 추가 (전체 도메인 / 반도체 / 디스플레이 / 2차전지 등). 등록된 도메인만 옵션으로 노출.</p>
+                  <p>· 담당자 필터와 <strong>AND 조건</strong>으로 함께 동작. 리스트 뷰뿐 아니라 <strong>간트차트 뷰에도 자동 적용</strong>.</p>
+                </Section>
+
+                <Section title={t('회의록 / 참고자료 분리', 'Meetings / Files Split')}>
+                  <p>· <strong>"노트" 탭 → "회의록" 탭으로 변경</strong> — 본문 + 요약 + 회의록 원본 파일을 한 항목에 통합 등록</p>
+                  <p>· <strong>회의록 파일 첨부</strong> — Drive의 별도 <code className="bg-slate-100 px-1 rounded">[프로젝트]/회의록</code> 폴더에 자동 저장. 회의록 카드에서 바로 열기/다운로드</p>
+                  <p>· <strong>참고자료 카테고리 폴더링</strong> — 업로드 시 <strong>명세서 / 도면 / 기타</strong> 선택. Drive에 카테고리별 하위 폴더 자동 생성, 목록은 카테고리 필터 칩으로 그룹 보기</p>
+                  <p>· <strong>참고자료 ↔ 회의록 분리</strong> — 회의록은 회의록 탭에서만 표시되어 자료 탐색이 명확</p>
+                </Section>
 
                 <Section title={t('간트차트 / 일정 관리 개편', 'Gantt & Schedule Overhaul')}>
                   <p>· <strong>단계별 / 셋업 일정 탭 분리</strong> — 인라인 간트와 간트차트 보기 모두 동일한 탭 구조</p>

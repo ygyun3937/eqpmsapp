@@ -59,16 +59,16 @@ const SystemSettingsView = memo(function SystemSettingsView({ settings, onSave, 
       {/* Drive 연동 */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
         <h2 className="text-base font-bold text-slate-800 mb-1 flex items-center"><FolderOpen size={18} className="mr-2 text-emerald-500" />{t('Google Drive 연동', 'Google Drive Integration')}</h2>
-        <p className="text-xs text-slate-500 mb-4">{t('프로젝트별 참고자료(회의록·PDF·도면 등)를 자동 업로드할 루트 폴더를 지정합니다.', 'Configure the root Drive folder for project attachments (meeting notes, PDFs, drawings, etc.).')}</p>
+        <p className="text-xs text-slate-500 mb-4">{t('프로젝트별 참고자료(명세서·도면·회의록 등)를 자동 업로드할 루트 폴더를 지정합니다.', 'Configure the root Drive folder for project attachments (specs, drawings, meeting notes, etc.).')}</p>
 
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-900 mb-4 flex items-start">
           <Info size={14} className="mr-2 shrink-0 mt-0.5" />
           <div>
             <strong>{t('폴더 구조 안내', 'Folder Structure')}:</strong> {t('업로드 시 자동으로', 'Files will be auto-organized as')}{' '}
-            <code className="bg-white px-1.5 py-0.5 rounded border border-blue-200">[루트] / [고객사] / [프로젝트명-PRJxxxxxx] / 파일</code> {t('형태로 구성됩니다.', '')}
+            <code className="bg-white px-1.5 py-0.5 rounded border border-blue-200">[루트] / [고객사] / [프로젝트명-PRJxxxxxx] / [카테고리] / 파일</code> {t('형태로 구성됩니다.', '')}
             <br />
             <span className="text-[11px] text-blue-700 mt-1 block">
-              {t('루트 폴더 URL 또는 ID를 그대로 붙여넣으세요. (예: https://drive.google.com/drive/folders/xxxxxxxx)', 'Paste folder URL or ID. (e.g. https://drive.google.com/drive/folders/xxxxxxxx)')}
+              {t('카테고리: 명세서 / 도면 / 회의록 / 기타. 루트 폴더 URL 또는 ID를 그대로 붙여넣으세요.', 'Categories: 명세서 (Specs) / 도면 (Drawings) / 회의록 (Meetings) / 기타 (Etc). Paste folder URL or ID.')}
             </span>
           </div>
         </div>

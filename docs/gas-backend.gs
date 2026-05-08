@@ -18,7 +18,8 @@
  * [지원 액션 (POST body { action, data })]
  *   UPDATE_PROJECTS, UPDATE_ISSUES, UPDATE_RELEASES,
  *   UPDATE_ENGINEERS, UPDATE_PARTS, UPDATE_SITES, UPDATE_USERS, UPDATE_SETTINGS
- *   UPLOAD_FILE       — Drive에 파일 업로드 (data: { projectId, customer, projectName, fileName, mimeType, base64 })
+ *   UPLOAD_FILE       — Drive에 파일 업로드 (data: { projectId, customer, projectName, fileName, mimeType, base64, category })
+ *                       category: '명세서' | '도면' | '회의록' | '기타' (생략 시 '기타')
  *   DELETE_FILE       — Drive 파일 휴지통 이동 (data: { fileId })
  *   VERIFY_DRIVE_FOLDER — 폴더 ID 접근 검증 (data: { folderId })
  *
@@ -216,7 +217,18 @@ function verifyDriveFolder(payload) {
   }
 }
 
-// 파일 업로드 (base64) — 프로젝트별 하위 폴더 자동 생성
+// 카테고리 정규화 — 알 수 없는 값은 '기타' 폴더로
+var ALLOWED_CATEGORIES = ['명세서', '도면', '회의록', '기타'];
+function normalizeCategory(cat) {
+  if (!cat) return '기타';
+  var s = String(cat).trim();
+  for (var i = 0; i < ALLOWED_CATEGORIES.length; i++) {
+    if (ALLOWED_CATEGORIES[i] === s) return s;
+  }
+  return '기타';
+}
+
+// 파일 업로드 (base64) — 프로젝트별 + 카테고리별 하위 폴더 자동 생성
 function uploadFileToDrive(payload) {
   var rootId = getRootFolderIdFromSettings();
   if (!rootId) throw new Error('Drive 루트 폴더가 설정되지 않았습니다. 시스템 설정에서 폴더 ID를 등록하세요.');
@@ -228,15 +240,17 @@ function uploadFileToDrive(payload) {
   var fileName = payload.fileName || ('upload-' + new Date().getTime());
   var mimeType = payload.mimeType || MimeType.PLAIN_TEXT;
   var base64 = payload.base64 || '';
+  var category = normalizeCategory(payload.category);
 
-  // 폴더 구조: [루트] / [고객사] / [프로젝트명-PRJxxxxxx]
+  // 폴더 구조: [루트] / [고객사] / [프로젝트명-PRJxxxxxx] / [카테고리]
   var customerFolder = getOrCreateSubFolder(root, customer);
   var projectFolderName = projectName + (projectId ? ('-' + projectId) : '');
   var projectFolder = getOrCreateSubFolder(customerFolder, projectFolderName);
+  var categoryFolder = getOrCreateSubFolder(projectFolder, category);
 
   var bytes = Utilities.base64Decode(base64);
   var blob = Utilities.newBlob(bytes, mimeType, fileName);
-  var file = projectFolder.createFile(blob);
+  var file = categoryFolder.createFile(blob);
 
   // 링크로 누구나 보기 (조직 정책에 따라 조정하세요)
   // 외부 공유를 막으려면 아래 줄을 주석 처리하고 명시적 권한 부여 사용
@@ -249,7 +263,9 @@ function uploadFileToDrive(payload) {
     size: file.getSize(),
     viewUrl: file.getUrl(),
     downloadUrl: 'https://drive.google.com/uc?export=download&id=' + file.getId(),
-    folderUrl: projectFolder.getUrl()
+    folderUrl: projectFolder.getUrl(),
+    categoryFolderUrl: categoryFolder.getUrl(),
+    category: category
   };
 }
 
