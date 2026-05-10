@@ -17,18 +17,29 @@ const roleBadge = (role) => {
   }
 };
 
-const UserManagementView = memo(function UserManagementView({ users, projects, currentUser, onAdd, onEdit, onResetPassword, onToggleActive, onDelete, t }) {
+const UserManagementView = memo(function UserManagementView({ users, projects, currentUser, settings, onAdd, onEdit, onResetPassword, onToggleActive, onToggleWeeklyReport, onToggleTeamLead, onDelete, t }) {
+  const wrEnabled = settings && settings.weeklyReportEnabled === true;
   const [search, setSearch] = useState('');
   const [filterRole, setFilterRole] = useState('all');
+  const [filterPosition, setFilterPosition] = useState('all');
+  const [filterDept, setFilterDept] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
+
+  const positions = useMemo(() => Array.from(new Set((users || []).map(u => u.position).filter(Boolean))), [users]);
+  const depts = useMemo(() => Array.from(new Set((users || []).map(u => u.dept).filter(Boolean))), [users]);
 
   const filtered = useMemo(() => {
     const kw = search.trim().toLowerCase();
     return (users || []).filter(u => {
       if (filterRole !== 'all' && u.role !== filterRole) return false;
+      if (filterPosition !== 'all' && (u.position || '') !== filterPosition) return false;
+      if (filterDept !== 'all' && (u.dept || '') !== filterDept) return false;
+      if (filterStatus === 'active' && u.active === false) return false;
+      if (filterStatus === 'disabled' && u.active !== false) return false;
       if (!kw) return true;
-      return [u.id, u.name, u.dept, u.customer].filter(Boolean).some(v => String(v).toLowerCase().includes(kw));
+      return [u.id, u.name, u.dept, u.customer, u.position].filter(Boolean).some(v => String(v).toLowerCase().includes(kw));
     });
-  }, [users, filterRole, search]);
+  }, [users, filterRole, filterPosition, filterDept, filterStatus, search]);
 
   const projectNameMap = useMemo(() => {
     const m = {};
@@ -65,15 +76,29 @@ const UserManagementView = memo(function UserManagementView({ users, projects, c
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-200 flex flex-wrap items-center gap-3">
+        <div className="p-4 border-b border-slate-200 flex flex-wrap items-center gap-2">
           <div className="flex items-center bg-slate-50 px-3 py-1.5 rounded-lg flex-1 min-w-[200px]">
             <Search size={16} className="text-slate-400 mr-2" />
-            <input className="bg-transparent outline-none text-sm w-full" placeholder={t('아이디/이름/부서/고객사 검색', 'Search ID/Name/Dept/Customer')} value={search} onChange={e => setSearch(e.target.value)} />
+            <input className="bg-transparent outline-none text-sm w-full" placeholder={t('아이디/이름/부서/직급/고객사 검색', 'Search ID/Name/Dept/Position/Customer')} value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          <select className="text-sm p-2 border rounded-lg bg-white" value={filterRole} onChange={e => setFilterRole(e.target.value)}>
+          <select className="text-sm p-2 border rounded-lg bg-white" value={filterRole} onChange={e => setFilterRole(e.target.value)} title={t('권한 필터', 'Role filter')}>
             <option value="all">{t('전체 권한', 'All Roles')}</option>
             {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>
+          <select className="text-sm p-2 border rounded-lg bg-white" value={filterPosition} onChange={e => setFilterPosition(e.target.value)} title={t('직급 필터', 'Position filter')}>
+            <option value="all">{t('전체 직급', 'All Positions')}</option>
+            {positions.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <select className="text-sm p-2 border rounded-lg bg-white" value={filterDept} onChange={e => setFilterDept(e.target.value)} title={t('부서 필터', 'Dept filter')}>
+            <option value="all">{t('전체 부서', 'All Depts')}</option>
+            {depts.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+          <select className="text-sm p-2 border rounded-lg bg-white" value={filterStatus} onChange={e => setFilterStatus(e.target.value)} title={t('상태 필터', 'Status filter')}>
+            <option value="all">{t('전체 상태', 'All Status')}</option>
+            <option value="active">{t('활성만', 'Active only')}</option>
+            <option value="disabled">{t('비활성만', 'Disabled only')}</option>
+          </select>
+          <span className="text-xs text-slate-400 ml-auto">{t('총', 'Total')} <strong className="text-slate-700">{filtered.length}</strong> / {(users || []).length}</span>
         </div>
 
         <div className="overflow-x-auto">
@@ -85,6 +110,8 @@ const UserManagementView = memo(function UserManagementView({ users, projects, c
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('권한', 'Role')}</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('고객사 / 접근 프로젝트', 'Customer / Projects')}</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('상태', 'Status')}</th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase">{t('팀장', 'Team Lead')}</th>
+                {wrEnabled && <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase">{t('주간 보고', 'Weekly Rpt')}</th>}
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('마지막 로그인', 'Last Login')}</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">{t('관리', 'Manage')}</th>
               </tr>
@@ -128,6 +155,36 @@ const UserManagementView = memo(function UserManagementView({ users, projects, c
                         <div className="text-[10px] text-amber-600 font-bold mt-1">{t('PW 변경 필요', 'Must change PW')}</div>
                       )}
                     </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-center">
+                      {u.role === 'CUSTOMER' ? (
+                        <span className="text-[10px] text-slate-300">-</span>
+                      ) : (
+                        <button
+                          onClick={() => onToggleTeamLead && onToggleTeamLead(u)}
+                          disabled={!onToggleTeamLead}
+                          className={`inline-flex items-center px-2 py-1 rounded-full text-[10px] font-bold border transition-colors ${u.isTeamLead ? 'bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-200' : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100'}`}
+                          title={u.isTeamLead ? t('팀장 해제', 'Remove Team Lead') : t('팀장 지정', 'Set as Team Lead')}
+                        >
+                          {u.isTeamLead ? t('팀장', 'Lead') : t('일반', '-')}
+                        </button>
+                      )}
+                    </td>
+                    {wrEnabled && (
+                      <td className="px-4 py-3 whitespace-nowrap text-center">
+                        {u.role === 'CUSTOMER' ? (
+                          <span className="text-[10px] text-slate-300">-</span>
+                        ) : (
+                          <button
+                            onClick={() => onToggleWeeklyReport && onToggleWeeklyReport(u)}
+                            disabled={!onToggleWeeklyReport}
+                            className={`inline-flex items-center px-2 py-1 rounded-full text-[10px] font-bold border transition-colors ${u.weeklyReportEnabled ? 'bg-indigo-100 text-indigo-700 border-indigo-200 hover:bg-indigo-200' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}
+                            title={u.weeklyReportEnabled ? t('비활성화', 'Disable') : t('활성화', 'Enable')}
+                          >
+                            {u.weeklyReportEnabled ? t('사용 가능', 'Enabled') : t('미허용', 'Disabled')}
+                          </button>
+                        )}
+                      </td>
+                    )}
                     <td className="px-4 py-3 whitespace-nowrap text-xs text-slate-500">
                       {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '-'}
                     </td>
@@ -152,7 +209,7 @@ const UserManagementView = memo(function UserManagementView({ users, projects, c
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan="7" className="px-4 py-10 text-center text-sm text-slate-400">{t('표시할 사용자가 없습니다.', 'No users to show.')}</td></tr>
+                <tr><td colSpan={wrEnabled ? 9 : 8} className="px-4 py-10 text-center text-sm text-slate-400">{t('표시할 사용자가 없습니다.', 'No users to show.')}</td></tr>
               )}
             </tbody>
           </table>

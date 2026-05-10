@@ -122,6 +122,171 @@ const triggerDownload = async (workbook, filename) => {
   URL.revokeObjectURL(url);
 };
 
+// ============ 캔버스 차트 → PNG base64 ============
+// 외부 의존성 없이 Canvas API로 도넛/바차트를 그려 base64 PNG를 반환.
+// 결과는 ExcelJS workbook.addImage({ base64, extension: 'png' })에 그대로 사용.
+const _newCanvas = (w, h) => {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return c;
+};
+
+export const drawDonutPng = ({ data, title, width = 640, height = 380 }) => {
+  const canvas = _newCanvas(width, height);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, width, height);
+
+  if (title) {
+    ctx.fillStyle = '#1e293b';
+    ctx.font = 'bold 18px "맑은 고딕", "Malgun Gothic", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(title, width / 2, 32);
+  }
+
+  const total = (data || []).reduce((s, d) => s + (Number(d.value) || 0), 0);
+  const cx = width * 0.32;
+  const cy = height / 2 + 16;
+  const radius = Math.min(width * 0.18, height * 0.32);
+  const ringW = Math.max(22, radius * 0.32);
+
+  // 배경 링
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.lineWidth = ringW;
+  ctx.strokeStyle = '#f1f5f9';
+  ctx.stroke();
+
+  if (total > 0) {
+    let start = -Math.PI / 2;
+    (data || []).forEach(d => {
+      const v = Number(d.value) || 0;
+      if (v <= 0) return;
+      const ang = (v / total) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, start, start + ang);
+      ctx.lineWidth = ringW;
+      ctx.strokeStyle = d.color || '#3b82f6';
+      ctx.stroke();
+      start += ang;
+    });
+    // 가운데 합계 텍스트
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 22px "맑은 고딕", "Malgun Gothic", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(String(total), cx, cy + 4);
+    ctx.font = '11px "맑은 고딕", "Malgun Gothic", sans-serif';
+    ctx.fillStyle = '#64748b';
+    ctx.fillText('Total', cx, cy + 22);
+  } else {
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '14px "맑은 고딕", "Malgun Gothic", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('데이터 없음', cx, cy);
+  }
+
+  // 범례
+  const lx = width * 0.55;
+  const itemH = 30;
+  const ly0 = cy - ((data || []).length * itemH) / 2 + 10;
+  ctx.textAlign = 'left';
+  (data || []).forEach((d, i) => {
+    const v = Number(d.value) || 0;
+    const yy = ly0 + i * itemH;
+    ctx.fillStyle = d.color || '#3b82f6';
+    ctx.fillRect(lx, yy - 11, 14, 14);
+    ctx.fillStyle = '#475569';
+    ctx.font = '13px "맑은 고딕", "Malgun Gothic", sans-serif';
+    ctx.fillText(d.label, lx + 22, yy);
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 13px "맑은 고딕", "Malgun Gothic", sans-serif';
+    const pct = total > 0 ? Math.round((v / total) * 100) : 0;
+    ctx.fillText(`${v}건  ${pct}%`, lx + 130, yy);
+  });
+
+  return canvas.toDataURL('image/png').split(',')[1];
+};
+
+export const drawBarPng = ({ data, title, width = 720, height = 380, valueSuffix = '' }) => {
+  const canvas = _newCanvas(width, height);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, width, height);
+
+  if (title) {
+    ctx.fillStyle = '#1e293b';
+    ctx.font = 'bold 18px "맑은 고딕", "Malgun Gothic", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(title, width / 2, 32);
+  }
+
+  const padTop = 60, padBottom = 60, padLeft = 56, padRight = 24;
+  const chartW = width - padLeft - padRight;
+  const chartH = height - padTop - padBottom;
+  const items = data || [];
+  const max = Math.max(...items.map(d => Number(d.value) || 0), 1);
+  const n = items.length || 1;
+  const gap = 14;
+  const barW = (chartW - gap * (n - 1)) / n;
+
+  // 그리드 라인 + Y축 레이블
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '11px "맑은 고딕", "Malgun Gothic", sans-serif';
+  ctx.textAlign = 'right';
+  for (let g = 0; g <= 4; g++) {
+    const y = padTop + chartH - (g / 4) * chartH;
+    ctx.beginPath();
+    ctx.moveTo(padLeft, y);
+    ctx.lineTo(padLeft + chartW, y);
+    ctx.stroke();
+    const tickVal = Math.round((g / 4) * max);
+    ctx.fillText(String(tickVal) + valueSuffix, padLeft - 6, y + 3);
+  }
+  // 좌측 / 하단 축선
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padLeft, padTop);
+  ctx.lineTo(padLeft, padTop + chartH);
+  ctx.lineTo(padLeft + chartW, padTop + chartH);
+  ctx.stroke();
+
+  // 막대
+  items.forEach((d, i) => {
+    const v = Number(d.value) || 0;
+    const x = padLeft + i * (barW + gap);
+    const h = (v / max) * chartH;
+    const y = padTop + chartH - h;
+    ctx.fillStyle = d.color || '#3b82f6';
+    if (ctx.roundRect) {
+      ctx.beginPath();
+      ctx.roundRect(x, y, barW, h, [6, 6, 0, 0]);
+      ctx.fill();
+    } else {
+      ctx.fillRect(x, y, barW, h);
+    }
+    // 값
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 12px "맑은 고딕", "Malgun Gothic", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(String(v) + valueSuffix, x + barW / 2, y - 6);
+    // 레이블
+    ctx.fillStyle = '#475569';
+    ctx.font = '12px "맑은 고딕", "Malgun Gothic", sans-serif';
+    const lbl = String(d.label || '');
+    const maxLblW = barW + gap;
+    let drawLbl = lbl;
+    while (ctx.measureText(drawLbl + '…').width > maxLblW && drawLbl.length > 1) {
+      drawLbl = drawLbl.slice(0, -1);
+    }
+    if (drawLbl !== lbl) drawLbl += '…';
+    ctx.fillText(drawLbl, x + barW / 2, padTop + chartH + 20);
+  });
+
+  return canvas.toDataURL('image/png').split(',')[1];
+};
+
 // ============ 1. 단순 시트 (헤더 + 데이터) ============
 export const exportToExcel = async (filename, sheets) => {
   const wb = new ExcelJS.Workbook();
@@ -133,8 +298,23 @@ export const exportToExcel = async (filename, sheets) => {
     const cols = sheet.columns || [];
     const safeName = (sheet.name || 'Sheet').replace(/[\\/?*[\]:]/g, '_').substring(0, 31);
     const ws = wb.addWorksheet(safeName, {
-      views: [{ state: 'frozen', ySplit: 1 }]
+      views: sheet.imagesOnly ? [] : [{ state: 'frozen', ySplit: 1 }]
     });
+
+    // 차트 이미지만 있는 시트 — 헤더/데이터 행 없이 이미지만 배치
+    if (sheet.imagesOnly && Array.isArray(sheet.images) && sheet.images.length > 0) {
+      // 컬럼 폭 보정 (이미지가 잘 보이도록)
+      for (let i = 1; i <= 12; i++) ws.getColumn(i).width = 12;
+      sheet.images.forEach(img => {
+        const id = wb.addImage({ base64: img.base64, extension: 'png' });
+        if (img.tl && img.br) {
+          ws.addImage(id, { tl: img.tl, br: img.br, editAs: 'oneCell' });
+        } else {
+          ws.addImage(id, img.range || 'A1:H22');
+        }
+      });
+      return;
+    }
 
     // 헤더
     const headerRow = ws.addRow(cols.map(c => c.header));

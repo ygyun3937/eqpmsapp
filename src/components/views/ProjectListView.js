@@ -1,7 +1,7 @@
 import React, { useState, useMemo, memo, useRef, useEffect } from 'react';
 import { Plus, Filter, AlignJustify, CalendarDays, Clock, User, HardDrive, Monitor, Cpu, Edit, ListTodo, Trash, Download, History, ChevronDown, ChevronUp, Plane, Users, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import { PROJECT_PHASES, BATTERY_DOMAINS, DOMAIN_VERSION_CATEGORIES, DEFAULT_VERSION_CATEGORIES } from '../../constants';
-import { fmtYMD } from '../../utils/calc';
+import { fmtYMD, calcOverallProgress } from '../../utils/calc';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
 import ProjectIssueBadge from '../common/ProjectIssueBadge';
 import ProjectNotesBadge from '../common/ProjectNotesBadge';
@@ -179,7 +179,7 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
       id: p.id, domain: p.domain, name: p.name, customer: p.customer, site: p.site,
       startDate: p.startDate, dueDate: p.dueDate, manager: p.manager, status: p.status,
       phase: getCurrentPhaseName(p),
-      expected: calcExp(p.startDate, p.dueDate) + '%', actual: calcAct(p.tasks) + '%'
+      expected: calcExp(p.startDate, p.dueDate) + '%', actual: calcOverallProgress(p) + '%'
     }));
     exportToExcel('프로젝트_리스트', [{
       name: '프로젝트 리스트',
@@ -206,7 +206,7 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
           id: p.id, domain: p.domain, name: p.name, customer: p.customer, site: p.site,
           startDate: p.startDate, dueDate: p.dueDate, manager: p.manager, status: p.status,
           phase: getCurrentPhaseName(p),
-          expected: calcExp(p.startDate, p.dueDate) + '%', actual: calcAct(p.tasks) + '%'
+          expected: calcExp(p.startDate, p.dueDate) + '%', actual: calcOverallProgress(p) + '%'
         })),
         columns: [
           { header: 'ID', key: 'id' }, { header: '도메인', key: 'domain' }, { header: '프로젝트명', key: 'name' },
@@ -239,7 +239,8 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
           { field: '현재 단계', value: getCurrentPhaseName(p) },
           { field: '담당자', value: p.manager || '-' },
           { field: '계획 진행률', value: calcExp(p.startDate, p.dueDate) + '%' },
-          { field: '실적 진행률', value: calcAct(p.tasks) + '%' },
+          { field: '실적 진행률 (종합)', value: calcOverallProgress(p) + '%' },
+          { field: '실적 진행률 (셋업만)', value: calcAct(p.tasks) + '%' },
           { field: 'HW 버전', value: p.hwVersion || '-' },
           { field: 'SW 버전', value: p.swVersion || '-' },
           { field: 'FW 버전', value: p.fwVersion || '-' },
@@ -321,11 +322,29 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
         columns: [{ header: 'ID', key: 'id' }, { header: '제목', key: 'title' }, { header: '심각도', key: 'severity' }, { header: '상태', key: 'status' }, { header: '작성자', key: 'author' }, { header: '일자', key: 'date' }, { header: '코멘트', key: 'comments' }]
       });
 
-      // 공유 노트
+      // 회의록 (구 공유 노트) — 본문/요약/회의 일시/참석자/결정/액션/첨부 포함
       sections.push({
-        title: `공유 노트 (${(p.notes || []).length}건)`,
-        rows: (p.notes || []).map(n => ({ author: n.author, date: n.date, text: n.text })),
-        columns: [{ header: '작성자', key: 'author' }, { header: '일시', key: 'date' }, { header: '내용', key: 'text' }]
+        title: `회의록 (${(p.notes || []).length}건)`,
+        rows: (p.notes || []).map(n => {
+          const files = Array.isArray(n.files) ? n.files : (n.file ? [n.file] : []);
+          return {
+            date: n.date, author: n.author,
+            meetingDate: n.meetingDate || '-',
+            attendees: n.attendees || '-',
+            summary: n.summary || '-',
+            text: n.text || '-',
+            decisions: n.decisions || '-',
+            actions: n.actions || '-',
+            files: files.length > 0 ? files.map(f => f.fileName).join(' / ') : '-'
+          };
+        }),
+        columns: [
+          { header: '등록 일시', key: 'date' }, { header: '작성자', key: 'author' },
+          { header: '회의 일시', key: 'meetingDate' }, { header: '참석자', key: 'attendees' },
+          { header: '요약', key: 'summary' }, { header: '본문', key: 'text' },
+          { header: '결정사항', key: 'decisions' }, { header: '액션 아이템', key: 'actions' },
+          { header: '첨부 파일', key: 'files' }
+        ]
       });
 
       // 고객 요청사항

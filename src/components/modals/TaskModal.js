@@ -1,5 +1,5 @@
 import React, { useState, memo } from 'react';
-import { X, ListTodo, CheckSquare, AlertTriangle, CheckCircle, User, Edit, Trash, PenTool, Info, ShieldCheck, FileText, ImageIcon, History, GitCommit as TimelineIcon, Package, Wrench, HardDrive, MessageSquare, Send, LifeBuoy, Plus, ShieldOff, Sparkles, Paperclip, Upload, Download, ExternalLink, Loader, FolderOpen, CalendarDays, Star } from 'lucide-react';
+import { X, ListTodo, CheckSquare, AlertTriangle, CheckCircle, User, Edit, Trash, PenTool, Info, ShieldCheck, FileText, ImageIcon, History, GitCommit as TimelineIcon, Package, Wrench, HardDrive, MessageSquare, Send, LifeBuoy, Plus, ShieldOff, Sparkles, Paperclip, Upload, Download, ExternalLink, Loader, FolderOpen, CalendarDays, Star, Calendar, Clock } from 'lucide-react';
 import { PROJECT_PHASES } from '../../constants';
 import { calcAct as calcSetupProgress, calcPhaseProgress, calcOverallProgress } from '../../utils/calc';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
@@ -19,7 +19,15 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
   const [attachGroupFilter, setAttachGroupFilter] = useState('all');
   const [newNoteText, setNewNoteText] = useState('');
   const [newNoteSummary, setNewNoteSummary] = useState('');
-  const [newNoteFile, setNewNoteFile] = useState(null);
+  const [newNoteFiles, setNewNoteFiles] = useState([]);
+  const [noteUploadIdx, setNoteUploadIdx] = useState(0);
+  const [newNoteMode, setNewNoteMode] = useState('quick'); // 'quick' | 'detail'
+  const [noteFormOpen, setNoteFormOpen] = useState(false);
+  const [newNoteMeetingDate, setNewNoteMeetingDate] = useState('');
+  const [newNoteAttendees, setNewNoteAttendees] = useState('');
+  const [newNoteDecisions, setNewNoteDecisions] = useState('');
+  const [newNoteActions, setNewNoteActions] = useState('');
+  const [noteDragOver, setNoteDragOver] = useState(false);
   const [noteUploading, setNoteUploading] = useState(false);
   const [noteUploadProgress, setNoteUploadProgress] = useState(0);
   const [noteError, setNoteError] = useState('');
@@ -506,17 +514,49 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                         EXTRA_DELETE: { icon: <Sparkles size={14}/>, color: 'bg-slate-100 text-slate-500 border-slate-200', label: t('추가 대응 삭제', 'Extra Delete') },
                       };
                       const cfg = typeConfig[log.type] || { icon: <Info size={14}/>, color: 'bg-slate-100 text-slate-600 border-slate-200', label: log.type };
+                      // 이력 → 해당 탭으로 점프
+                      const HISTORY_TAB_MAP = {
+                        PROJECT_CREATE: 'tasks', PROJECT_EDIT: 'tasks',
+                        PHASE_CHANGE: 'tasks', PHASE_DEFINE: 'tasks', MANAGER_CHANGE: 'tasks',
+                        TASK_ADD: 'tasks', TASK_COMPLETE: 'tasks', TASK_DELETE: 'tasks',
+                        TASK_DATES: 'tasks', TASK_RENAME: 'tasks', TASK_MILESTONE: 'tasks',
+                        SETUP_PROGRESS: 'tasks', SETUP_DEFINE: 'tasks',
+                        EXTRA_ADD: 'extras', EXTRA_UPDATE: 'extras', EXTRA_DELETE: 'extras',
+                        CHECKLIST_CHANGE: 'checklist',
+                        ISSUE_ADD: 'issues',
+                        REQUEST_ADD: 'requests', REQUEST_STATUS: 'requests',
+                        AS_ADD: 'as', AS_UPDATE: 'as',
+                        NOTE_ADD: 'notes',
+                        VERSION_CHANGE: 'tasks', VERSION_DELETE: 'tasks',
+                        SIGN_OFF: 'tasks', SIGN_CANCEL: 'tasks',
+                        TRIP_ADD: 'tasks', TRIP_DELETE: 'tasks',
+                        // PART_ADD: 자재는 별도 페이지 — 점프 불가
+                      };
+                      const targetTab = HISTORY_TAB_MAP[log.type];
+                      const clickable = !!targetTab;
+                      const Wrapper = clickable ? 'button' : 'div';
+                      const wrapperProps = clickable
+                        ? {
+                            type: 'button',
+                            onClick: () => setActiveModalTab(targetTab),
+                            className: 'w-full text-left bg-white p-3 rounded-xl border border-slate-200 shadow-sm hover:border-indigo-400 hover:shadow-md transition-all group cursor-pointer',
+                            title: t('해당 탭으로 이동', 'Jump to this tab')
+                          }
+                        : { className: 'bg-white p-3 rounded-xl border border-slate-200 shadow-sm' };
                       return (
                         <div key={i} className="relative pl-10">
                           <div className={`absolute left-2 top-3 w-5 h-5 rounded-full border flex items-center justify-center z-10 ${cfg.color}`}>{cfg.icon}</div>
-                          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                          <Wrapper {...wrapperProps}>
                             <div className="flex justify-between items-center mb-1">
                               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${cfg.color}`}>{cfg.label}</span>
-                              <span className="text-[10px] text-slate-400">{log.date}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-slate-400">{log.date}</span>
+                                {clickable && <ExternalLink size={11} className="text-slate-300 group-hover:text-indigo-500 transition-colors" />}
+                              </div>
                             </div>
                             <p className="text-sm font-bold text-slate-800">{log.detail}</p>
                             <p className="text-xs text-slate-500 mt-1 flex items-center"><User size={10} className="mr-1"/>{log.user}</p>
-                          </div>
+                          </Wrapper>
                         </div>
                       );
                     })}
@@ -534,9 +574,9 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
               return (b / 1024 / 1024).toFixed(2) + ' MB';
             };
             const handleSubmitNote = async () => {
-              if (!newNoteText.trim() && !newNoteFile) return;
+              if (!newNoteText.trim() && newNoteFiles.length === 0) return;
               setNoteError('');
-              if (newNoteFile && !driveConfigured) {
+              if (newNoteFiles.length > 0 && !driveConfigured) {
                 setNoteError(t('Drive 연동이 설정되지 않아 파일을 업로드할 수 없습니다.', 'Drive not configured — cannot upload file.'));
                 return;
               }
@@ -544,10 +584,19 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
               try {
                 await onAddNote(project.id, newNoteText.trim(), {
                   summary: newNoteSummary.trim(),
-                  file: newNoteFile,
-                  onProgress: ({ percent }) => setNoteUploadProgress(percent || 0)
+                  meetingDate: newNoteMeetingDate || '',
+                  attendees: newNoteAttendees.trim(),
+                  decisions: newNoteDecisions.trim(),
+                  actions: newNoteActions.trim(),
+                  files: newNoteFiles,
+                  onProgress: ({ percent, index }) => {
+                    setNoteUploadProgress(percent || 0);
+                    if (typeof index === 'number') setNoteUploadIdx(index);
+                  }
                 });
-                setNewNoteText(''); setNewNoteSummary(''); setNewNoteFile(null); setNoteUploadProgress(0);
+                setNewNoteText(''); setNewNoteSummary(''); setNewNoteFiles([]); setNoteUploadProgress(0); setNoteUploadIdx(0);
+                setNewNoteMeetingDate(''); setNewNoteAttendees(''); setNewNoteDecisions(''); setNewNoteActions('');
+                setNoteFormOpen(false); // 등록 후 폼 자동 접힘
               } catch (e) {
                 setNoteError((e && e.message) || String(e));
               }
@@ -555,44 +604,151 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
             };
             return (
               <div className="space-y-4">
-                <div className="bg-amber-50 text-amber-800 p-3 rounded-lg text-xs font-medium border border-amber-200 flex items-start">
-                  <Info size={14} className="mr-1.5 shrink-0 mt-0.5" />
-                  <div>
-                    {t('회의록 본문, 요약, 첨부 파일(원본 회의록 PDF/문서)을 함께 등록하세요. 파일은 ', 'Record meeting body, summary, and an attached file. Files go to ')}
-                    <code className="bg-white px-1 rounded text-[11px]">[프로젝트]/회의록</code>
-                    {t(' 폴더에 저장됩니다.', ' folder.')}
+                {/* 등록 영역 — 평소엔 접혀 있고 버튼 클릭 시 펼침 */}
+                {currentUser.role !== 'CUSTOMER' && !noteFormOpen && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNoteFormOpen(true)}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-lg transition-colors shadow-sm"
+                    >
+                      <Plus size={16} />{t('새 회의록 작성', 'New Meeting Note')}
+                    </button>
+                    <span className="text-[11px] text-slate-400 hidden sm:block">
+                      {t('빠른 / 상세 모드 모두 지원 · 다중 파일', 'Quick/Detail modes · multi-file')}
+                    </span>
                   </div>
-                </div>
+                )}
 
-                {currentUser.role !== 'CUSTOMER' && (
-                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">{t('회의록 본문', 'Meeting Body')}</label>
-                      <textarea rows="4" className="w-full text-sm p-3 border border-slate-300 rounded-lg resize-none focus:outline-none focus:border-amber-500" value={newNoteText} onChange={(e) => setNewNoteText(e.target.value)} placeholder={t('회의 일시·참석자·논의·결정사항·후속 액션 등을 입력하세요.', 'Date, attendees, discussions, decisions, action items...')}></textarea>
+                {currentUser.role !== 'CUSTOMER' && noteFormOpen && (
+                  <div className="bg-white p-4 rounded-xl border-2 border-amber-300 shadow-md space-y-3 ring-2 ring-amber-100">
+                    {/* 폼 헤더 (제목 + 닫기) */}
+                    <div className="flex items-center justify-between -mt-1 mb-1 pb-2 border-b border-amber-200">
+                      <span className="text-sm font-black text-amber-800 flex items-center"><FileText size={14} className="mr-1.5" />{t('새 회의록 작성', 'New Meeting Note')}</span>
+                      <button
+                        type="button"
+                        onClick={() => setNoteFormOpen(false)}
+                        disabled={noteUploading}
+                        className="text-slate-400 hover:text-slate-700 p-1 disabled:opacity-50"
+                        title={t('접기', 'Collapse')}
+                      >
+                        <X size={16} />
+                      </button>
                     </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">{t('요약 (선택)', 'Summary (optional)')}</label>
-                      <textarea rows="3" className="w-full text-sm p-3 border border-slate-300 rounded-lg resize-none focus:outline-none focus:border-amber-500" value={newNoteSummary} onChange={(e) => setNewNoteSummary(e.target.value)} placeholder={t('주요 논의·결정·후속 액션을 간결히 직접 요약하세요.', 'Brief summary of discussions/decisions/actions.')}></textarea>
+
+                    <div className="bg-amber-50 text-amber-800 p-2 rounded-lg text-[11px] font-medium border border-amber-200 flex items-start">
+                      <Info size={12} className="mr-1.5 shrink-0 mt-0.5" />
+                      <div>
+                        {t('파일은 ', 'Files go to ')}
+                        <code className="bg-white px-1 rounded text-[10px]">[프로젝트]/회의록</code>
+                        {t(' 폴더에 저장됩니다.', ' folder.')}
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">{t('첨부 파일 (선택, 회의록 원본)', 'Attached File (optional)')}</label>
-                      {newNoteFile ? (
-                        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2">
-                          <Paperclip size={14} className="text-amber-600 shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs font-bold text-slate-800 truncate">{newNoteFile.name}</div>
-                            <div className="text-[10px] text-slate-500">{fmtSize(newNoteFile.size)}</div>
-                          </div>
-                          <button type="button" onClick={() => setNewNoteFile(null)} className="text-slate-400 hover:text-red-600 p-1" title={t('제거', 'Remove')}><X size={12} /></button>
+                    {/* 모드 토글 — 빠른 / 상세 */}
+                    <div className="flex items-center gap-2 -mb-1">
+                      <span className="text-[11px] font-bold text-slate-500">{t('등록 모드', 'Mode')}</span>
+                      <div className="flex bg-slate-100 rounded-md p-0.5 border border-slate-200">
+                        <button
+                          type="button"
+                          onClick={() => setNewNoteMode('quick')}
+                          className={`px-2.5 py-1 text-[11px] font-bold rounded transition-colors ${newNoteMode === 'quick' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                          {t('빠른', 'Quick')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setNewNoteMode('detail')}
+                          className={`px-2.5 py-1 text-[11px] font-bold rounded transition-colors ${newNoteMode === 'detail' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                          {t('상세', 'Detail')}
+                        </button>
+                      </div>
+                      <span className="text-[10px] text-slate-400 ml-auto">
+                        {newNoteMode === 'quick' ? t('본문 + 첨부만', 'Body + files only') : t('회의 일시 / 참석자 / 결정 / 액션 포함', 'Includes date / attendees / decisions / actions')}
+                      </span>
+                    </div>
+
+                    {/* 상세 모드 — 회의 일시 + 참석자 */}
+                    {newNoteMode === 'detail' && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-amber-50/50 border border-amber-100 rounded-lg">
+                        <div>
+                          <label className="block text-[11px] font-bold text-amber-800 mb-1 flex items-center"><Calendar size={11} className="mr-1" />{t('회의 일시', 'Meeting Date')}</label>
+                          <input
+                            type="datetime-local"
+                            className="w-full text-sm p-2 border border-amber-200 rounded-lg focus:outline-none focus:border-amber-500 bg-white"
+                            value={newNoteMeetingDate}
+                            onChange={(e) => setNewNoteMeetingDate(e.target.value)}
+                          />
                         </div>
-                      ) : (
-                        <label className={`block border-2 border-dashed rounded-lg p-3 text-center cursor-pointer transition-colors ${driveConfigured ? 'border-slate-300 bg-white hover:border-amber-400 hover:bg-amber-50/40' : 'border-slate-200 bg-slate-50 cursor-not-allowed opacity-60'}`}>
-                          <input type="file" className="hidden" disabled={!driveConfigured} onChange={(e) => { const f = (e.target.files || [])[0]; if (f) setNewNoteFile(f); e.target.value = ''; }} />
-                          <Upload size={18} className="mx-auto mb-1 text-amber-500" />
-                          <div className="text-xs font-bold text-slate-600">{driveConfigured ? t('파일을 선택해 첨부 (PDF/문서/이미지)', 'Click to attach a file') : t('Drive 미연동 — 첨부 불가', 'Drive not configured')}</div>
-                          <div className="text-[10px] text-slate-400 mt-0.5">{t('최대 18MB · 본문/요약 없이 파일만 등록도 가능', 'Up to 18MB · file-only allowed')}</div>
-                        </label>
+                        <div>
+                          <label className="block text-[11px] font-bold text-amber-800 mb-1 flex items-center"><User size={11} className="mr-1" />{t('참석자', 'Attendees')}</label>
+                          <input
+                            type="text"
+                            className="w-full text-sm p-2 border border-amber-200 rounded-lg focus:outline-none focus:border-amber-500 bg-white"
+                            value={newNoteAttendees}
+                            onChange={(e) => setNewNoteAttendees(e.target.value)}
+                            placeholder={t('홍길동, 김철수, 이영희 (쉼표로 구분)', 'Comma-separated names')}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">{t('논의 내용 (본문)', 'Discussion (Body)')}</label>
+                      <textarea rows="4" className="w-full text-sm p-3 border border-slate-300 rounded-lg resize-none focus:outline-none focus:border-amber-500" value={newNoteText} onChange={(e) => setNewNoteText(e.target.value)} placeholder={t(newNoteMode === 'detail' ? '주요 논의 내용을 입력하세요. (안건·진행 상황·이슈 등)' : '회의 내용을 자유롭게 입력하세요.', newNoteMode === 'detail' ? 'Discussion details (topics, progress, issues)' : 'Meeting notes')}></textarea>
+                    </div>
+
+                    {/* 상세 모드 — 결정사항 + 액션 아이템 */}
+                    {newNoteMode === 'detail' && (
+                      <>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 mb-1 flex items-center"><CheckSquare size={11} className="mr-1 text-emerald-600" />{t('결정사항', 'Decisions')}</label>
+                          <textarea rows="2" className="w-full text-sm p-3 border border-slate-300 rounded-lg resize-none focus:outline-none focus:border-amber-500" value={newNoteDecisions} onChange={(e) => setNewNoteDecisions(e.target.value)} placeholder={t('회의에서 합의된 결정사항 (한 줄에 하나씩)', 'Decisions made (one per line)')}></textarea>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 mb-1 flex items-center"><ListTodo size={11} className="mr-1 text-blue-600" />{t('액션 아이템 (후속 조치)', 'Action Items')}</label>
+                          <textarea rows="2" className="w-full text-sm p-3 border border-slate-300 rounded-lg resize-none focus:outline-none focus:border-amber-500" value={newNoteActions} onChange={(e) => setNewNoteActions(e.target.value)} placeholder={t('담당자/일정/할 일 (한 줄에 하나씩)', 'Action items with owner/due (one per line)')}></textarea>
+                        </div>
+                      </>
+                    )}
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">{t('한줄 요약 (대시보드 노출, 선택)', 'One-line Summary (shown on dashboard, optional)')}</label>
+                      <textarea rows="2" className="w-full text-sm p-3 border border-slate-300 rounded-lg resize-none focus:outline-none focus:border-amber-500" value={newNoteSummary} onChange={(e) => setNewNoteSummary(e.target.value)} placeholder={t('대시보드 카드에 보일 한 줄 요약', 'Short summary visible on the dashboard card')}></textarea>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">{t('첨부 파일 (선택, 다중 첨부 가능)', 'Attached Files (optional, multiple)')}</label>
+                      {newNoteFiles.length > 0 && (
+                        <div className="space-y-1.5 mb-2">
+                          {newNoteFiles.map((f, idx) => (
+                            <div key={idx} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2">
+                              <Paperclip size={14} className="text-amber-600 shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs font-bold text-slate-800 truncate">{f.name}</div>
+                                <div className="text-[10px] text-slate-500">{fmtSize(f.size)}</div>
+                              </div>
+                              <button type="button" onClick={() => setNewNoteFiles(prev => prev.filter((_, i) => i !== idx))} className="text-slate-400 hover:text-red-600 p-1" title={t('제거', 'Remove')}><X size={12} /></button>
+                            </div>
+                          ))}
+                        </div>
                       )}
+                      <label
+                        onDragOver={(e) => { if (!driveConfigured) return; e.preventDefault(); setNoteDragOver(true); }}
+                        onDragLeave={() => setNoteDragOver(false)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setNoteDragOver(false);
+                          if (!driveConfigured) return;
+                          const fs = Array.from(e.dataTransfer.files || []);
+                          if (fs.length) setNewNoteFiles(prev => [...prev, ...fs]);
+                        }}
+                        className={`block border-2 border-dashed rounded-lg p-3 text-center cursor-pointer transition-colors ${!driveConfigured ? 'border-slate-200 bg-slate-50 cursor-not-allowed opacity-60' : noteDragOver ? 'border-amber-500 bg-amber-50' : 'border-slate-300 bg-white hover:border-amber-400 hover:bg-amber-50/40'}`}
+                      >
+                        <input type="file" multiple className="hidden" disabled={!driveConfigured} onChange={(e) => { const fs = Array.from(e.target.files || []); if (fs.length) setNewNoteFiles(prev => [...prev, ...fs]); e.target.value = ''; }} />
+                        <Upload size={18} className="mx-auto mb-1 text-amber-500" />
+                        <div className="text-xs font-bold text-slate-600">{driveConfigured ? t(newNoteFiles.length > 0 ? '파일 추가 (드래그 또는 클릭)' : '파일을 드래그하거나 클릭하여 첨부 (다중 가능)', newNoteFiles.length > 0 ? 'Add more files' : 'Drag or click to attach files (multiple)') : t('Drive 미연동 — 첨부 불가', 'Drive not configured')}</div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">{t('파일당 최대 18MB · 본문/요약 없이 파일만 등록도 가능', 'Up to 18MB per file · file-only allowed')}</div>
+                      </label>
                     </div>
                     {noteError && (
                       <div className="bg-red-50 border border-red-200 text-red-800 text-xs rounded-lg p-2 flex items-center">
@@ -600,64 +756,150 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                       </div>
                     )}
                     {noteUploading && (
-                      <div className="text-xs text-amber-700 font-bold flex items-center"><Loader size={12} className="animate-spin mr-1.5" />{t('등록 중...', 'Saving...')} {newNoteFile ? `${noteUploadProgress}%` : ''}</div>
+                      <div className="text-xs text-amber-700 font-bold flex items-center">
+                        <Loader size={12} className="animate-spin mr-1.5" />
+                        {t('등록 중...', 'Saving...')}
+                        {newNoteFiles.length > 0 && ` ${noteUploadIdx + 1}/${newNoteFiles.length} · ${noteUploadProgress}%`}
+                      </div>
                     )}
                     <div className="flex justify-end">
-                      <button onClick={handleSubmitNote} disabled={noteUploading || (!newNoteText.trim() && !newNoteFile)} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 text-white text-sm font-bold rounded-lg transition-colors flex items-center"><FileText size={14} className="mr-1.5" />{t('회의록 등록', 'Add Meeting')}</button>
+                      <button onClick={handleSubmitNote} disabled={noteUploading || (!newNoteText.trim() && newNoteFiles.length === 0)} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 text-white text-sm font-bold rounded-lg transition-colors flex items-center"><FileText size={14} className="mr-1.5" />{t('회의록 등록', 'Add Meeting')}</button>
                     </div>
                   </div>
                 )}
 
                 {(!project.notes || project.notes.length === 0) ? (
                   <div className="text-center py-10 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl bg-white">{t('등록된 회의록이 없습니다.', 'No meeting notes yet.')}</div>
-                ) : (
-                  <div className="space-y-3">
-                    {[...project.notes].reverse().map((note) => (
-                      <div key={note.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="flex items-center">
-                            <div className="w-7 h-7 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-xs font-bold mr-2">{note.author.charAt(0)}</div>
-                            <div>
-                              <span className="text-sm font-bold text-slate-800">{note.author}</span>
-                              <span className="text-[10px] text-slate-400 ml-2">{note.date}</span>
+                ) : (() => {
+                  // 날짜순 desc 정렬 (note.id = timestamp)
+                  const sorted = [...project.notes].sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
+                  const today = new Date();
+                  const today0 = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+                  const DAY = 86400000;
+                  return (
+                    <div className="relative">
+                      {/* 좌측 세로 타임라인 라인 */}
+                      <div className="absolute left-7 top-2 bottom-2 w-0.5 bg-amber-200"></div>
+                      <div className="space-y-3">
+                        {sorted.map((note) => {
+                          // 날짜 strip 계산 — 이력 탭과 동일 패턴
+                          const ts = Number(note.id) || 0;
+                          const d = ts > 0 ? new Date(ts) : null;
+                          const valid = d && !isNaN(d);
+                          const d0 = valid ? new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() : null;
+                          const diff = d0 !== null ? Math.floor((today0 - d0) / DAY) : null;
+                          const dow = valid ? ['일','월','화','수','목','금','토'][d.getDay()] : '';
+                          const mm = valid ? d.getMonth() + 1 : '';
+                          const dd = valid ? d.getDate() : '';
+                          const hh = valid ? String(d.getHours()).padStart(2,'0') : '';
+                          const mi = valid ? String(d.getMinutes()).padStart(2,'0') : '';
+                          let rel = '';
+                          if (diff === 0) rel = t('오늘', 'Today');
+                          else if (diff === 1) rel = t('어제', 'Yesterday');
+                          else if (diff > 1 && diff < 7) rel = t(`${diff}일 전`, `${diff}d ago`);
+                          else if (diff >= 7 && diff < 30) rel = t(`${Math.floor(diff/7)}주 전`, `${Math.floor(diff/7)}w ago`);
+                          else if (diff >= 30 && diff < 365) rel = t(`${Math.floor(diff/30)}개월 전`, `${Math.floor(diff/30)}mo ago`);
+                          else if (diff >= 365) rel = t(`${Math.floor(diff/365)}년 전`, `${Math.floor(diff/365)}y ago`);
+                          // 날짜 strip 색상 — 신선도
+                          const stripCls = diff === null ? 'bg-slate-200 text-slate-700 border-slate-300'
+                            : diff <= 1 ? 'bg-amber-300 text-amber-900 border-amber-400'
+                            : diff < 7 ? 'bg-amber-200 text-amber-800 border-amber-300'
+                            : diff < 30 ? 'bg-amber-100 text-amber-700 border-amber-200'
+                            : 'bg-slate-200 text-slate-700 border-slate-300';
+                          const files = Array.isArray(note.files) ? note.files : (note.file ? [note.file] : []);
+                          return (
+                            <div key={note.id} className="relative pl-[68px]">
+                              {/* 좌측 날짜 노드 (캘린더 스타일, z-10으로 라인 위에) */}
+                              <div className={`absolute left-0 top-1 w-14 rounded-lg border-2 shadow-sm flex flex-col items-center justify-center py-1.5 z-10 ${stripCls}`} title={valid ? `${mm}/${dd} ${hh}:${mi}` : note.date}>
+                                <div className="text-[9px] font-black leading-none">{valid ? `${mm}월` : '-'}</div>
+                                <div className="text-xl font-black leading-none mt-0.5 tabular-nums">{valid ? dd : '-'}</div>
+                                <div className="text-[8px] font-medium leading-none mt-0.5 opacity-70">{valid ? `${dow}요일` : ''}</div>
+                              </div>
+                              {/* 우측 본문 카드 */}
+                              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                                <div className="flex justify-between items-center mb-2 pb-2 border-b border-slate-100">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-7 h-7 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-xs font-bold">{note.author.charAt(0)}</div>
+                                    <span className="text-sm font-bold text-slate-800">{note.author}</span>
+                                    {valid && (
+                                      <span className="text-[10px] text-slate-500 flex items-center"><Clock size={10} className="mr-0.5" />{hh}:{mi}{rel && <span className="ml-1.5 text-slate-400 font-medium">· {rel}</span>}</span>
+                                    )}
+                                    {!valid && note.date && <span className="text-[10px] text-slate-400">{note.date}</span>}
+                                  </div>
+                                  {(currentUser.role === 'ADMIN' || currentUser.name === note.author) && (
+                                    <button onClick={() => onDeleteNote(project.id, note.id)} className="inline-flex items-center px-1.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 transition-colors" title={t('삭제', 'Delete')}>
+                                      <Trash size={11} className="mr-0.5" />{t('삭제', 'Delete')}
+                                    </button>
+                                  )}
+                                </div>
+                                {/* 상세 모드 메타: 회의 일시 + 참석자 */}
+                                {(note.meetingDate || note.attendees) && (
+                                  <div className="mb-2 flex items-center gap-2 flex-wrap text-[11px]">
+                                    {note.meetingDate && (
+                                      <span className="inline-flex items-center bg-indigo-50 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded font-bold">
+                                        <Calendar size={10} className="mr-1" />{note.meetingDate.replace('T', ' ').slice(0, 16)}
+                                      </span>
+                                    )}
+                                    {note.attendees && (
+                                      <span className="inline-flex items-center bg-slate-50 text-slate-700 border border-slate-200 px-2 py-0.5 rounded font-bold">
+                                        <User size={10} className="mr-1" />
+                                        <span className="truncate max-w-[400px]">{note.attendees}</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                                {note.summary && (
+                                  <div className="mb-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                                    <div className="text-[10px] font-bold text-amber-700 mb-1">{t('요약', 'Summary')}</div>
+                                    <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{note.summary}</p>
+                                  </div>
+                                )}
+                                {note.text && <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{note.text}</p>}
+                                {/* 결정사항 */}
+                                {note.decisions && (
+                                  <div className="mt-2 bg-emerald-50 border border-emerald-200 rounded-lg p-2.5">
+                                    <div className="text-[10px] font-bold text-emerald-700 mb-1 flex items-center"><CheckSquare size={11} className="mr-1" />{t('결정사항', 'Decisions')}</div>
+                                    <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{note.decisions}</p>
+                                  </div>
+                                )}
+                                {/* 액션 아이템 */}
+                                {note.actions && (
+                                  <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg p-2.5">
+                                    <div className="text-[10px] font-bold text-blue-700 mb-1 flex items-center"><ListTodo size={11} className="mr-1" />{t('액션 아이템', 'Action Items')}</div>
+                                    <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{note.actions}</p>
+                                  </div>
+                                )}
+                                {files.length > 0 && (
+                                  <div className="mt-3 space-y-1.5">
+                                    {files.map((f, fIdx) => (
+                                      <div key={fIdx} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+                                        <div className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0">
+                                          <Paperclip size={13} className="text-amber-600" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="text-xs font-bold text-slate-800 truncate" title={f.fileName}>{f.fileName}</div>
+                                          <div className="text-[10px] text-slate-500 font-mono">{fmtSize(f.size)}</div>
+                                        </div>
+                                        <div className="flex items-center gap-1 shrink-0">
+                                          {f.viewUrl && (
+                                            <a href={f.viewUrl} target="_blank" rel="noreferrer" className="p-1.5 rounded-md text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 border border-transparent hover:border-emerald-200 transition-colors" title={t('Drive에서 열기', 'Open in Drive')}><ExternalLink size={13} /></a>
+                                          )}
+                                          {f.downloadUrl && (
+                                            <a href={f.downloadUrl} target="_blank" rel="noreferrer" className="p-1.5 rounded-md text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-200 transition-colors" title={t('다운로드', 'Download')}><Download size={13} /></a>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                          {(currentUser.role === 'ADMIN' || currentUser.name === note.author) && (
-                            <button onClick={() => onDeleteNote(project.id, note.id)} className="inline-flex items-center px-1.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 transition-colors" title={t('삭제', 'Delete')}>
-                              <Trash size={11} className="mr-0.5" />{t('삭제', 'Delete')}
-                            </button>
-                          )}
-                        </div>
-                        {note.summary && (
-                          <div className="ml-9 mb-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
-                            <div className="text-[10px] font-bold text-amber-700 mb-1">{t('요약', 'Summary')}</div>
-                            <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{note.summary}</p>
-                          </div>
-                        )}
-                        {note.text && <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed ml-9">{note.text}</p>}
-                        {note.file && (
-                          <div className="ml-9 mt-3 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5">
-                            <div className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0">
-                              <Paperclip size={13} className="text-amber-600" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs font-bold text-slate-800 truncate" title={note.file.fileName}>{note.file.fileName}</div>
-                              <div className="text-[10px] text-slate-500 font-mono">{fmtSize(note.file.size)}</div>
-                            </div>
-                            <div className="flex items-center gap-1 shrink-0">
-                              {note.file.viewUrl && (
-                                <a href={note.file.viewUrl} target="_blank" rel="noreferrer" className="p-1.5 rounded-md text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 border border-transparent hover:border-emerald-200 transition-colors" title={t('Drive에서 열기', 'Open in Drive')}><ExternalLink size={13} /></a>
-                              )}
-                              {note.file.downloadUrl && (
-                                <a href={note.file.downloadUrl} target="_blank" rel="noreferrer" className="p-1.5 rounded-md text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-200 transition-colors" title={t('다운로드', 'Download')}><Download size={13} /></a>
-                              )}
-                            </div>
-                          </div>
-                        )}
+                          );
+                        })}
                       </div>
-                    ))}
-                  </div>
-                )}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })()}

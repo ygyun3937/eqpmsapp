@@ -4,7 +4,7 @@ import {
   GitCommit, Search, Globe, Smartphone, Monitor, LogOut,
   Building, Camera, CheckSquare, Package, LayoutDashboard as Home,
   KeyRound, UserCog, LifeBuoy, HelpCircle, ChevronsLeft, ChevronsRight,
-  Settings as SettingsIcon
+  Settings as SettingsIcon, ClipboardList
 } from 'lucide-react';
 
 // Constants & Initial Data
@@ -33,6 +33,7 @@ const SiteListView = lazy(() => import('./components/views/SiteListView'));
 const ResourceListView = lazy(() => import('./components/views/ResourceListView'));
 const VersionHistoryView = lazy(() => import('./components/views/VersionHistoryView'));
 const ASManagementView = lazy(() => import('./components/views/ASManagementView'));
+const WeeklyReportView = lazy(() => import('./components/views/WeeklyReportView'));
 const UserManagementView = lazy(() => import('./components/views/UserManagementView'));
 const SystemSettingsView = lazy(() => import('./components/views/SystemSettingsView'));
 const LoginScreen = lazy(() => import('./components/views/LoginScreen'));
@@ -151,6 +152,7 @@ export default function App() {
   const [sites, setSites] = useState([]);
   const [users, setUsers] = useState([]);
   const [settings, setSettings] = useState({ driveRootFolderId: '' });
+  const [weeklyReports, setWeeklyReports] = useState([]);
 
   // User management modal states
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
@@ -308,6 +310,7 @@ export default function App() {
         // (아래 setIssues 호출 직전에 처리)
         setIssues((data.issues || []).map(i => ({ ...i, comments: ensureArr(i.comments) })));
         setReleases(data.releases || []);
+        setWeeklyReports(Array.isArray(data.weeklyReports) ? data.weeklyReports : []);
         // 엔지니어 자격 데이터 마이그레이션 (단일 필드 → 배열) + 배열 정규화
         const ENG_ARRAYS = ['badges', 'safetyTrainings', 'visas', 'assignedProjectIds'];
         const migratedEngineers = (data.engineers || []).map(e => {
@@ -392,8 +395,8 @@ export default function App() {
   // 프로젝트 클릭 → 프로젝트 관리 탭으로 이동 + 상세 모달 오픈
   // tab 인자를 주면 해당 모달 탭으로 직접 진입 (예: 'notes', 'as', 'requests')
   const openProjectDetail = (projectId, tab = null) => {
+    // 현재 보고 있는 탭은 유지 — 모달은 어느 탭 위에서도 뜨고, 닫았을 때 사용자가 원래 페이지에 남도록
     setSelectedProjectId(projectId);
-    setActiveTab('projects');
     setTaskModalInitialTab(tab);
     setIsTaskModalOpen(true);
   };
@@ -434,6 +437,19 @@ export default function App() {
   const syncEngineers = (updated) => { setEngineers(updated); saveToGoogleDB('UPDATE_ENGINEERS', updated); };
   const syncParts = (updated) => { setParts(updated); saveToGoogleDB('UPDATE_PARTS', updated); };
   const syncSites = (updated) => { setSites(updated); saveToGoogleDB('UPDATE_SITES', updated); };
+  const syncWeeklyReports = (updated) => { setWeeklyReports(updated); saveToGoogleDB('UPDATE_WEEKLY_REPORTS', updated); };
+
+  // 주간 보고서 upsert (user + weekStart 기준 매칭)
+  const upsertWeeklyReport = (report) => {
+    const key = (r) => `${r.user}__${r.weekStart}`;
+    const k = key(report);
+    const existing = weeklyReports.findIndex(r => key(r) === k);
+    const next = existing >= 0
+      ? weeklyReports.map((r, i) => i === existing ? { ...r, ...report } : r)
+      : [...weeklyReports, report];
+    syncWeeklyReports(next);
+    showToast(t(`주간 보고서 저장됨 (${report.status === 'submitted' ? '제출' : report.status === 'approved' ? '승인' : report.status === 'returned' ? '반려' : '초안'})`, `Weekly report saved (${report.status})`));
+  };
   const syncUsers = (updated) => { setUsers(updated); saveToGoogleDB('UPDATE_USERS', updated); };
   const syncSettings = async (updated) => {
     setSettings(updated);
@@ -470,6 +486,18 @@ export default function App() {
     const updated = users.map(u => u.id === user.id ? { ...u, active: u.active === false } : u);
     syncUsers(updated);
     showToast(t('계정 상태가 변경되었습니다.', 'Account status changed.'));
+  };
+
+  const handleToggleUserWeeklyReport = (user) => {
+    const updated = users.map(u => u.id === user.id ? { ...u, weeklyReportEnabled: !u.weeklyReportEnabled } : u);
+    syncUsers(updated);
+    showToast(t(`주간 보고 권한이 ${user.weeklyReportEnabled ? '비활성화' : '활성화'}되었습니다.`, `Weekly report permission ${user.weeklyReportEnabled ? 'disabled' : 'enabled'}.`));
+  };
+
+  const handleToggleUserTeamLead = (user) => {
+    const updated = users.map(u => u.id === user.id ? { ...u, isTeamLead: !u.isTeamLead } : u);
+    syncUsers(updated);
+    showToast(t(`${user.name} ${user.isTeamLead ? '팀장 해제됨' : '팀장으로 지정됨'}`, `${user.name} ${user.isTeamLead ? 'unset as team lead' : 'set as team lead'}`));
   };
 
   const handleDeleteUser = () => {
@@ -1126,33 +1154,50 @@ export default function App() {
     showToast(t('참고자료가 삭제되었습니다.', 'Attachment deleted.'));
   };
 
-  // 회의록 등록: text(본문) + summary(선택) + file(선택, Drive 업로드 후 메타데이터 첨부)
+  // 회의록 등록: text(본문) + summary(선택) + meetingDate/attendees/decisions/actions(상세 모드 선택) + files[] (선택, 다중)
   const handleAddNote = async (projectId, text, opts) => {
     const summary = (opts && opts.summary) || '';
-    const file = opts && opts.file;
-    let fileMeta = null;
-    if (file) {
-      // 회의록 카테고리로 Drive 업로드 (목록에는 노출하지 않고 노트에 첨부)
-      fileMeta = await handleUploadAttachment(projectId, file, opts.onProgress, '회의록');
-      if (!fileMeta) return; // 업로드 실패 시 중단
+    const meetingDate = (opts && opts.meetingDate) || '';
+    const attendees = (opts && opts.attendees) || '';
+    const decisions = (opts && opts.decisions) || '';
+    const actions = (opts && opts.actions) || '';
+    // 백워드 호환: 단일 file 또는 다중 files 모두 수용
+    const filesIn = (opts && Array.isArray(opts.files)) ? opts.files
+      : (opts && opts.file) ? [opts.file] : [];
+    const onProgress = opts && opts.onProgress;
+    const filesMeta = [];
+    for (let i = 0; i < filesIn.length; i++) {
+      const meta = await handleUploadAttachment(
+        projectId,
+        filesIn[i],
+        (p) => onProgress && onProgress({ percent: p && p.percent, index: i }),
+        '회의록'
+      );
+      if (!meta) return; // 한 개라도 실패하면 중단 (이미 올라간 건 Drive에 남음 — 노트는 미생성)
+      filesMeta.push({
+        fileId: meta.fileId,
+        fileName: meta.fileName,
+        mimeType: meta.mimeType,
+        size: meta.size,
+        viewUrl: meta.viewUrl,
+        downloadUrl: meta.downloadUrl,
+        folderUrl: meta.categoryFolderUrl || meta.folderUrl
+      });
     }
     const note = {
       id: Date.now(),
       author: currentUser.name,
       text,
       summary,
-      file: fileMeta ? {
-        fileId: fileMeta.fileId,
-        fileName: fileMeta.fileName,
-        mimeType: fileMeta.mimeType,
-        size: fileMeta.size,
-        viewUrl: fileMeta.viewUrl,
-        downloadUrl: fileMeta.downloadUrl,
-        folderUrl: fileMeta.categoryFolderUrl || fileMeta.folderUrl
-      } : null,
+      meetingDate,
+      attendees,
+      decisions,
+      actions,
+      files: filesMeta,
       date: new Date().toLocaleString()
     };
-    const headline = text ? text.substring(0, 30) + (text.length > 30 ? '...' : '') : (fileMeta ? fileMeta.fileName : '회의록');
+    const firstName = filesMeta[0] && filesMeta[0].fileName;
+    const headline = text ? text.substring(0, 30) + (text.length > 30 ? '...' : '') : (firstName ? `${firstName}${filesMeta.length > 1 ? ` 외 ${filesMeta.length - 1}건` : ''}` : '회의록');
     setProjects(prev => {
       const next = prev.map(p => p.id !== projectId ? p : addLog({ ...p, notes: [...(p.notes || []), note] }, 'NOTE_ADD', `회의록: ${headline}`));
       saveToGoogleDB('UPDATE_PROJECTS', next);
@@ -1163,9 +1208,14 @@ export default function App() {
   const handleDeleteNote = async (projectId, noteId) => {
     const project = projects.find(p => p.id === projectId);
     const target = project && (project.notes || []).find(n => n.id === noteId);
-    // 첨부 파일 있으면 Drive 휴지통으로 (실패해도 메타 삭제는 진행)
-    if (target && target.file && target.file.fileId) {
-      await callGoogleAction('DELETE_FILE', { fileId: target.file.fileId });
+    // 첨부 파일들 Drive 휴지통으로 (실패해도 메타 삭제는 진행) — files[] 우선, 백워드 호환 file 단일도
+    if (target) {
+      const files = Array.isArray(target.files) ? target.files : (target.file ? [target.file] : []);
+      for (const f of files) {
+        if (f && f.fileId) {
+          await callGoogleAction('DELETE_FILE', { fileId: f.fileId });
+        }
+      }
     }
     setProjects(prev => {
       const next = prev.map(p => p.id !== projectId ? p : { ...p, notes: (p.notes || []).filter(n => n.id !== noteId) });
@@ -1344,6 +1394,9 @@ export default function App() {
                 <NavItem icon={<Database size={20} />} label={t('사이트/유틸 마스터', 'Site Master')} active={activeTab === 'sites'} onClick={() => setActiveTab('sites')} collapsed={sidebarCollapsed} />
                 <NavItem icon={<Users size={20} />} label={t('인력/리소스 관리', 'Resources')} active={activeTab === 'resources'} onClick={() => setActiveTab('resources')} collapsed={sidebarCollapsed} />
                 <NavItem icon={<LifeBuoy size={20} />} label={t('AS 통합 관리', 'AS Management')} active={activeTab === 'as'} onClick={() => setActiveTab('as')} collapsed={sidebarCollapsed} />
+                {settings.weeklyReportEnabled && (currentUser.role === 'ADMIN' || currentUser.weeklyReportEnabled) && (
+                  <NavItem icon={<ClipboardList size={20} />} label={t('주간 업무 보고', 'Weekly Reports')} active={activeTab === 'weekly'} onClick={() => setActiveTab('weekly')} collapsed={sidebarCollapsed} />
+                )}
                 <NavItem icon={<GitCommit size={20} />} label={t('버전 릴리즈 관리', 'Releases')} active={activeTab === 'versions'} onClick={() => setActiveTab('versions')} collapsed={sidebarCollapsed} />
               </>
             )}
@@ -1392,6 +1445,26 @@ export default function App() {
               {activeTab === 'as' && currentUser.role !== 'CUSTOMER' && (
                 <ASManagementView projects={projects} onProjectClick={openProjectDetail} onUpdateAS={handleUpdateAS} currentUser={currentUser} t={t} />
               )}
+              {activeTab === 'weekly' && currentUser.role !== 'CUSTOMER' && (
+                (settings.weeklyReportEnabled && (currentUser.role === 'ADMIN' || currentUser.weeklyReportEnabled)) ? (
+                  <WeeklyReportView
+                    projects={projects} issues={issues} engineers={engineers}
+                    users={users}
+                    weeklyReports={weeklyReports} currentUser={currentUser}
+                    onSaveReport={upsertWeeklyReport}
+                    onSubmitReport={upsertWeeklyReport}
+                    onApproveReport={upsertWeeklyReport}
+                    onReturnReport={upsertWeeklyReport}
+                    t={t}
+                  />
+                ) : (
+                  <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-500">
+                    {!settings.weeklyReportEnabled
+                      ? t('주간 업무 보고 기능이 비활성화되어 있습니다. 시스템 설정 → 주간 업무 보고에서 활성화하세요.', 'Weekly Reports is disabled. Enable in System Settings.')
+                      : t('주간 업무 보고 권한이 없습니다. 관리자에게 요청하세요.', 'You do not have permission for Weekly Reports. Contact ADMIN.')}
+                  </div>
+                )
+              )}
               {activeTab === 'versions' && <VersionHistoryView projects={projects} releases={releases} onAddClick={() => setIsReleaseModalOpen(true)} onDeleteRelease={(release) => setReleaseToDelete(release)} currentUser={currentUser} t={t} />}
               {activeTab === 'settings' && currentUser.role === 'ADMIN' && (
                 <SystemSettingsView settings={settings} onSave={syncSettings} currentUser={currentUser} t={t} />
@@ -1401,10 +1474,13 @@ export default function App() {
                   users={users}
                   projects={projects}
                   currentUser={currentUser}
+                  settings={settings}
                   onAdd={() => { setUserEditTarget(null); setIsUserModalOpen(true); }}
                   onEdit={(u) => { setUserEditTarget(u); setIsUserModalOpen(true); }}
                   onResetPassword={handleResetUserPassword}
                   onToggleActive={handleToggleUserActive}
+                  onToggleWeeklyReport={handleToggleUserWeeklyReport}
+                  onToggleTeamLead={handleToggleUserTeamLead}
                   onDelete={(u) => setUserToDelete(u)}
                   t={t}
                 />

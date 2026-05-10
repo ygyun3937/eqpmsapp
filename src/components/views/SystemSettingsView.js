@@ -1,9 +1,12 @@
 import React, { useState, memo } from 'react';
-import { Settings as SettingsIcon, FolderOpen, CheckCircle, AlertTriangle, Loader, Save, ExternalLink, Info } from 'lucide-react';
+import { Settings as SettingsIcon, FolderOpen, CheckCircle, AlertTriangle, Loader, Save, ExternalLink, Info, ClipboardList } from 'lucide-react';
 import { callGoogleAction } from '../../utils/api';
 
 const SystemSettingsView = memo(function SystemSettingsView({ settings, onSave, currentUser, t }) {
-  const [form, setForm] = useState({ driveRootFolderId: settings?.driveRootFolderId || '' });
+  const [form, setForm] = useState({
+    driveRootFolderId: settings?.driveRootFolderId || '',
+    weeklyReportEnabled: settings?.weeklyReportEnabled === true,
+  });
   const [verifyState, setVerifyState] = useState({ loading: false, ok: null, message: '', folderName: '', folderUrl: '' });
   const [saveState, setSaveState] = useState({ loading: false, message: '' });
 
@@ -119,24 +122,68 @@ const SystemSettingsView = memo(function SystemSettingsView({ settings, onSave, 
           </div>
         )}
 
-        <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+        <div className="pt-3 border-t border-slate-100">
           <span className="text-[11px] text-slate-400">
             {settings?.driveRootFolderId
               ? <>{t('현재 저장된 ID', 'Current saved ID')}: <code className="bg-slate-100 px-1 rounded">{settings.driveRootFolderId.slice(0, 30)}{settings.driveRootFolderId.length > 30 ? '...' : ''}</code></>
               : t('아직 저장된 설정 없음', 'No saved setting yet.')}
           </span>
-          <div className="flex items-center gap-3">
-            {saveState.message && <span className={`text-xs font-bold ${saveState.message.includes('실패') || saveState.message.includes('failed') ? 'text-red-600' : 'text-emerald-600'}`}>{saveState.message}</span>}
-            <button
-              onClick={handleSave}
-              disabled={saveState.loading}
-              className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold text-sm px-5 py-2 rounded-lg transition-colors flex items-center shadow-sm"
-            >
-              {saveState.loading ? <Loader size={14} className="animate-spin mr-1.5" /> : <Save size={14} className="mr-1.5" />}
-              {t('설정 저장', 'Save Settings')}
-            </button>
+        </div>
+      </div>
+
+      {/* 주간 업무 보고 — 기능 활성화 토글 */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <h2 className="text-lg font-bold text-slate-800 mb-1 flex items-center">
+          <ClipboardList size={18} className="mr-2 text-indigo-500" />
+          {t('주간 업무 보고 기능', 'Weekly Reports')}
+        </h2>
+        <p className="text-xs text-slate-500 mb-4">
+          {t('전사 주간 업무 보고 기능을 활성화/비활성화합니다. 활성화 후, 사용자 관리에서 사용자별로 권한을 부여하세요.',
+             'Enable/disable the weekly report feature globally. After enabling, grant per-user permission in User Management.')}
+        </p>
+        <label className="flex items-center cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={form.weeklyReportEnabled}
+            onChange={(e) => setForm({ ...form, weeklyReportEnabled: e.target.checked })}
+            className="sr-only peer"
+          />
+          <div className="relative w-11 h-6 bg-slate-200 peer-checked:bg-indigo-600 rounded-full transition-colors peer-focus:ring-2 peer-focus:ring-indigo-300">
+            <div className={`absolute top-0.5 left-0.5 bg-white border border-slate-300 rounded-full h-5 w-5 transition-transform ${form.weeklyReportEnabled ? 'translate-x-5' : ''}`}></div>
+          </div>
+          <span className="ml-3 text-sm font-bold text-slate-700">
+            {form.weeklyReportEnabled ? t('활성화', 'Enabled') : t('비활성화', 'Disabled')}
+          </span>
+        </label>
+        <div className="mt-3 bg-amber-50 text-amber-800 text-[11px] rounded p-2 flex items-start border border-amber-200">
+          <Info size={12} className="mr-1.5 mt-0.5 shrink-0" />
+          <div>
+            {t('비활성화 시 사이드바에서 메뉴가 숨겨지고 페이지 접근도 차단됩니다.', 'When disabled, the menu hides and the page is blocked.')}
+            {' '}
+            {t('팀장(사용자 관리에서 지정)은 같은 부서(dept) 사용자만 조회/승인할 수 있고, ADMIN은 전체를 볼 수 있습니다.', 'Team Leads (set in User Management) see only same-dept users; ADMIN sees all.')}
           </div>
         </div>
+      </div>
+
+      {/* 글로벌 저장 바 — 모든 설정 한 번에 저장 */}
+      <div className="sticky bottom-0 bg-white border border-slate-200 rounded-xl shadow-lg p-4 flex items-center gap-3 mt-2">
+        <div className="flex-1 text-xs text-slate-500">
+          <Info size={12} className="inline mr-1" />
+          {t('Drive 연동 + 주간 업무 보고 등 위 설정을 한 번에 저장합니다.', 'Saves all settings above (Drive integration, Weekly Reports, etc.) at once.')}
+        </div>
+        {saveState.message && (
+          <span className={`text-xs font-bold ${saveState.message.includes('실패') || saveState.message.includes('failed') ? 'text-red-600' : 'text-emerald-600'}`}>
+            {saveState.message}
+          </span>
+        )}
+        <button
+          onClick={handleSave}
+          disabled={saveState.loading}
+          className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold text-sm px-6 py-2.5 rounded-lg transition-colors flex items-center shadow-sm"
+        >
+          {saveState.loading ? <Loader size={14} className="animate-spin mr-1.5" /> : <Save size={14} className="mr-1.5" />}
+          {t('전체 설정 저장', 'Save All Settings')}
+        </button>
       </div>
 
     </div>

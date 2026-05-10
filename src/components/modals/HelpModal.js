@@ -1,5 +1,5 @@
 import React, { useState, memo } from 'react';
-import { HelpCircle, Kanban, Users, AlertTriangle, LifeBuoy, GitCommit, ShieldCheck, Sparkles, Plane, FileText, X, ChevronRight, Info, Bell } from 'lucide-react';
+import { HelpCircle, Kanban, Users, AlertTriangle, LifeBuoy, GitCommit, ShieldCheck, Sparkles, Plane, FileText, X, ChevronRight, Info, Bell, ClipboardList } from 'lucide-react';
 
 const Section = ({ title, children }) => (
   <div className="mb-5 last:mb-0">
@@ -31,6 +31,7 @@ const TABS = [
   { key: 'resource', label: '인력/리소스', icon: Users },
   { key: 'issue', label: '이슈/AS', icon: AlertTriangle },
   { key: 'version', label: '버전 관리', icon: GitCommit },
+  { key: 'weekly', label: '주간 업무 보고', icon: ClipboardList },
   { key: 'export', label: '보고서/Excel', icon: FileText },
   { key: 'roles', label: '권한별 기능', icon: LifeBuoy },
   { key: 'changelog', label: '업데이트 내역', icon: Bell },
@@ -121,15 +122,53 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                   <p>· "모두 읽음" 버튼으로 일괄 처리 가능하며, 마지막 본 시각은 사용자별로 저장됩니다.</p>
                   <p>· 필터 칩(전체/미확인/공유노트/이슈/고객요청/AS/버전)으로 필요한 종류만 빠르게 볼 수 있습니다.</p>
                 </Section>
-                <Section title="대시보드 미해결 이슈 카드 클릭">
-                  <p>대시보드 상단 <strong>"미해결 이슈"</strong> 카드를 클릭하면 전체 이슈 목록 팝업이 열립니다 (심각도 순).</p>
-                  <p>· 다른 페이지로 이동하지 않고도 즉시 확인 가능, 항목 클릭 시 상세 모달로 진입합니다.</p>
+                <Section title="대시보드 KPI 카드 5개 — 모두 클릭 가능">
+                  <p>대시보드 상단 카드 5장은 모두 클릭하여 전용 팝업으로 전체 리스트 확인:</p>
+                  <p>· <strong>미해결 이슈</strong> (orange) — 심각도순 이슈 팝업</p>
+                  <p>· <strong>지연·위험</strong> (rose) — 위험 점수순 프로젝트 팝업</p>
+                  <p>· <strong>임박 마일스톤 (30일)</strong> (amber) — D-day 순 마일스톤 팝업</p>
+                  <p>· <strong>고객 요청 미처리</strong> (cyan) — 긴급도순(High/Medium/Low) 팝업, 클릭 시 해당 프로젝트의 고객요청 탭으로</p>
+                  <p>· <strong>평균 진척률 (진행중)</strong> (emerald) — 실적/계획 delta + 4버킷 분포(0-25/25-50/50-75/75-100) + 계획 위치 마커. 클릭 시 진행중 프로젝트 전체 리스트</p>
                 </Section>
-                <Section title="회의록 (구 공유 노트)">
-                  <p>· 프로젝트 상세 → <strong>"회의록"</strong> 탭에서 본문/요약/원본 파일을 함께 등록합니다.</p>
-                  <p>· <strong>요약</strong>: 주요 논의/결정/후속 액션을 직접 간결히 입력 (대외유출 방지 위해 자동 요약 미사용)</p>
-                  <p>· <strong>원본 파일 첨부</strong> — Drive의 <code className="bg-slate-100 px-1 rounded text-[11px]">[프로젝트]/회의록</code> 폴더에 별도 보관, 카드에서 바로 열기/다운로드</p>
-                  <p>· 대시보드 "최근 공유 노트"에 자동 노출, 알림 센터에도 표시. 카드 클릭 시 회의록 탭으로 바로 이동.</p>
+                <Section title="대시보드 — 이슈 / AS 통합 위젯 (우측)">
+                  <p>대시보드 우측 위젯은 상하 2단 분할:</p>
+                  <p>· <strong>상단 — 미해결 이슈</strong>: severity 가로 스택 막대 + 최근 3건 (헤더 행 클릭 시 전체 이슈 팝업)</p>
+                  <p>· <strong>하단 — AS 미완료</strong>: 유형(긴급출동/정기점검/부품교체/불량수리/보증수리) 막대 + 최근 3건 (헤더 행 클릭 시 긴급출동 우선 정렬 팝업)</p>
+                  <p>· <strong>AS는 KPI 카드가 아닌 이 위젯에서 추적</strong> — 회사 입장의 critical 지표지만 KPI 카드 자리는 5개로 한정</p>
+                </Section>
+                <Section title="대시보드 간트 — 색상 / 마일스톤 ◆ 의미">
+                  <p>대시보드 "전체 프로젝트 일정" 간트의 색·기호는 다음과 같이 읽으세요. 차트 상단 <strong>범례 줄</strong>에 항상 동일한 안내가 표시됩니다.</p>
+                  <p><strong>막대 (프로젝트 상태)</strong></p>
+                  <p className="ml-4">· <span className="inline-block w-3 h-2 align-middle rounded-sm bg-blue-500 mx-0.5"></span> 파랑 = <strong>진행중</strong> (정상)</p>
+                  <p className="ml-4">· <span className="inline-block w-3 h-2 align-middle rounded-sm bg-amber-500 mx-0.5"></span> 노랑 = <strong>마감임박</strong> 상태인 프로젝트 (납기까지 여유가 적음)</p>
+                  <p className="ml-4">· <span className="inline-block w-3 h-2 align-middle rounded-sm bg-red-500 mx-0.5"></span> 빨강 = <strong>이슈발생</strong> 상태</p>
+                  <p className="ml-4">· <span className="inline-block w-3 h-2 align-middle rounded-sm bg-emerald-500 mx-0.5"></span> 초록 = <strong>완료</strong></p>
+                  <p className="ml-4">· 한 막대의 좌측(진한 색)은 <strong>지금까지 경과한 기간</strong>, 우측(60% 투명)은 <strong>남은 예정 기간</strong>을 의미합니다.</p>
+                  <p><strong>마일스톤 ◆ 다이아몬드</strong></p>
+                  <p className="ml-4">· <strong>긴급도 우선 색상 (D-day가 종류 색상보다 우선)</strong></p>
+                  <p className="ml-8">- 빨간 ◆ = <strong>D-7 이내 임박</strong> (긴급)</p>
+                  <p className="ml-8">- 노란 ◆ = <strong>D-30 이내 임박</strong> (주의)</p>
+                  <p className="ml-4">· <strong>D-30 초과 + 미래</strong>는 종류별 색상으로 표시</p>
+                  <p className="ml-8">- 핑크 ◆ = <strong>단계(Phase)</strong> 마일스톤 (단계 편집에서 별 토글)</p>
+                  <p className="ml-8">- 보라 ◆ = <strong>셋업 작업</strong> 마일스톤</p>
+                  <p className="ml-8">- 파랑 ◆ = <strong>프로젝트 납기일(due date)</strong></p>
+                  <p className="ml-4">· <strong>지난 마일스톤은 40% 흐림</strong> 처리 — 한눈에 미래/과거 구분</p>
+                  <p className="ml-4">· 다이아몬드에 <strong>마우스를 올리면(hover)</strong> 이름·종류·날짜·D-N이 툴팁으로 표시됩니다.</p>
+                </Section>
+                <Section title="회의록 — 빠른 / 상세 모드 + 다중 파일">
+                  <p>· 프로젝트 상세 → <strong>"회의록"</strong> 탭. 평소엔 <strong>"+ 새 회의록 작성"</strong> 버튼만 노출 (리스트 즉시 보기). 클릭 시 폼 펼침, 등록 후 자동 접힘.</p>
+                  <p>· <strong>빠른 모드</strong>: 본문 + 한줄 요약 + 첨부 — 미팅 메모 빨리 남길 때</p>
+                  <p>· <strong>상세 모드</strong>: 회의 일시(datetime) + 참석자(쉼표 구분) + 논의 내용 + <strong>결정사항</strong> + <strong>액션 아이템</strong> + 한줄 요약 + 첨부 — 정식 회의록 양식</p>
+                  <p>· <strong>다중 파일 업로드</strong>: 드래그앤드롭/클릭으로 여러 개 한 번에. 파일별 인덱스/진행률 표시 (`2/3 · 45%`)</p>
+                  <p>· 첨부 파일은 Drive의 <code className="bg-slate-100 px-1 rounded text-[11px]">[프로젝트]/회의록</code> 폴더에 자동 저장</p>
+                  <p>· <strong>등록된 회의록 = 타임라인 브랜치</strong> — 좌측 amber 세로선 + 캘린더 스타일 날짜 노드(월/일/요일, 신선도 색상). 데시보드의 회의록 모달도 동일 패턴.</p>
+                </Section>
+                <Section title="대시보드 — 회의록 모달 (분석/회의록 분리)">
+                  <p>대시보드 헤더에서 <strong>고급 분석 / 회의록 버튼 분리</strong>. 회의록 모달은 <strong>프로젝트별 그룹</strong>으로 묶여 표시:</p>
+                  <p>· 프로젝트 헤더 (인디고 strip) + 그 안의 회의록 = amber 타임라인 브랜치</p>
+                  <p>· <strong>프로젝트별 접기/펴기</strong> — 기본은 모두 접힘. 헤더 클릭으로 펼침. 우측 ↗ 버튼은 해당 프로젝트 회의록 탭으로 점프.</p>
+                  <p>· 우측 상단 "전체 펼치기 / 전체 접기" 토글 (프로젝트 2개 이상일 때)</p>
+                  <p>· 검색 / 프로젝트 / 작성자 필터 지원</p>
                 </Section>
                 <Section title="참고 자료 (명세서·도면 / 회의록 제외)">
                   <p>프로젝트 상세 → <strong>"참고 자료"</strong> 탭에서 명세서·도면·기타 자료를 업로드합니다 (<strong>회의록은 회의록 탭에서 별도 관리</strong>).</p>
@@ -326,6 +365,21 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                 <Section title="출장 일정 = 자동 반영">
                   <p>프로젝트에서 등록한 출장 일정이 인력 화면에 <strong>현장 파견 / 출장 예정</strong>으로 자동 반영됩니다 (D-Day 표시).</p>
                 </Section>
+                <Section title="페이지 한눈에 보기 — 3컬럼 + 알림 (대시보드 모달 동기화)">
+                  <p>페이지 상단에 대시보드 인력/리소스 상세 모달과 <strong>같은 풍부한 레이아웃</strong>을 그대로 가져왔습니다:</p>
+                  <p>· <strong>6장 통계</strong> — 전체 / 가용 / 현장 파견 / 출장 예정 / 자격 만료 / 비자 이슈</p>
+                  <p>· <strong>3컬럼 그리드</strong></p>
+                  <p className="ml-4">- <strong>현장별 인력 배치</strong>: 사이트별 그룹 카드(파견 인원 + 복귀 D-day)</p>
+                  <p className="ml-4">- <strong>출장 일정</strong>: 출장 예정(D-7 우선 강조) + 복귀 임박(30일 이내)</p>
+                  <p className="ml-4">- <strong>가용 인력 풀</strong>: 출장 일정 없는 엔지니어 (이름 + 직급 + 부서 + "대기" 배지)</p>
+                  <p>· <strong>인력 알림 (풀 폭)</strong> — 출입증/안전교육 만료·임박 + 비자 이슈를 카드로 한눈에 (정상이면 emerald 안내)</p>
+                </Section>
+                <Section title="8주 가용성 히트맵 (모달)">
+                  <p>· 페이지 헤더 우측 <strong>"8주 가용성"</strong> 버튼 → 모달로 8주 히트맵 열림</p>
+                  <p>· 히트맵: 엔지니어×주차 격자, 셀에 일수 + 사이트 약어(예: <code className="bg-slate-100 px-1 rounded text-[11px]">5/1~5/5(5일) 사이트A</code>), 부하 적은 순으로 자동 정렬</p>
+                  <p>· "다음달 셋업 누구 보낼까" 의사결정 시점에만 모달로 열어보면 됨</p>
+                  <p>· Excel 추출 시에는 그대로 3시트(엔지니어 / 가용 풀 / 8주 히트맵)로 포함 — 정보 손실 없음</p>
+                </Section>
               </>
             )}
 
@@ -395,6 +449,78 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
               </>
             )}
 
+            {tab === 'weekly' && (
+              <>
+                <h2 className="text-base font-bold text-slate-800 mb-3">{t('주간 업무 보고', 'Weekly Reports')}</h2>
+                <p className="text-xs text-slate-500 mb-4">{t('수기 작성 없이 시스템 활동 데이터로 자동 집계되는 주간 업무 보고. 팀장은 같은 부서원 보고를 받고 팀 종합 보고서까지 한 화면에서 작성합니다.', 'Auto-aggregated weekly reports from system activity. Team leads review same-dept submissions and write team consolidated reports in one place.')}</p>
+
+                <Section title="개요 — 왜 이 기능을 쓰나">
+                  <p>· 한 주 동안 시스템에 등록된 활동(이슈/회의록/AS/고객요청/버전/출장/추가 대응 등)을 <strong>자동 집계해서 보고서 초안 생성</strong></p>
+                  <p>· 작성자는 검토·다듬기만 하면 되어 <strong>주간 보고 작성 시간을 90% 이상 단축</strong></p>
+                  <p>· 팀장은 부서원 보고 상태를 한눈에 보고, 팀 종합 보고서도 자동 집계로 작성</p>
+                  <p>· 별도 워드/엑셀 파일 없이 시스템 안에서 작성 → 제출 → 승인까지 일원화</p>
+                </Section>
+
+                <Section title="활성화 절차 (관리자 1회)">
+                  <Step n={1}>[시스템 설정] → <strong>주간 업무 보고 기능</strong> 토글 ON → 하단 <strong>"전체 설정 저장"</strong></Step>
+                  <Step n={2}>[사용자 관리] → 사용할 인원의 <strong>"주간 보고" 컬럼 토글</strong> ON</Step>
+                  <Step n={3}>팀장(부서장)은 <strong>"팀장" 컬럼</strong>도 함께 ON — 같은 부서원 보고서 검토·승인 권한이 부여됨</Step>
+                  <p className="mt-1 text-[11px] text-slate-500">기능을 끄면 사이드바 메뉴와 페이지 접근이 동시에 차단됩니다. 권한이 없는 사용자에게는 사이드바에 메뉴 자체가 노출되지 않습니다.</p>
+                </Section>
+
+                <Section title="권한 정리 (PM 권한과는 별도)">
+                  <p>· <strong>일반 사용자(주간 보고 ON)</strong> — 본인 보고서만 작성/제출/조회</p>
+                  <p>· <strong>팀장</strong> — 본인 보고 + <strong>같은 부서(dept)</strong> 부서원 보고 검토/승인/반려, 팀 종합 보고서 작성</p>
+                  <p>· <strong>ADMIN</strong> — 전사 모든 보고서 조회/검토/승인, 모든 부서의 팀 종합 보고서 작성 가능</p>
+                  <p className="mt-1 text-[11px] text-slate-500">팀장은 PM과 무관하게 <strong>독립된 부가 권한</strong>입니다. PM이 아닌 사람도 팀장이 될 수 있고, 반대도 가능합니다.</p>
+                </Section>
+
+                <Section title="자동 집계 — 어떤 활동이 어디로 들어가나">
+                  <p>주차(월~일) 동안 본인 명의로 등록·수정된 활동을 다음 3개 섹션으로 자동 분류합니다:</p>
+                  <p>· <strong>금주 실적</strong> — 완료/처리된 항목 (회의록 작성, 이슈 등록·처리, 셋업 작업 완료, AS 처리, 검수 사인, 버전 릴리즈, 출장 등)</p>
+                  <p>· <strong>차주 계획</strong> — 진행중/예정 항목 (다음 주에 시작하는 셋업 작업, 임박 마일스톤, 반려된 고객 요청 후속 등)</p>
+                  <p>· <strong>이슈/리스크</strong> — 위험 신호 (High 이슈, 지연 프로젝트, 임박 자격 만료, 중대 AS 등)</p>
+                  <p className="mt-1 text-[11px] text-slate-500">매칭 기준은 사용자 이름. 다른 사람 명의로 등록된 항목은 본인 보고서에 포함되지 않습니다.</p>
+                </Section>
+
+                <Section title="작성 워크플로우 (1분이면 끝)">
+                  <Step n={1}>좌측 메뉴 <strong>"주간 업무 보고"</strong> → 주차 선택 (기본 = 이번 주)</Step>
+                  <Step n={2}><strong>"100% 자동 작성"</strong> 버튼 클릭 — 3개 섹션이 시스템 활동으로 자동 채워짐</Step>
+                  <Step n={3}>필요 시 텍스트 영역에서 가감/수정 (마크다운 비슷한 자유 형식)</Step>
+                  <Step n={4}><strong>"임시 저장"</strong> 또는 <strong>"제출"</strong></Step>
+                  <Step n={5}>제출 후 팀장이 검토 → 승인 / 반려. 반려 시 사유와 함께 <strong>붉은 배너</strong>로 안내, 수정 후 재제출</Step>
+                  <p className="mt-1 text-[11px] text-slate-500">상단 <strong>"자동 + Excel"</strong> / <strong>"자동 + PDF"</strong> 버튼은 자동 작성 → 즉시 추출까지 1번에 처리하는 단축 액션입니다.</p>
+                </Section>
+
+                <Section title="팀장 — 부서원 보고 검토 (탭 이동 없이)">
+                  <p>· "팀원 보기" 탭 → 부서원 카드 클릭 시 <strong>같은 화면 모달</strong>에서 보고서 전체 + 활동 근거를 함께 확인</p>
+                  <p>· 모달 안에서 직접 <strong>승인 / 반려(사유 입력)</strong>. 반려 사유는 작성자 화면 상단에 강조 배너로 자동 표시됨</p>
+                  <p>· 반려 시 사유를 입력하지 않으면 확인 다이얼로그로 한 번 더 검토하도록 안내</p>
+                </Section>
+
+                <Section title="팀 종합 보고서 (팀장 전용)">
+                  <p>· "팀원 보기" 탭 상단의 <strong>인디고 카드 "팀 종합 보고서"</strong> 클릭 → 모달</p>
+                  <p>· 부서원 제출 보고서를 자동 통합 — <code className="bg-slate-100 px-1 rounded text-[11px]">【 김팀장 】 ... 【 홍길동 】 ...</code> 형태로 사람별 그룹</p>
+                  <p>· 4개 통계 박스(부서원 수/제출/승인/미제출) + 팀장 종합 코멘트 + 3개 섹션(금주 실적·차주 계획·이슈) 자동 채움</p>
+                  <p>· 임시 저장 / 제출 / Excel·PDF 추출 — 일반 보고서와 동일</p>
+                  <p>· 부서원 보고가 추가/수정될 때마다 팀 종합 보고서를 다시 열면 자동 재집계</p>
+                </Section>
+
+                <Section title="샘플 + 가이드 모달">
+                  <p>주간 업무 보고 페이지 우측 상단 <strong>"샘플 + 사용 가이드"</strong> 버튼 — 페이지 내장 가이드(6개 섹션):</p>
+                  <p>· 30초 사용법 / 샘플 보고서 / 자동 집계 데이터 / 권한별 접근 / 워크플로우 / 팀 종합 보고서 + 팀장 종합 보고서 시각 샘플</p>
+                </Section>
+
+                <Section title="추출 — Excel / PDF">
+                  <p>· <strong>본인 보고</strong>: 1시트 (요약/금주실적/차주계획/이슈) — 사번/직급/부서/제출일 헤더 포함</p>
+                  <p>· <strong>팀 종합</strong>: 헤더 시트 + 부서원별 시트 통합. PDF는 인쇄용 단일 페이지 양식</p>
+                  <p>· 모든 추출은 사내 보고용 스타일(블루 헤더/얼룩말/자동 필터) 적용</p>
+                </Section>
+
+                <Note>관리자가 시스템 설정에서 기능을 OFF로 돌리면, 진행 중이던 주간 보고도 즉시 사이드바에서 사라집니다. 데이터는 보존되며 재활성화 시 복구됩니다.</Note>
+              </>
+            )}
+
             {tab === 'export' && (
               <>
                 <h2 className="text-base font-bold text-slate-800 mb-3">{t('보고서 / Excel 추출', 'Reports & Excel')}</h2>
@@ -406,10 +532,24 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                   <p>· 진행률(%) 자동 컬러, ISO 날짜 → YYYY-MM-DD 정규화</p>
                 </Section>
                 <Section title="추출 종류">
-                  <p>· <strong>대시보드 → 종합 리포트</strong>: 10개 시트 (기본통계/도메인/프로젝트/지연/이슈/요청/AS/담당자변경/엔지니어/활동이력)</p>
-                  <p>· <strong>프로젝트 관리 → 리스트</strong>: 간단 리스트 1시트</p>
-                  <p>· <strong>프로젝트 관리 → 상세</strong>: 프로젝트별 시트 분리, 모든 정보 (출장/추가 대응/버전 등) 포함</p>
-                  <p>· 각 메뉴(이슈·자재·사이트·엔지니어·AS·버전)에 단독 Excel 버튼</p>
+                  <p>· <strong>대시보드 → 종합 리포트</strong>: <strong>차트 + 14개 시트</strong> (기본통계/도메인/프로젝트별/지연/이슈/요청/AS/담당자변경/엔지니어/활동이력/마일스톤(60일)/임박이벤트(30일)/8주 가용성 히트맵/<strong>최근 회의록 50건</strong>)</p>
+                  <p>· <strong>대시보드 → PDF</strong>: KPI 5장 카드(고객 요청 미처리 포함) + 임박 마일스톤 + 인력 임박 이벤트 + 도메인별 진척률 등 보고서 양식</p>
+                  <p>· <strong>프로젝트 관리 → 리스트</strong>: 간단 리스트 1시트 (계획/실적 — 실적은 종합 진척률)</p>
+                  <p>· <strong>프로젝트 관리 → 상세</strong>: 프로젝트별 시트 분리, 모든 정보 (출장/추가 대응/버전/<strong>회의록(회의 일시·참석자·결정·액션·첨부)</strong>/AS/고객요청/체크리스트/활동 이력 등)</p>
+                  <p>· <strong>인력/리소스 관리</strong>: 엔지니어 리스트 + 가용 인력 풀 + 8주 가용성 히트맵 (3시트)</p>
+                  <p>· 각 메뉴(이슈·자재·사이트·AS·버전)에 단독 Excel 버튼</p>
+                </Section>
+                <Section title="이력 탭 — 항목 클릭으로 점프">
+                  <p>프로젝트 상세 → 이력 탭의 각 활동 항목은 <strong>클릭하여 해당 탭으로 이동</strong>:</p>
+                  <p>· TASK_*/PHASE_*/MANAGER/SIGN_OFF/VERSION_*/TRIP_* → 일정 탭</p>
+                  <p>· EXTRA_* → 추가 대응 / CHECKLIST → 검수표 / ISSUE_ADD → 이슈</p>
+                  <p>· REQUEST_* → 고객요청 / AS_* → AS 관리 / NOTE_ADD → 회의록</p>
+                  <p>· hover 시 인디고 border + ↗ 아이콘으로 클릭 가능 표시</p>
+                </Section>
+                <Section title="AS 통합관리 — AS 항목 클릭 시 AS 탭으로 자동 이동">
+                  <p>좌측 메뉴 "AS 통합 관리" 페이지에서 항목 클릭 시:</p>
+                  <p>· 프로젝트 상세 모달이 <strong>AS 탭이 활성화된 상태로</strong> 열림 (기존엔 일정 탭으로 열려 한번 더 이동 필요)</p>
+                  <p>· 모달 닫으면 AS 페이지에 그대로 남음 — 기존엔 프로젝트 페이지로 강제 전환되던 것 수정</p>
                 </Section>
                 <Section title="PDF (Buy-off 보고서)">
                   <p>검수 완료 프로젝트 → 검수표 탭의 "최종 완료 보고서 (PDF)" 버튼으로 인쇄/PDF 저장. 고객사 인수인계용으로 사용하세요.</p>
@@ -466,6 +606,11 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                         ['Excel 추출', '✅', '✅', '✅', '✅(자기 회사)'],
                         ['사용자 관리', '✅', '❌', '❌', '❌'],
                         ['시스템 설정 (Drive 폴더 등)', '✅', '❌', '❌', '❌'],
+                        ['주간 업무 보고 — 본인 작성/제출', '✅', '✅¹', '✅¹', '❌'],
+                        ['주간 보고 검토/승인/반려', '✅(전체)', '✅²(같은 부서)', '✅²(같은 부서)', '❌'],
+                        ['팀 종합 보고서 작성', '✅(전체 부서)', '✅²', '✅²', '❌'],
+                        ['주간 업무 보고 기능 ON/OFF', '✅', '❌', '❌', '❌'],
+                        ['주간 보고 권한 부여 / 팀장 지정', '✅', '❌', '❌', '❌'],
                       ].map(([feat, a, p, e, c], i) => (
                         <tr key={i} className="hover:bg-slate-50">
                           <td className="px-3 py-1.5 font-medium text-slate-700">{feat}</td>
@@ -478,6 +623,10 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                     </tbody>
                   </table>
                 </div>
+                <div className="mt-3 text-[11px] text-slate-500 space-y-0.5">
+                  <p>¹ 사용자 관리에서 <strong>"주간 보고" 토글이 ON</strong>인 사용자만 작성·제출 가능 (시스템 설정에서 기능 자체를 활성화한 후).</p>
+                  <p>² <strong>팀장</strong>은 PM과 별도의 부가 권한입니다. 사용자 관리에서 <strong>"팀장" 토글</strong>을 켜면 같은 부서(dept) 부서원의 보고를 검토·승인·반려하고 팀 종합 보고서를 작성할 수 있습니다.</p>
+                </div>
               </>
             )}
 
@@ -485,6 +634,80 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
               <>
                 <h2 className="text-base font-bold text-slate-800 mb-3">{t('업데이트 내역', "What's New")}</h2>
                 <p className="text-xs text-slate-500 mb-4">{t('v1.0 베타 출시 이후 추가/개선된 기능을 시간 역순으로 정리합니다.', 'Recent improvements since v1.0 beta release.')}</p>
+
+                <Section title={t('★ 주간 업무 보고 — 자동 집계 보고 + 팀 종합 보고서 (NEW)', 'Weekly Reports — Auto-aggregated + Team Consolidation (NEW)')}>
+                  <p>· <strong>수기 작성 X, 자동 집계 O</strong> — 한 주간 시스템에 등록된 본인 활동(이슈/회의록/AS/고객요청/버전/출장/추가 대응 등)을 분석해 <strong>금주 실적 / 차주 계획 / 이슈·리스크</strong> 3개 섹션을 자동으로 채움</p>
+                  <p>· <strong>"100% 자동 작성"</strong> 버튼 1번이면 끝. 필요 시 텍스트만 다듬으면 됨</p>
+                  <p>· <strong>"자동 + Excel" / "자동 + PDF"</strong> 단축 버튼으로 자동 작성 → 추출까지 1번에</p>
+                  <p>· 워크플로우: <strong>임시저장 → 제출 → 팀장 승인/반려</strong>. 반려 시 사유가 작성자 화면 상단에 강조 배너로 표시</p>
+                  <p>· <strong>팀장 권한 (PM과 별도)</strong> — 사용자 관리의 "팀장" 토글로 부여. 같은 부서(dept) 부서원 보고만 조회/검토/승인 (ADMIN은 전사)</p>
+                  <p>· <strong>팀원 카드 클릭 → 같은 화면 모달</strong>에서 보고 내용 + 활동 근거를 함께 보고 승인/반려. 탭 이동 없음</p>
+                  <p>· <strong>팀 종합 보고서 (팀장 전용)</strong> — 부서원 보고를 사람별 그룹(<code className="bg-slate-100 px-1 rounded text-[11px]">【 김팀장 】 ... 【 홍길동 】 ...</code>)으로 자동 통합 + 팀장 종합 코멘트 + 4개 통계 박스</p>
+                  <p>· <strong>샘플 + 사용 가이드</strong> — 페이지 우측 상단 버튼. 30초 사용법, 자동 작성 결과 샘플, 팀 종합 보고서 시각 샘플 포함 (6개 섹션)</p>
+                  <p>· <strong>활성화</strong> — 시스템 설정에서 기능 ON → 사용자 관리에서 사용자별 "주간 보고" / "팀장" 토글</p>
+                </Section>
+
+                <Section title={t('시스템 설정 — 글로벌 저장 바 통합', 'System Settings — Global Save Bar')}>
+                  <p>· 페이지 하단 <strong>sticky 저장 바</strong> 도입. Drive 연동, 주간 업무 보고 ON/OFF 등 <strong>모든 설정을 한 번에 저장</strong></p>
+                  <p>· 기존엔 카드별 저장 버튼이 분산되어 있어 어떤 버튼을 눌러야 할지 헷갈리던 문제 해결</p>
+                </Section>
+
+                <Section title={t('사용자 관리 — 팀장 / 주간 보고 컬럼', 'User Management — Team Lead / Weekly Report Columns')}>
+                  <p>· <strong>"팀장" 컬럼 (항상 표시)</strong> — 토글로 부서장(팀장) 권한 부여. PM과 무관한 독립 부가 권한</p>
+                  <p>· <strong>"주간 보고" 컬럼 (기능 활성화 시 표시)</strong> — 사용자별로 주간 보고 작성 권한 부여</p>
+                </Section>
+
+                <Section title={t('대시보드 KPI 5장 재구성 + 평균 진척률 강화', 'Dashboard KPI Reshape')}>
+                  <p>· KPI 카드: 미해결 이슈 / 지연·위험 / 임박 마일스톤 / <strong>고객 요청 미처리</strong> / 평균 진척률(진행중)</p>
+                  <p>· <strong>평균 진척률 카드 강화</strong>: 큰 숫자 + delta 뱃지(실적-계획) + 막대(실적+계획 마커) + 4버킷 분포(0-25/25-50/50-75/75-100) + 진행중 건수</p>
+                  <p>· <strong>AS 미완료</strong>는 카드 대신 우측 위젯에 통합 (이슈/AS 상하 2단). 위젯 헤더 행 클릭으로 전체 팝업.</p>
+                  <p>· 기존 "신규 착수 (30일)" KPI는 제거 (분석 모달에서 시계열로 추적).</p>
+                </Section>
+
+                <Section title={t('회의록 — 빠른/상세 모드 + 다중 파일 + 타임라인', 'Meetings — Modes + Multi-file + Timeline')}>
+                  <p>· <strong>등록 폼 접기/펴기</strong>: "+ 새 회의록 작성" 버튼 클릭 시 펼침, 등록 후 자동 접힘. 평소엔 회의록 리스트가 즉시 보임.</p>
+                  <p>· <strong>빠른 모드</strong>: 본문 + 한줄 요약 + 첨부</p>
+                  <p>· <strong>상세 모드</strong>: 회의 일시 / 참석자 / 결정사항 / 액션 아이템 추가</p>
+                  <p>· <strong>다중 파일 업로드</strong>: 드래그/클릭으로 여러 개. 진행률 `2/3 · 45%`</p>
+                  <p>· <strong>타임라인 브랜치 표시</strong>: 좌측 amber 세로선 + 캘린더 스타일 날짜 노드(월/일/요일, 신선도 색상). 작성자/시간/상대시간/요약/본문/결정/액션/첨부.</p>
+                </Section>
+
+                <Section title={t('대시보드 — 분석/회의록 모달 분리, 회의록 그룹 + 접기/펴기', 'Dashboard — Analytics/Meetings Split + Collapsible Groups')}>
+                  <p>· 헤더 버튼 분리: <strong>고급 분석</strong> (Lead Time/MTTR/도메인/월별/AS/고객요청) / <strong>회의록</strong> (검색·필터·프로젝트별 그룹).</p>
+                  <p>· <strong>회의록 모달은 프로젝트별 그룹</strong>: 인디고 헤더 + 내부 amber 타임라인 브랜치. <strong>기본 모두 접힘</strong>, 헤더 클릭 시 펼침. 우측 ↗ 버튼은 해당 프로젝트 회의록 탭으로.</p>
+                  <p>· 우측 상단 "전체 펼치기/접기" 토글</p>
+                  <p>· 대시보드 중복 위젯 제거 (이슈 도넛/상태 막대/지연 위험 — 메인 대시보드와 중복)</p>
+                </Section>
+
+                <Section title={t('이력 탭 — 항목 클릭 점프', 'History — Click to Jump')}>
+                  <p>프로젝트 상세 → 이력 탭의 활동 카드를 <strong>클릭하면 해당 탭으로 이동</strong>:</p>
+                  <p>· TASK/PHASE/MANAGER/SIGN/VERSION/TRIP → 일정 / EXTRA → 추가 대응 / CHECKLIST → 검수표 / ISSUE → 이슈 / REQUEST → 고객요청 / AS → AS / NOTE → 회의록</p>
+                  <p>· hover 인디고 border + ↗ 아이콘으로 시각화</p>
+                </Section>
+
+                <Section title={t('AS 통합관리 — 클릭 시 AS 탭 자동 활성', 'AS Page — Auto-open AS Tab')}>
+                  <p>· AS 페이지에서 항목 클릭 → 모달이 <strong>AS 탭 활성 상태</strong>로 열림 (기존: 일정 탭)</p>
+                  <p>· 모달 닫으면 사용자가 보던 페이지(AS, 인력 등) 그대로 유지 — 기존: 프로젝트 페이지로 강제 전환되던 것 수정</p>
+                </Section>
+
+                <Section title={t('대시보드 간트 — 범례 줄 추가 (색·마일스톤 의미 명시)', 'Dashboard Gantt — Inline Legend')}>
+                  <p>· 헤더에 한 줄 안내만 있던 것을 <strong>전체 범례 줄</strong>로 확장 — 차트 위에 상시 표시</p>
+                  <p>· <strong>막대 색</strong>: 파랑(진행) / 노랑(마감임박) / 빨강(이슈발생) / 초록(완료) — 좌=경과(진함), 우=예정(60% 투명)</p>
+                  <p>· <strong>마일스톤 ◆</strong>: 빨강=D-7 임박 / 노랑=D-30 임박 / 핑크=단계 / 보라=셋업 / 파랑=납기 — 지난 항목은 40% 흐림</p>
+                  <p>· 도움말 시작하기 탭에 <strong>"대시보드 간트 — 색상 / 마일스톤 ◆ 의미"</strong> 섹션도 함께 추가</p>
+                </Section>
+                <Section title={t('인력/리소스 페이지 — 대시보드 모달 수준의 풍부 레이아웃 동기화', 'Resources Page — Dashboard-grade Layout')}>
+                  <p>· 페이지가 단순 테이블 위주였는데, <strong>대시보드 인력/리소스 상세 모달의 풍부 레이아웃을 페이지 상단으로 그대로 이식</strong></p>
+                  <p>· <strong>6장 통계</strong> + <strong>3컬럼 그리드</strong>(현장별 배치 / 출장 일정 / 가용 풀) + <strong>인력 알림(풀 폭)</strong> + 엔지니어 상세 테이블(상세 관리 그대로)</p>
+                  <p>· 8주 가용성 히트맵은 헤더 <strong>"8주 가용성"</strong> 버튼으로 모달 토글 (평소 페이지 가볍게)</p>
+                  <p>· 대시보드 모달은 빠른 미리보기용으로 그대로 유지 — 페이지로 이동하면 같은 레이아웃을 더 큰 폭에서 + CRUD까지</p>
+                </Section>
+
+                <Section title={t('간트 — 사이드바 (현장별/출장 일정) 반응형', 'Gantt — Responsive Sidebar')}>
+                  <p>· 대시보드 "전체 프로젝트 일정 + 인력 배치" 영역에 좌측 260px 사이드바 (현장별 인력 배치 + 출장 일정)</p>
+                  <p>· 간트 본체 row 수에 비례해서 사이드바 카드도 늘어남 (flex-1) — 두 카드 균등 분할 + 내부 스크롤</p>
+                  <p>· 간트 본체에 PM 뱃지(인디고 PM|이름) + 마일스톤 다이아몬드(D-7 이내 펄스 애니메이션)</p>
+                </Section>
 
                 <Section title={t('일정 탭 — 단계별 / 셋업 두 모달 패턴 통일', 'Schedule Tab — Two Modal-Based Editors')}>
                   <p>· <strong>"셋업 일정" 탭 → "일정" 탭</strong>으로 변경. 내부에 [프로젝트 단계별 일정] / [셋업 일정] 두 서브탭.</p>

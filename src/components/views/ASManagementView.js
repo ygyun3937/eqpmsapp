@@ -153,7 +153,7 @@ const ASManagementView = memo(function ASManagementView({ projects, onProjectCli
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${statusColor(r.status)}`}>{r.status}</span>
                       <span className="text-[10px] text-slate-400 ml-1 flex items-center"><Calendar size={10} className="mr-1" />{r.date}</span>
                     </div>
-                    <button onClick={() => onProjectClick && onProjectClick(r.projectId)} className="text-base font-bold text-slate-800 hover:text-purple-600 transition-colors flex items-center group">
+                    <button onClick={() => onProjectClick && onProjectClick(r.projectId, 'as')} className="text-base font-bold text-slate-800 hover:text-purple-600 transition-colors flex items-center group">
                       {r.projectName} <ExternalLink size={12} className="ml-1 opacity-0 group-hover:opacity-100" />
                     </button>
                     <div className="text-xs text-slate-500 mt-1 flex items-center gap-3">
