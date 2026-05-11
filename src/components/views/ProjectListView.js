@@ -1,11 +1,20 @@
 import React, { useState, useMemo, memo, useRef, useEffect } from 'react';
-import { Plus, Filter, AlignJustify, CalendarDays, Clock, User, HardDrive, Monitor, Cpu, Edit, ListTodo, Trash, Download, History, ChevronDown, ChevronUp, Plane, Users, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { Plus, Filter, AlignJustify, CalendarDays, Clock, User, HardDrive, Monitor, Cpu, Edit, ListTodo, Trash, Download, History, ChevronDown, ChevronUp, Plane, Users, ZoomIn, ZoomOut, Maximize2, Building2, IdCard, Mail, Phone, Smartphone, MapPin, Database, ArrowUpRight, Briefcase, X } from 'lucide-react';
 import { PROJECT_PHASES, BATTERY_DOMAINS, DOMAIN_VERSION_CATEGORIES, DEFAULT_VERSION_CATEGORIES } from '../../constants';
 import { fmtYMD, calcOverallProgress } from '../../utils/calc';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
 import ProjectIssueBadge from '../common/ProjectIssueBadge';
 import ProjectNotesBadge from '../common/ProjectNotesBadge';
+import InfoPopover from '../common/InfoPopover';
 import { exportToExcel, exportSectionedExcel } from '../../utils/export';
+
+// 빈 값 / null / undefined / "null" / "undefined" 문자열을 모두 빈 문자열로 정규화
+const cleanText = (v) => {
+  if (v == null) return '';
+  const s = String(v).trim();
+  if (!s || s.toLowerCase() === 'null' || s.toLowerCase() === 'undefined') return '';
+  return s;
+};
 
 const safeDate = (v) => {
   const ymd = fmtYMD(v);
@@ -26,10 +35,53 @@ const getCurrentPhaseName = (prj) => {
   return list[Math.max(0, Math.min(idx, list.length - 1))]?.name || '';
 };
 
-const ProjectListView = memo(function ProjectListView({ projects, issues, engineers, getStatusColor, onAddClick, onManageTasks, onEditVersion, onChangeManager, onManageTeam, onViewPhaseGantt, onEditProject, onDeleteProject, onUpdatePhase, onEditPhases, onIssueClick, calcExp, calcAct, currentUser, t }) {
+const ProjectListView = memo(function ProjectListView({ projects, issues, engineers, customers, sites, getStatusColor, onAddClick, onManageTasks, onEditVersion, onChangeManager, onManageTeam, onViewPhaseGantt, onEditProject, onDeleteProject, onUpdatePhase, onEditPhases, onIssueClick, onOpenCustomer, onShowEngineer, onJumpTo, calcExp, calcAct, currentUser, t }) {
   const [viewMode, setViewMode] = useState('list');
   const [filterManager, setFilterManager] = useState('all');
   const [filterDomain, setFilterDomain] = useState('all');
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  // 셀 클릭 popover — { kind: 'customer'|'manager'|'site', projectId } 또는 null
+  const [openInfoPopover, setOpenInfoPopover] = useState(null);
+  const togglePopover = (kind, projectId) => {
+    setOpenInfoPopover(prev => (prev && prev.kind === kind && prev.projectId === projectId) ? null : { kind, projectId });
+  };
+  const closePopover = () => setOpenInfoPopover(null);
+  // 룩업 헬퍼 — id 우선, 텍스트 fallback. role: 'endUser' (기본) | 'vendor'
+  const lookupCustomer = (prj, role = 'endUser') => {
+    if (!Array.isArray(customers) || customers.length === 0) return null;
+    const id = role === 'vendor' ? prj.vendorId : (prj.endUserId || prj.customerId);
+    const name = role === 'vendor' ? prj.vendor : (prj.endUser || prj.customer);
+    if (id) {
+      const byId = customers.find(c => c.id === id);
+      if (byId) return byId;
+    }
+    const trimmed = String(name || '').trim();
+    if (!trimmed) return null;
+    return customers.find(c => String(c.name || '').trim() === trimmed) || null;
+  };
+  const lookupEngineer = (managerName) => {
+    if (!managerName || !Array.isArray(engineers)) return null;
+    return engineers.find(e => e.name === managerName) || null;
+  };
+  const lookupSite = (prj) => {
+    if (!Array.isArray(sites) || sites.length === 0) return null;
+    const cust = String(prj.customer || '').trim();
+    const siteText = String(prj.site || '').trim();
+    if (!siteText && !cust) return null;
+    // 1) fab/line 합쳐서 site 텍스트와 매칭
+    const matchByFabLine = sites.find(s => {
+      const compact = `${s.fab || ''}${s.line ? ' ' + s.line : ''}`.trim();
+      return compact === siteText || (s.fab || '').trim() === siteText;
+    });
+    if (matchByFabLine) return matchByFabLine;
+    // 2) customer + fab 매칭
+    if (cust) {
+      const byCust = sites.find(s => String(s.customer || '').trim() === cust);
+      if (byCust) return byCust;
+    }
+    return null;
+  };
   const [openIssueDropdownId, setOpenIssueDropdownId] = useState(null);
   const [openNotesDropdownId, setOpenNotesDropdownId] = useState(null);
   const [expandedGanttId, setExpandedGanttId] = useState(null);
@@ -55,8 +107,16 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
     }
     if (filterManager !== 'all') result = result.filter(p => p.manager === filterManager);
     if (filterDomain !== 'all') result = result.filter(p => p.domain === filterDomain);
+    const kw = searchKeyword.trim().toLowerCase();
+    if (kw) {
+      result = result.filter(p => {
+        const eqCodes = Array.isArray(p.equipments) ? p.equipments.map(eq => `${eq.code || ''} ${eq.name || ''}`).join(' ') : '';
+        const hay = [p.name, p.customer, p.endUser, p.vendor, p.site, p.manager, p.domain, eqCodes].filter(Boolean).join(' ').toLowerCase();
+        return hay.includes(kw);
+      });
+    }
     return result;
-  }, [projects, filterManager, filterDomain, currentUser]);
+  }, [projects, filterManager, filterDomain, searchKeyword, currentUser]);
 
   const ganttRange = useMemo(() => {
     const starts = [];
@@ -386,29 +446,80 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-end">
+      <div className="flex flex-wrap justify-between items-end gap-3">
         <div><h1 className="text-2xl font-bold">{t('프로젝트 관리', 'Projects')}</h1></div>
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-2 md:gap-3">
           <button onClick={handleExportList} className="flex items-center bg-slate-100 text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors shadow-sm" title={t('간단 리스트 Excel', 'Simple list Excel')}><Download size={16} className="mr-1.5" /> {t('리스트 (Excel)', 'List (Excel)')}</button>
           <button onClick={handleExportDetail} className="flex items-center bg-indigo-50 text-indigo-600 border border-indigo-200 px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-indigo-100 transition-colors shadow-sm" title={t('프로젝트별 시트 분리 Excel', 'Per-project sheets')}><Download size={16} className="mr-1.5" /> {t('상세 (Excel)', 'Detail (Excel)')}</button>
-          {currentUser.role !== 'CUSTOMER' && (
-            <>
-              <div className="flex items-center bg-white rounded-lg px-3 py-1.5 shadow-sm border border-slate-200">
-                <Filter size={16} className="text-slate-400 mr-2" />
-                <select className="text-sm border-none outline-none bg-transparent text-slate-700 font-medium cursor-pointer" value={filterDomain} onChange={(e) => setFilterDomain(e.target.value)} title={t('산업 도메인 필터', 'Domain filter')}>
-                  <option value="all">{t('전체 도메인', 'All Domains')}</option>
-                  {domains.filter(d => d !== 'all').map(d => (<option key={d} value={d}>{d}</option>))}
-                </select>
+          {currentUser.role !== 'CUSTOMER' && (() => {
+            // 통합 필터 — 검색 + 도메인 + 담당자 한 버튼에 묶음
+            const activeCount = (searchKeyword.trim() ? 1 : 0) + (filterDomain !== 'all' ? 1 : 0) + (filterManager !== 'all' ? 1 : 0);
+            return (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setFilterPanelOpen(v => !v)}
+                  className={`inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-medium border shadow-sm transition-colors ${activeCount > 0 ? 'bg-indigo-50 text-indigo-700 border-indigo-300 hover:bg-indigo-100' : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-300'}`}
+                  title={t('필터/검색', 'Filter / Search')}
+                >
+                  <Filter size={16} className="mr-1.5" />
+                  {t('필터/검색', 'Filter')}
+                  {activeCount > 0 && (
+                    <span className="ml-1.5 bg-indigo-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{activeCount}</span>
+                  )}
+                  <ChevronDown size={14} className={`ml-1 text-slate-500 transition-transform ${filterPanelOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {filterPanelOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setFilterPanelOpen(false)} />
+                    <div className="absolute right-0 mt-1.5 w-[360px] max-w-[calc(100vw-1rem)] bg-white border border-slate-200 rounded-xl shadow-2xl z-50 p-4 space-y-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">{t('검색', 'Search')}</label>
+                        <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
+                          <input
+                            autoFocus
+                            type="text"
+                            value={searchKeyword}
+                            onChange={(e) => setSearchKeyword(e.target.value)}
+                            placeholder={t('프로젝트명·고객사·사이트·담당자·장비 코드', 'Name / customer / site / PM / eq. code')}
+                            className="flex-1 text-sm bg-transparent border-none outline-none text-slate-700 placeholder-slate-400 min-w-0"
+                          />
+                          {searchKeyword && (
+                            <button type="button" onClick={() => setSearchKeyword('')} className="ml-1 text-slate-400 hover:text-slate-700 shrink-0">
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">{t('산업군', 'Domain')}</label>
+                        <select className="w-full text-sm p-2 border border-slate-200 rounded-lg bg-white text-slate-700 focus:outline-none focus:border-indigo-400" value={filterDomain} onChange={(e) => setFilterDomain(e.target.value)}>
+                          <option value="all">{t('전체 도메인', 'All Domains')}</option>
+                          {domains.filter(d => d !== 'all').map(d => (<option key={d} value={d}>{d}</option>))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">{t('담당자', 'Manager')}</label>
+                        <select className="w-full text-sm p-2 border border-slate-200 rounded-lg bg-white text-slate-700 focus:outline-none focus:border-indigo-400" value={filterManager} onChange={(e) => setFilterManager(e.target.value)}>
+                          <option value="all">{t('전체 담당자', 'All Managers')}</option>
+                          {managers.filter(m => m !== 'all').map(m => (<option key={m} value={m}>{m}</option>))}
+                        </select>
+                      </div>
+                      {activeCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => { setSearchKeyword(''); setFilterDomain('all'); setFilterManager('all'); }}
+                          className="w-full text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 py-1.5 rounded-lg inline-flex items-center justify-center"
+                        >
+                          <X size={12} className="mr-1" />{t('초기화', 'Reset')}
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
-              <div className="flex items-center bg-white rounded-lg px-3 py-1.5 shadow-sm border border-slate-200">
-                <User size={16} className="text-slate-400 mr-2" />
-                <select className="text-sm border-none outline-none bg-transparent text-slate-700 font-medium cursor-pointer" value={filterManager} onChange={(e) => setFilterManager(e.target.value)} title={t('담당자 필터', 'Manager filter')}>
-                  <option value="all">{t('전체 담당자', 'All Managers')}</option>
-                  {managers.filter(m => m !== 'all').map(m => (<option key={m} value={m}>{m}</option>))}
-                </select>
-              </div>
-            </>
-          )}
+            );
+          })()}
           <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
             <button onClick={() => setViewMode('list')} className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'list' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}><AlignJustify size={16} className="mr-1.5" /> {t('리스트', 'List')}</button>
             <button onClick={() => setViewMode('gantt')} className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'gantt' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}><CalendarDays size={16} className="mr-1.5" /> {t('간트차트', 'Gantt')}</button>
@@ -426,8 +537,7 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
               <thead className="bg-slate-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase min-w-[250px]">{t('프로젝트명 / 진행 단계', 'Project / Phase')}</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase min-w-[150px]">{t('고객사/사이트', 'Client/Site')}</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase min-w-[120px]">{t('담당자', 'Manager')}</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-slate-500 uppercase min-w-[200px]">{t('담당자', 'Manager')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase min-w-[150px]">{t('버전 (HW/SW/FW)', 'Versions')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase min-w-[200px]">{t('진척도 (계획 / 실적)', 'Progress')}</th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase min-w-[80px]">{t('단계 간트', 'Gantt')}</th>
@@ -436,7 +546,7 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
               </thead>
               <tbody className="bg-white divide-y divide-slate-200">
                 {filteredProjects.length === 0 ? (
-                  <tr><td colSpan="7" className="text-center py-10 text-slate-400">{t('프로젝트가 없습니다.', 'No projects found.')}</td></tr>
+                  <tr><td colSpan="6" className="text-center py-10 text-slate-400">{t('프로젝트가 없습니다.', 'No projects found.')}</td></tr>
                 ) : filteredProjects.map((prj) => {
                   const expected = calcExp(prj.startDate, prj.dueDate);
                   const actual = calcAct(prj.tasks);
@@ -446,12 +556,19 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                   return (
                   <React.Fragment key={prj.id}>
                   <tr className="hover:bg-slate-50 group align-middle">
-                    <td className="px-6 py-5 whitespace-nowrap">
-                      <div className="flex items-center space-x-2">
-                      <ProjectIssueBadge prjId={prj.id} projectIssues={projectIssues} openIssueDropdownId={openIssueDropdownId} setOpenIssueDropdownId={setOpenIssueDropdownId} onIssueClick={onIssueClick} getStatusColor={getStatusColor} t={t} />
-                      <ProjectNotesBadge prjId={prj.id} notes={prj.notes} openId={openNotesDropdownId} setOpenId={setOpenNotesDropdownId} onJump={() => onManageTasks && onManageTasks(prj.id)} t={t} />
-                    </div>
-                    <div className="text-sm font-bold text-slate-900 mt-1.5 flex items-center flex-wrap gap-y-1">
+                    <td className="px-6 py-5 whitespace-normal min-w-[340px]">
+                      {/* 상단 액션 — 수정·이슈·노트만 */}
+                      <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                        {(currentUser.role === 'ADMIN' || currentUser.role === 'PM') && (
+                          <button onClick={() => onEditProject(prj)} className="inline-flex items-center justify-center w-6 h-6 rounded bg-slate-50 hover:bg-slate-200 text-slate-600 border border-slate-200 transition-colors" title={t('프로젝트 정보 수정', 'Edit Project')}>
+                            <Edit size={11} />
+                          </button>
+                        )}
+                        <ProjectIssueBadge prjId={prj.id} projectIssues={projectIssues} openIssueDropdownId={openIssueDropdownId} setOpenIssueDropdownId={setOpenIssueDropdownId} onIssueClick={onIssueClick} getStatusColor={getStatusColor} t={t} />
+                        <ProjectNotesBadge prjId={prj.id} notes={prj.notes} openId={openNotesDropdownId} setOpenId={setOpenNotesDropdownId} onJump={() => onManageTasks && onManageTasks(prj.id)} t={t} />
+                      </div>
+                      {/* 주인공 — 프로젝트명 + 도메인 + 2차전지 스펙 */}
+                    <div className="text-base font-bold text-slate-900 mt-1 flex items-center flex-wrap gap-y-1">
                       {prj.name}
                       <span className="ml-2 bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] font-medium border border-slate-200">{prj.domain}</span>
                       {(() => {
@@ -466,79 +583,292 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                           </span>
                         );
                       })()}
-                      {(currentUser.role === 'ADMIN' || currentUser.role === 'PM') && (
-                        <button onClick={() => onEditProject(prj)} className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-bold border border-indigo-200 transition-colors" title={t('프로젝트 정보 수정', 'Edit Project')}>
-                          <Edit size={10} className="mr-0.5" />{t('수정', 'Edit')}
-                        </button>
-                      )}
                     </div>
                     {Array.isArray(prj.equipments) && prj.equipments.length > 0 && (
-                      <div className="flex items-center flex-wrap gap-1 mt-1.5">
-                        <span className="text-[10px] text-slate-400 font-bold mr-0.5">{t('장비', 'Eq.')}</span>
+                      <div className="flex items-center flex-wrap gap-1.5 mt-1.5">
+                        <span className="text-xs text-slate-500 font-bold mr-0.5">{t('장비 코드:', 'Eq Code:')}</span>
                         {prj.equipments.slice(0, 4).map(eq => (
-                          <span key={eq.id} className="inline-flex items-center bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-[10px] font-bold border border-blue-200 font-mono" title={eq.name ? `${eq.code} — ${eq.name}${eq.note ? ` (${eq.note})` : ''}` : eq.code}>
+                          <span key={eq.id} className="inline-flex items-center bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs font-bold border border-blue-200 font-mono" title={eq.name ? `${eq.code} — ${eq.name}${eq.note ? ` (${eq.note})` : ''}` : eq.code}>
                             {eq.code}
                           </span>
                         ))}
                         {prj.equipments.length > 4 && (
-                          <span className="text-[10px] text-slate-500 font-bold">+{prj.equipments.length - 4}</span>
+                          <span className="text-xs text-slate-500 font-bold">+{prj.equipments.length - 4}</span>
                         )}
                       </div>
                     )}
+                    <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                        {(() => {
+                          // 단일 칩: [아이콘 이름 부가배지] 한 덩어리. 클릭하면 popover.
+                          const renderStakeholderChip = (role, IconComp, bgCls, textCls, borderCls, hoverBg) => {
+                            const isVendor = role === 'vendor';
+                            const isSite = role === 'site';
+                            let name = '';
+                            let cust = null;
+                            let site = null;
+                            let extra = null; // 부가 정보(담당자 수, ⚡ 등)
+                            let popKind = '';
+                            if (isSite) {
+                              site = lookupSite(prj);
+                              name = cleanText(prj.site);
+                              popKind = 'site';
+                              extra = site?.power ? '⚡' : null;
+                            } else {
+                              cust = lookupCustomer(prj, role);
+                              // 'null'/'undefined' 문자열 걸러내기 (cleanText)
+                              name = isVendor ? cleanText(prj.vendor) : (cleanText(prj.endUser) || cleanText(prj.customer));
+                              popKind = `customer-${role}`;
+                              const cnt = cust && Array.isArray(cust.contacts) ? cust.contacts.length : 0;
+                              if (cnt > 0) extra = cnt;
+                            }
+                            const trimmed = String(name || '').trim();
+                            const open = !!openInfoPopover && openInfoPopover.kind === popKind && openInfoPopover.projectId === prj.id;
+                            const roleLabel = isSite ? t('사이트', 'Site') : (isVendor ? t('설비업체', 'Vendor') : t('엔드유저', 'End User'));
+                            return (
+                              <div key={role} className="relative">
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); togglePopover(popKind, prj.id); }}
+                                  className={`inline-flex items-center gap-1 ${bgCls} ${hoverBg} ${textCls} border ${borderCls} px-2 py-1 rounded font-bold text-[11px] transition-colors`}
+                                  title={`${roleLabel}: ${trimmed || t('미지정', 'unset')}`}
+                                >
+                                  <IconComp size={11} />
+                                  <span className="opacity-70 font-normal">{roleLabel}:</span>
+                                  <span>{trimmed || <span className="italic opacity-70">{t('미지정', '—')}</span>}</span>
+                                  {extra != null && (
+                                    typeof extra === 'number'
+                                      ? <span className="ml-0.5 bg-amber-100 text-amber-700 border border-amber-200 px-1 rounded text-[9px] inline-flex items-center"><IdCard size={8} className="mr-0.5" />{extra}</span>
+                                      : <span className="ml-0.5 text-[10px]">{extra}</span>
+                                  )}
+                                </button>
+                                {/* Popover — 기존 popover 내용 그대로 (cust/site에 따라 분기) */}
+                                <InfoPopover open={open} onClose={closePopover} align="left" width={isSite ? 'w-[380px]' : 'w-[420px]'}>
+                                  {isSite ? (
+                                    site ? (
+                                      <div className="p-3">
+                                        <div className="flex items-center gap-2 pb-2 mb-2 border-b border-slate-100">
+                                          <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center"><Database size={16} /></div>
+                                          <div className="min-w-0 flex-1">
+                                            <div className="text-sm font-bold text-slate-800 truncate">{site.fab}{site.line ? ` · ${site.line}` : ''}</div>
+                                            <div className="text-[10px] text-slate-500">{site.customer || '-'}</div>
+                                          </div>
+                                        </div>
+                                        {site.power && (
+                                          <div className="bg-slate-50 border border-slate-200 rounded p-1.5 mb-1.5">
+                                            <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Power</div>
+                                            <div className="text-xs font-bold text-slate-800">{site.power}</div>
+                                          </div>
+                                        )}
+                                        {Array.isArray(site.customSpecs) && site.customSpecs.length > 0 && (
+                                          <div className="mb-1.5">
+                                            <div className="text-[9px] font-bold text-purple-700 uppercase tracking-wider mb-1">{t('추가 스펙', 'Specs')} ({site.customSpecs.length})</div>
+                                            <div className="grid grid-cols-2 gap-1">
+                                              {site.customSpecs.slice(0, 4).map(s => (
+                                                <div key={s.id} className="bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5">
+                                                  <div className="text-[8px] font-bold text-purple-600 truncate">{s.label}</div>
+                                                  <div className="text-[10px] font-bold text-slate-800 truncate">{s.value}</div>
+                                                </div>
+                                              ))}
+                                              {site.customSpecs.length > 4 && <div className="col-span-2 text-[9px] text-purple-600 text-center">+{site.customSpecs.length - 4}</div>}
+                                            </div>
+                                          </div>
+                                        )}
+                                        {site.note && <div className="text-[10px] text-slate-500 italic line-clamp-2 mb-2">{site.note}</div>}
+                                        {onJumpTo && (
+                                          <button type="button" onClick={() => { closePopover(); onJumpTo('sites'); }} className="w-full text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 rounded inline-flex items-center justify-center">
+                                            {t('사이트 마스터로 이동', 'Go to Site Master')} <ArrowUpRight size={11} className="ml-1" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <div className="p-3 text-xs text-slate-500">
+                                        <strong className="text-slate-700">{trimmed || t('사이트 미지정', 'No site')}</strong>{' '}
+                                        — {t('사이트 마스터에 매칭되는 항목이 없습니다.', 'Not matched in site master.')}
+                                      </div>
+                                    )
+                                  ) : (
+                                    cust ? (
+                                      <div className="p-3">
+                                        <div className="flex items-center gap-2 pb-2 mb-2 border-b border-slate-100">
+                                          <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center"><Building2 size={16} /></div>
+                                          <div className="min-w-0 flex-1">
+                                            <div className="text-sm font-bold text-slate-800 truncate">{cust.name} <span className="text-[10px] text-slate-400 font-normal">· {roleLabel}</span></div>
+                                            <div className="text-[10px] text-slate-500">{cleanText(cust.domain)}{cleanText(cust.phone) ? ` · ${cleanText(cust.phone)}` : ''}</div>
+                                          </div>
+                                        </div>
+                                        {cleanText(cust.address) && <div className="text-[11px] text-slate-600 mb-1.5 flex items-start"><MapPin size={10} className="mr-1 mt-0.5 text-slate-400 shrink-0" /><span className="truncate">{cleanText(cust.address)}</span></div>}
+                                        {Array.isArray(cust.contacts) && cust.contacts.length > 0 && (
+                                          <div className="mb-2">
+                                            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{t('담당자', 'Contacts')} ({cust.contacts.length})</div>
+                                            <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                                              {cust.contacts.slice(0, 5).map(ct => {
+                                                const ttl = cleanText(ct.title);
+                                                const dept = cleanText(ct.dept);
+                                                const email = cleanText(ct.email);
+                                                const mobile = cleanText(ct.mobile);
+                                                const officePhone = cleanText(ct.officePhone);
+                                                return (
+                                                  <div key={ct.id} className="bg-slate-50 border border-slate-200 rounded px-2 py-1.5">
+                                                    <div className="flex items-baseline gap-1.5 flex-wrap">
+                                                      <span className="text-xs font-bold text-slate-800">{ct.name}</span>
+                                                      {ttl && <span className="text-[10px] text-slate-500">{ttl}</span>}
+                                                      {dept && <span className="text-[10px] text-slate-400">· {dept}</span>}
+                                                    </div>
+                                                    {(email || mobile || officePhone) && (
+                                                      <div className="text-[10px] text-slate-600 mt-1 flex flex-col gap-0.5">
+                                                        {email && <span className="inline-flex items-center"><Mail size={9} className="mr-1 text-slate-400 shrink-0" />{email}</span>}
+                                                        {mobile && <span className="inline-flex items-center"><Smartphone size={9} className="mr-1 text-slate-400 shrink-0" />{mobile}</span>}
+                                                        {officePhone && <span className="inline-flex items-center"><Phone size={9} className="mr-1 text-slate-400 shrink-0" />{officePhone}</span>}
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                );
+                                              })}
+                                              {cust.contacts.length > 5 && <div className="text-[10px] text-slate-400 text-center">+{cust.contacts.length - 5} {t('명 더', 'more')}</div>}
+                                            </div>
+                                          </div>
+                                        )}
+                                        {cleanText(cust.note) && <div className="text-[10px] text-slate-500 italic line-clamp-2 mb-2">{cleanText(cust.note)}</div>}
+                                        {onOpenCustomer && (
+                                          <button type="button" onClick={() => { closePopover(); onOpenCustomer(cust); }} className="w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white py-1.5 rounded inline-flex items-center justify-center">
+                                            {t('고객사 상세 열기', 'Open Customer')} <ArrowUpRight size={11} className="ml-1" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <div className="p-3">
+                                        <div className="text-xs text-slate-500 mb-2">
+                                          <strong className="text-slate-700">{trimmed || `${roleLabel} ${t('미지정', 'unset')}`}</strong>{' '}
+                                          — {t('고객사 마스터에 등록되어 있지 않습니다.', 'Not registered in customer master.')}
+                                        </div>
+                                        {onJumpTo && (
+                                          <button type="button" onClick={() => { closePopover(); onJumpTo('customers'); }} className="w-full text-xs font-bold bg-slate-700 hover:bg-slate-800 text-white py-1.5 rounded inline-flex items-center justify-center">
+                                            {t('고객사 관리로 이동', 'Go to Customer Master')} <ArrowUpRight size={11} className="ml-1" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    )
+                                  )}
+                                </InfoPopover>
+                              </div>
+                            );
+                          };
+                          return [
+                            renderStakeholderChip('endUser', Building2, 'bg-indigo-50', 'text-indigo-700', 'border-indigo-200', 'hover:bg-indigo-100'),
+                            renderStakeholderChip('vendor', Building2, 'bg-purple-50', 'text-purple-700', 'border-purple-200', 'hover:bg-purple-100'),
+                            renderStakeholderChip('site', Database, 'bg-emerald-50', 'text-emerald-700', 'border-emerald-200', 'hover:bg-emerald-100')
+                          ];
+                        })()}
+                    </div>
                     <div className="text-xs text-slate-500 flex items-center mt-1"><Clock size={12} className="mr-1" /> {fmtYMD(prj.startDate) || <span className="italic text-amber-600">미정</span>} ~ {fmtYMD(prj.dueDate) || <span className="italic text-amber-600">미정</span>}</div>
                     <ProjectPipelineStepper phases={prj.phases} currentPhase={prj.phaseIndex || 0} onUpdatePhase={onUpdatePhase} projectId={prj.id} role={currentUser.role} onEditPhases={onEditPhases} />
                   </td>
-                  <td className="px-6 py-5 whitespace-nowrap">
-                    {(() => {
-                      const canEdit = currentUser.role === 'ADMIN' || currentUser.role === 'PM';
-                      const handleClick = () => { if (canEdit) onEditProject(prj); };
-                      return (
-                        <button
-                          type="button"
-                          onClick={handleClick}
-                          disabled={!canEdit}
-                          className={`text-left p-1.5 -m-1.5 rounded transition-colors ${canEdit ? 'cursor-pointer hover:bg-indigo-50' : 'cursor-default'}`}
-                          title={canEdit ? t('클릭하여 고객사/사이트/일정 수정', 'Click to edit') : ''}
-                        >
-                          <div className="text-sm text-slate-900 flex items-center">
-                            {prj.customer}
-                            {canEdit && <Edit size={10} className="ml-1.5 text-slate-300" />}
-                          </div>
-                          <div className="text-xs text-slate-500">{prj.site}</div>
-                        </button>
-                      );
-                    })()}
-                  </td>
-                  <td className="px-6 py-5 whitespace-nowrap">
+                  <td className="px-3 py-5 align-top min-w-[200px]">
                     {(() => {
                       const extras = (engineers || []).filter(e => Array.isArray(e.assignedProjectIds) && e.assignedProjectIds.includes(prj.id) && e.name !== prj.manager);
                       const tripCount = (prj.trips || []).length;
                       const canEdit = currentUser.role === 'ADMIN' || currentUser.role === 'PM';
-                      const handleClick = () => { if (canEdit && onManageTeam) onManageTeam(prj); };
+                      const mgr = lookupEngineer(prj.manager);
+                      const mgrOpen = !!openInfoPopover && openInfoPopover.kind === 'manager' && openInfoPopover.projectId === prj.id;
+                      const mgrName = cleanText(prj.manager);
                       return (
-                        <button
-                          type="button"
-                          onClick={handleClick}
-                          disabled={!canEdit}
-                          className={`text-left w-full p-2 -m-2 rounded-lg transition-colors ${canEdit ? 'cursor-pointer hover:bg-blue-50' : 'cursor-default'}`}
-                          title={canEdit ? t('클릭하여 담당자/추가 인력/출장 일정 관리', 'Click to manage team & trips') : ''}
-                        >
-                          <div className="text-sm text-slate-700 flex items-center font-bold">
-                            <User size={14} className="mr-1.5 text-slate-400" />{prj.manager || t('미지정', 'Unassigned')}
-                            {canEdit && <Edit size={10} className="ml-1.5 text-slate-300" />}
-                          </div>
-                          {extras.length > 0 && (
-                            <div className="mt-1 flex items-center text-[10px] text-slate-500" title={extras.map(e => e.name).join(', ')}>
-                              <Users size={10} className="mr-1" />{t('추가 인력', 'Team')} {extras.length}{t('명', '')}
+                        <div className="relative inline-flex flex-col items-start gap-1">
+                          <button type="button" onClick={(e) => { e.stopPropagation(); togglePopover('manager', prj.id); }} className="inline-flex items-center gap-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2 py-1 rounded font-bold text-[11px] transition-colors whitespace-nowrap" title={t('클릭하여 담당자 정보 보기', 'Click for manager info')}>
+                            <User size={11} />
+                            <span className="opacity-70 font-normal">{t('담당자', 'PM')}:</span>
+                            <span>{mgrName || <span className="italic text-slate-400">{t('미지정', 'unset')}</span>}</span>
+                            {cleanText(mgr?.dept) && <span className="ml-0.5 bg-white text-slate-600 border border-slate-200 px-1 rounded text-[9px]">{cleanText(mgr.dept)}</span>}
+                          </button>
+                          {(extras.length > 0 || tripCount > 0) && (
+                            <div className="flex items-center gap-1 flex-wrap text-[10px]">
+                              {extras.length > 0 && (
+                                <span className="bg-slate-50 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded font-bold inline-flex items-center" title={extras.map(e => e.name).join(', ')}>
+                                  <Users size={9} className="mr-0.5" />{t('추가', 'Team')} {extras.length}{t('명', '')}
+                                </span>
+                              )}
+                              {tripCount > 0 && (
+                                <span className="bg-purple-50 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded font-bold inline-flex items-center">
+                                  <Plane size={9} className="mr-0.5" />{t('출장', 'Trip')} {tripCount}{t('건', '')}
+                                </span>
+                              )}
                             </div>
                           )}
-                          {tripCount > 0 && (
-                            <div className="mt-1 flex items-center text-[10px] text-purple-600 font-bold"><Plane size={10} className="mr-1" />{t('출장', 'Trips')} {tripCount}{t('건', '')}</div>
-                          )}
-                          {prj.managerHistory?.length > 0 && (
-                            <div className="mt-1 flex items-center text-[10px] text-slate-400"><History size={10} className="mr-1" />{t('변경', 'Changed')} {prj.managerHistory.length}{t('회', 'x')}</div>
-                          )}
-                        </button>
+                          <InfoPopover open={mgrOpen} onClose={closePopover} align="left" width="w-[480px]">
+                            <div className="p-3">
+                              <div className="flex items-center gap-2 pb-2 mb-2 border-b border-slate-100">
+                                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm">{prj.manager ? prj.manager.charAt(0) : '?'}</div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-sm font-bold text-slate-800 truncate">{prj.manager || t('미지정', 'Unassigned')}</div>
+                                  <div className="text-[10px] text-slate-500">
+                                    {cleanText(mgr?.dept) && <span>{cleanText(mgr.dept)}</span>}
+                                    {cleanText(mgr?.grade) && <span>{cleanText(mgr?.dept) ? ' · ' : ''}{cleanText(mgr.grade)}</span>}
+                                  </div>
+                                </div>
+                              </div>
+                              {mgr ? (
+                                <div className="space-y-1 text-[11px] text-slate-700">
+                                  {cleanText(mgr.email) && <div className="flex items-center"><Mail size={10} className="mr-1.5 text-slate-400" />{cleanText(mgr.email)}</div>}
+                                  {cleanText(mgr.phone) && <div className="flex items-center"><Smartphone size={10} className="mr-1.5 text-slate-400" />{cleanText(mgr.phone)}</div>}
+                                  {cleanText(mgr.specialty) && <div className="flex items-center"><Briefcase size={10} className="mr-1.5 text-slate-400" />{cleanText(mgr.specialty)}</div>}
+                                </div>
+                              ) : (
+                                <div className="text-[11px] text-slate-500 italic">{t('인력 마스터에 등록되어 있지 않습니다.', 'Not registered in resources.')}</div>
+                              )}
+                              {extras.length > 0 && (
+                                <div className="mt-2 pt-2 border-t border-slate-100">
+                                  <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">{t('추가 인력', 'Team')} ({extras.length})</div>
+                                  <div className="space-y-1">
+                                    {extras.map(e => {
+                                      const grade = cleanText(e.grade);
+                                      const dept = cleanText(e.dept);
+                                      const meta = [dept, grade].filter(Boolean).join(' · ');
+                                      return (
+                                        <div key={e.id} className="bg-slate-50 border border-slate-200 rounded px-2 py-1 flex items-baseline gap-1.5">
+                                          <span className="text-xs font-bold text-slate-800">{e.name}</span>
+                                          {meta && <span className="text-[10px] text-slate-500">{meta}</span>}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                              {tripCount > 0 && (
+                                <div className="mt-2 pt-2 border-t border-slate-100">
+                                  <div className="text-[9px] font-bold text-purple-700 uppercase tracking-wider mb-1 inline-flex items-center"><Plane size={10} className="mr-1" />{t('출장 일정', 'Trips')} ({tripCount})</div>
+                                  <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                                    {(prj.trips || []).map(tr => {
+                                      const eng = cleanText(tr.engineerName);
+                                      const dep = cleanText(tr.departureDate);
+                                      const ret = cleanText(tr.returnDate);
+                                      const note = cleanText(tr.note);
+                                      return (
+                                        <div key={tr.id} className="bg-purple-50 border border-purple-200 rounded px-2 py-1.5">
+                                          <div className="flex items-baseline gap-1.5 flex-wrap">
+                                            <span className="text-xs font-bold text-purple-900 inline-flex items-center"><User size={10} className="mr-1 text-purple-500" />{eng || t('이름 없음', 'no name')}</span>
+                                            <span className="text-[10px] text-slate-600 inline-flex items-center"><CalendarDays size={9} className="mr-0.5 text-slate-400" />{dep || '?'} ~ {ret || '?'}</span>
+                                          </div>
+                                          {note && <div className="text-[10px] text-slate-500 italic mt-0.5 line-clamp-2">{note}</div>}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                              <div className="mt-3 space-y-1.5">
+                                {mgr && onShowEngineer && (
+                                  <button type="button" onClick={() => { closePopover(); onShowEngineer(mgr.id); }} className="w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white py-1.5 rounded inline-flex items-center justify-center">
+                                    {t('담당자 정보 보기', 'View Engineer')} <ArrowUpRight size={11} className="ml-1" />
+                                  </button>
+                                )}
+                                {canEdit && onManageTeam && (
+                                  <button type="button" onClick={() => { closePopover(); onManageTeam(prj); }} className="w-full text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 py-1.5 rounded inline-flex items-center justify-center">
+                                    {t('이 프로젝트 팀/출장 관리', 'Manage Team & Trips')} <ArrowUpRight size={11} className="ml-1" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </InfoPopover>
+                        </div>
                       );
                     })()}
                   </td>
@@ -631,7 +961,7 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                 </tr>
                 {expandedGanttId === prj.id && (
                   <tr className="bg-slate-50">
-                    <td colSpan="7" className="px-6 py-5">
+                    <td colSpan="6" className="px-6 py-5">
                       {(() => {
                         const pStartDate = safeDate(prj.startDate);
                         const pDueDate = safeDate(prj.dueDate);

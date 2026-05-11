@@ -38,60 +38,68 @@ const SiteListView = memo(function SiteListView({ sites, onAddClick, onEditClick
           )}
         </div>
       </div>
-      <div className="grid grid-cols-1 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {sites.length === 0 ? (
-          <div className="text-center py-10 bg-white rounded-xl border border-slate-200 text-slate-400">{t('등록된 정보가 없습니다.', 'No data available.')}</div>
+          <div className="md:col-span-2 lg:col-span-3 text-center py-10 bg-white rounded-xl border border-slate-200 text-slate-400">{t('등록된 정보가 없습니다.', 'No data available.')}</div>
         ) : sites.map(site => (
-          <div key={site.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden hover:border-indigo-300 transition-colors">
-            <div className="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-              <div>
-                <span className="bg-indigo-100 text-indigo-800 text-[10px] font-bold px-2 py-0.5 rounded mr-2">{site.customer}</span>
-                <span className="text-lg font-bold text-slate-800">{site.fab}</span>
-                <span className="text-sm text-slate-500 ml-2">({site.line})</span>
+          <div key={site.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden hover:border-indigo-300 hover:shadow-md transition-all flex flex-col">
+            {/* 헤더 — 컴팩트 */}
+            <div className="px-3 py-2.5 border-b border-slate-100 bg-slate-50 flex justify-between items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                  <span className="bg-indigo-100 text-indigo-800 text-[10px] font-bold px-1.5 py-0.5 rounded truncate max-w-[120px]" title={site.customer}>{site.customer || '-'}</span>
+                  {Array.isArray(site.customSpecs) && site.customSpecs.length > 0 && (
+                    <span className="bg-purple-50 text-purple-700 border border-purple-200 text-[9px] font-bold px-1.5 py-0.5 rounded inline-flex items-center" title={`추가 스펙 ${site.customSpecs.length}건`}>
+                      <Cable size={9} className="mr-0.5" />{site.customSpecs.length}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-sm font-bold text-slate-800 truncate" title={site.fab}>{site.fab}</span>
+                  {site.line && <span className="text-[11px] text-slate-500 shrink-0">{site.line}</span>}
+                </div>
               </div>
               {currentUser.role === 'ADMIN' && (
-                <div className="flex gap-1.5">
-                  <button onClick={() => onEditClick(site)} className="inline-flex items-center px-2 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition-colors" title={t('수정', 'Edit')}>
-                    <Edit size={13} className="mr-1" />{t('수정', 'Edit')}
+                <div className="flex gap-1 shrink-0">
+                  <button onClick={() => onEditClick(site)} className="p-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200" title={t('수정', 'Edit')}>
+                    <Edit size={11} />
                   </button>
-                  <button onClick={() => onDeleteClick(site)} className="inline-flex items-center px-2 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold border border-red-200 transition-colors" title={t('삭제', 'Delete')}>
-                    <Trash size={13} className="mr-1" />{t('삭제', 'Delete')}
+                  <button onClick={() => onDeleteClick(site)} className="p-1 rounded bg-red-50 hover:bg-red-100 text-red-700 border border-red-200" title={t('삭제', 'Delete')}>
+                    <Trash size={11} />
                   </button>
                 </div>
               )}
             </div>
-            <div className="p-5">
-              <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-                <span className="text-xs font-bold text-slate-500 flex items-center mb-1"><Cpu size={14} className="mr-1 text-slate-400"/> Power</span>
-                <p className="text-sm font-bold text-slate-800">{site.power || '-'}</p>
-              </div>
+
+            {/* 본문 — Power 한 줄 */}
+            <div className="px-3 py-2 border-b border-slate-100 flex items-center gap-2">
+              <Cpu size={12} className="text-slate-400 shrink-0" />
+              <span className="text-[10px] font-bold text-slate-500 shrink-0">Power</span>
+              <span className="text-xs font-bold text-slate-800 truncate" title={site.power}>{site.power || '-'}</span>
             </div>
+
+            {/* 추가 스펙 — 컴팩트 2-column 칩 그리드 */}
             {Array.isArray(site.customSpecs) && site.customSpecs.length > 0 && (
-              <div className="px-5 pb-5">
-                <div className="bg-purple-50 p-3 rounded-lg border border-purple-100">
-                  <span className="text-xs font-bold text-purple-700 flex items-center mb-2">
-                    <Cable size={14} className="mr-1" />
-                    {t('추가 스펙', 'Additional Specs')}
-                    <span className="ml-2 text-[10px] bg-white border border-purple-200 text-purple-700 px-1.5 py-0.5 rounded-full font-bold">{site.customSpecs.length}{t('건', '')}</span>
-                  </span>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {site.customSpecs.map(s => (
-                      <div key={s.id} className="bg-white border border-purple-200 rounded-lg p-2.5">
-                        <div className="text-[10px] font-bold text-purple-600 mb-0.5">{s.label}</div>
-                        <div className="text-sm font-bold text-slate-800 break-all">{s.value}</div>
-                        {s.note && <div className="text-[11px] text-slate-500 mt-0.5 italic">{s.note}</div>}
-                      </div>
-                    ))}
-                  </div>
+              <div className="px-3 py-2 border-b border-slate-100 bg-purple-50/40">
+                <div className="grid grid-cols-2 gap-1">
+                  {site.customSpecs.slice(0, 4).map(s => (
+                    <div key={s.id} className="bg-white border border-purple-200 rounded px-1.5 py-1 min-w-0" title={s.note ? `${s.label}: ${s.value} (${s.note})` : `${s.label}: ${s.value}`}>
+                      <div className="text-[9px] font-bold text-purple-600 truncate">{s.label}</div>
+                      <div className="text-[11px] font-bold text-slate-800 truncate">{s.value}</div>
+                    </div>
+                  ))}
+                  {site.customSpecs.length > 4 && (
+                    <div className="col-span-2 text-[9px] text-purple-600 font-bold text-center pt-0.5">+{site.customSpecs.length - 4}{t('건 더', ' more')}</div>
+                  )}
                 </div>
               </div>
             )}
+
+            {/* 특이사항 — 짧게 truncate */}
             {site.note && (
-              <div className="px-5 pb-5">
-                <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
-                  <span className="text-xs font-bold text-blue-700 flex items-center mb-1"><Info size={14} className="mr-1"/> {t('기타 특이사항', 'Notes')}</span>
-                  <p className="text-sm text-blue-900 whitespace-pre-wrap">{site.note}</p>
-                </div>
+              <div className="px-3 py-2 bg-blue-50/40 text-[11px] text-blue-900 line-clamp-2 flex items-start gap-1.5" title={site.note}>
+                <Info size={11} className="text-blue-500 shrink-0 mt-0.5" />
+                <span className="whitespace-pre-wrap break-all">{site.note}</span>
               </div>
             )}
           </div>

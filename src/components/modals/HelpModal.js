@@ -238,6 +238,21 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                   <p>· 프로젝트 리스트에 파란 배지로 4개까지 노출, 그 이상은 "+N" 표시</p>
                   <p>· ADMIN/PM만 편집 가능</p>
                 </Section>
+
+                <Section title="프로젝트 리스트 셀 — 관계자 칩 (엔드유저/설비업체/사이트)">
+                  <p>프로젝트명 셀 아래에 <strong>관계자 칩 3개</strong>가 표시됩니다 — 각 칩은 [아이콘 + 역할 라벨 + 이름 + 부가배지] 한 덩어리:</p>
+                  <p>· <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded text-[10px] font-bold">🏢 엔드유저: 이름</span> (인디고) — 사이트 소유자 + 등록 담당자 수</p>
+                  <p>· <span className="bg-purple-50 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded text-[10px] font-bold">🏢 설비업체: 이름</span> (보라) — 장비 제조사 + 등록 담당자 수</p>
+                  <p>· <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-bold">💾 사이트: 이름</span> (에메랄드) — Fab/Line + ⚡ Power 표시</p>
+                  <p>각 칩 클릭 → 해당 popover로 상세 정보 + 담당자 명함 5개 + 상세 페이지 진입 버튼.</p>
+                </Section>
+
+                <Section title="프로젝트 리스트 필터 (통합)">
+                  <p>리스트 상단 우측 <strong>"필터/검색"</strong> 버튼을 클릭하면 통합 패널이 열립니다.</p>
+                  <p>· <strong>검색</strong> — 프로젝트명·고객사·엔드유저·설비업체·사이트·담당자·산업군·<strong>장비 코드 + 장비명</strong> 모두 한번에 검색</p>
+                  <p>· <strong>산업군 / 담당자 필터</strong> — 드롭다운으로 선택</p>
+                  <p>· 활성 필터 개수가 버튼에 뱃지로 표시. 패널 하단 [초기화] 버튼으로 모두 해제.</p>
+                </Section>
                 <Section title="간트차트 보기">
                   <p>프로젝트 관리 우측 상단의 <strong>리스트 / 간트차트</strong> 토글로 전환합니다.</p>
                   <p>· <strong>단계별 탭</strong>: 각 프로젝트가 한 행, 막대는 8단계 색 분할(완료 = 진하게 / 현재 = 70% opacity / 예정 = 흐림). 막대 외곽선이 프로젝트 색으로 식별</p>
@@ -332,15 +347,23 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                   <p>· 직접 입력 상태에서 텍스트만 있는 경우 <strong>amber "미연결"</strong> 뱃지로 시각적 표시</p>
                 </Section>
 
-                <Section title="⑤ 고객사 카드 정보 / 통계">
-                  <p>각 고객사 카드는 다음 3가지 통계를 함께 보여줍니다:</p>
+                <Section title="⑤ 엔드유저 / 설비업체 — 한 프로젝트에 두 역할 동시 연결">
+                  <p>한 프로젝트가 <strong>엔드유저</strong>(예: SK하이닉스 — 사이트 소유자)와 <strong>설비업체</strong>(예: ASML — 장비 제조사) 모두에 동시에 속할 수 있습니다.</p>
+                  <p>· 프로젝트 생성/수정 모달의 고객사 드롭다운이 <strong>엔드유저</strong> + <strong>설비업체</strong> 2개로 분리</p>
+                  <p>· 고객사 카드에서 "엔드유저 프로젝트" / "설비업체 프로젝트" 섹션이 별도로 표시 — 한쪽 연결해도 다른쪽 풀리지 않음</p>
+                  <p>· 기존 데이터(<code className="bg-slate-100 px-1 rounded text-[11px]">customerId</code>)는 자동으로 엔드유저로 마이그레이션됩니다</p>
+                </Section>
+
+                <Section title="⑥ 고객사 카드 정보 / 통계">
+                  <p>각 고객사 카드는 다음 4가지 통계를 함께 보여줍니다:</p>
                   <p>· <strong>담당자 명함 수</strong> (회색)</p>
                   <p>· <strong>연관 사이트 수</strong> (초록)</p>
-                  <p>· <strong>연관 프로젝트 수</strong> (파랑)</p>
+                  <p>· <strong>엔드유저 프로젝트 수</strong> (파랑)</p>
+                  <p>· <strong>설비업체 프로젝트 수</strong> (보라)</p>
                   <p>주요 담당자(상위 2명)는 카드 하단에 미리보기로 표시되며, 검색은 고객사명·담당자명·이메일·전화 모두 가능합니다.</p>
                 </Section>
 
-                <Section title="⑥ 삭제 정책 — 안전한 연결 해제">
+                <Section title="⑦ 삭제 정책 — 안전한 연결 해제">
                   <p>고객사를 삭제해도 <strong>연결됐던 프로젝트·사이트는 사라지지 않습니다</strong>.</p>
                   <p>· customerId만 해제 → 기존 customer 텍스트만 남음 (미연결 상태)</p>
                   <p>· 명함(담당자) 정보는 함께 삭제됩니다</p>

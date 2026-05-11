@@ -52,12 +52,20 @@ const CustomerListView = memo(function CustomerListView({
         (cid && s.customerId === cid) ||
         (!s.customerId && cName && String(s.customer || '').trim() === cName)
       );
-      const linkedProjects = (projects || []).filter(p =>
-        (cid && p.customerId === cid) ||
-        (!p.customerId && cName && String(p.customer || '').trim() === cName)
+      // 엔드유저로 연결된 프로젝트
+      const endUserProjects = (projects || []).filter(p => {
+        const id = p.endUserId || p.customerId;
+        const name = String(p.endUser || p.customer || '').trim();
+        return (cid && id === cid) || (!id && cName && name === cName);
+      });
+      // 설비업체로 연결된 프로젝트
+      const vendorProjects = (projects || []).filter(p =>
+        (cid && p.vendorId === cid) ||
+        (!p.vendorId && cName && String(p.vendor || '').trim() === cName)
       );
+      const linkedProjects = [...endUserProjects, ...vendorProjects];
       const contactsCount = ensureArr(c.contacts).length;
-      return { ...c, linkedSites, linkedProjects, contactsCount };
+      return { ...c, linkedSites, linkedProjects, endUserProjects, vendorProjects, contactsCount };
     });
   }, [customers, sites, projects]);
 
@@ -204,18 +212,26 @@ const CustomerListView = memo(function CustomerListView({
                 {c.phone && <div className="text-xs text-slate-600 flex items-center"><Phone size={11} className="mr-1.5 text-slate-400" />{c.phone}</div>}
                 {c.address && <div className="text-xs text-slate-600 flex items-center truncate"><MapPin size={11} className="mr-1.5 text-slate-400 shrink-0" />{c.address}</div>}
 
-                <div className="grid grid-cols-3 gap-1.5 pt-2 mt-2 border-t border-slate-100">
+                <div className="grid grid-cols-4 gap-1.5 pt-2 mt-2 border-t border-slate-100">
                   <div className="bg-slate-50 rounded p-1.5 text-center" title={t('담당자 명함', 'Contact cards')}>
                     <IdCard size={12} className="mx-auto text-slate-400 mb-0.5" />
+                    <div className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">{t('담당자', 'Contact')}</div>
                     <div className="text-sm font-bold text-slate-700">{c.contactsCount}</div>
                   </div>
                   <div className="bg-emerald-50 rounded p-1.5 text-center" title={t('연관 사이트', 'Linked sites')}>
                     <Link2 size={12} className="mx-auto text-emerald-500 mb-0.5" />
+                    <div className="text-[9px] text-emerald-700 font-bold uppercase tracking-wider">{t('사이트', 'Site')}</div>
                     <div className="text-sm font-bold text-emerald-700">{c.linkedSites.length}</div>
                   </div>
-                  <div className="bg-blue-50 rounded p-1.5 text-center" title={t('연관 프로젝트', 'Linked projects')}>
+                  <div className="bg-blue-50 rounded p-1.5 text-center" title={t('엔드유저로 연결된 프로젝트', 'End-user projects')}>
                     <Users size={12} className="mx-auto text-blue-500 mb-0.5" />
-                    <div className="text-sm font-bold text-blue-700">{c.linkedProjects.length}</div>
+                    <div className="text-[9px] text-blue-700 font-bold uppercase tracking-wider">{t('엔드유저', 'End User')}</div>
+                    <div className="text-sm font-bold text-blue-700">{c.endUserProjects.length}</div>
+                  </div>
+                  <div className="bg-purple-50 rounded p-1.5 text-center" title={t('설비업체로 연결된 프로젝트', 'Vendor projects')}>
+                    <Users size={12} className="mx-auto text-purple-500 mb-0.5" />
+                    <div className="text-[9px] text-purple-700 font-bold uppercase tracking-wider">{t('설비업체', 'Vendor')}</div>
+                    <div className="text-sm font-bold text-purple-700">{c.vendorProjects.length}</div>
                   </div>
                 </div>
 

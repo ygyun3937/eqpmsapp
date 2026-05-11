@@ -1,5 +1,6 @@
 import React, { useState, memo } from 'react';
-import { X, ListTodo, CheckSquare, AlertTriangle, CheckCircle, User, Edit, Trash, PenTool, Info, ShieldCheck, FileText, ImageIcon, History, GitCommit as TimelineIcon, Package, Wrench, HardDrive, MessageSquare, Send, LifeBuoy, Plus, ShieldOff, Sparkles, Paperclip, Upload, Download, ExternalLink, Loader, FolderOpen, CalendarDays, Star, Calendar, Clock, StickyNote } from 'lucide-react';
+import { X, ListTodo, CheckSquare, AlertTriangle, CheckCircle, User, Edit, Trash, PenTool, Info, ShieldCheck, FileText, ImageIcon, History, GitCommit as TimelineIcon, Package, Wrench, HardDrive, MessageSquare, Send, LifeBuoy, Plus, ShieldOff, Sparkles, Paperclip, Upload, Download, ExternalLink, Loader, FolderOpen, CalendarDays, Star, Calendar, Clock, StickyNote, Building2, Database, Mail, Smartphone, Phone, MapPin, ArrowUpRight } from 'lucide-react';
+import InfoPopover from '../common/InfoPopover';
 import { PROJECT_PHASES } from '../../constants';
 import { calcAct as calcSetupProgress, calcPhaseProgress, calcOverallProgress } from '../../utils/calc';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
@@ -8,7 +9,7 @@ import SignaturePad from '../common/SignaturePad';
 import { generatePDF } from '../../utils/export';
 import { downloadICS, openGoogleCalendar } from '../../utils/calendar';
 
-const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusColor, onClose, onToggleTask, onAddTask, onEditTaskName, onDeleteTask, onUpdateDelayReason, onUpdateTaskDates, onUpdateChecklistItem, onLoadDefaultChecklist, onAddChecklistItem, onDeleteChecklistItem, onUpdatePhase, onEditPhases, onEditSetupTasks, onSetCurrentSetupTask, onSignOff, onCancelSignOff, onAddExtraTask, onUpdateExtraTask, onDeleteExtraTask, onAddNote, onDeleteNote, onAddCustomerRequest, onUpdateCustomerRequestStatus, onAddCustomerResponse, onDeleteCustomerRequest, onAddAS, onUpdateAS, onDeleteAS, onUploadAttachment, onDeleteAttachment, onDeleteProject, driveConfigured, calcAct, currentUser, t, initialTab }) {
+const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusColor, onClose, onToggleTask, onAddTask, onEditTaskName, onDeleteTask, onUpdateDelayReason, onUpdateTaskDates, onUpdateChecklistItem, onLoadDefaultChecklist, onAddChecklistItem, onDeleteChecklistItem, onUpdatePhase, onEditPhases, onEditSetupTasks, onSetCurrentSetupTask, onSignOff, onCancelSignOff, onAddExtraTask, onUpdateExtraTask, onDeleteExtraTask, onAddNote, onDeleteNote, onAddCustomerRequest, onUpdateCustomerRequestStatus, onAddCustomerResponse, onDeleteCustomerRequest, onAddAS, onUpdateAS, onDeleteAS, onUploadAttachment, onDeleteAttachment, onDeleteProject, driveConfigured, calcAct, currentUser, t, initialTab, engineers, onShowEngineer, customers, onOpenCustomer }) {
   const [activeModalTab, setActiveModalTab] = useState(initialTab || 'tasks');
   const [scheduleSubTab, setScheduleSubTab] = useState('phase');
   const [attachUploading, setAttachUploading] = useState(false);
@@ -47,6 +48,14 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
   const [historyFilter, setHistoryFilter] = useState('all');
   const [newExtraForm, setNewExtraForm] = useState({ name: '', requester: '', type: '기능 추가', startDate: '', endDate: '', note: '' });
   const [confirmCancelSignOff, setConfirmCancelSignOff] = useState(false);
+  const [endUserPopoverOpen, setEndUserPopoverOpen] = useState(false);
+  const [vendorPopoverOpen, setVendorPopoverOpen] = useState(false);
+  const cleanText = (v) => {
+    if (v == null) return '';
+    const s = String(v).trim();
+    if (!s || s.toLowerCase() === 'null' || s.toLowerCase() === 'undefined') return '';
+    return s;
+  };
 
   if (!project) return null;
 
@@ -67,8 +76,122 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
         <div className="px-4 md:px-6 py-4 border-b border-slate-200 bg-blue-50 flex-shrink-0">
           <div className="flex justify-between items-start gap-3">
             <div className="flex-1 min-w-0">
-              <h2 className="text-lg font-bold text-blue-800 truncate">{project.name}</h2>
-              <p className="text-xs text-blue-600 mt-1">{t('상세 관리', 'Details')}</p>
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <h2 className="text-lg font-bold text-blue-800 truncate">{project.name}</h2>
+              </div>
+              {/* 프로젝트 핵심 메타 — 제목 아래 한 줄 */}
+              <div className="flex items-center gap-2 mt-1 text-[11px] text-blue-700 flex-wrap">
+                {(() => {
+                  // 역할별 칩 렌더링 — 엔드유저 / 설비업체
+                  const renderRoleChip = (roleKey, label, color, popoverOpen, setPopoverOpen) => {
+                    const id = roleKey === 'endUser' ? (project.endUserId || project.customerId) : project.vendorId;
+                    const name = roleKey === 'endUser' ? (project.endUser || project.customer) : project.vendor;
+                    const cust = Array.isArray(customers)
+                      ? (customers.find(c => c.id === id) || (name ? customers.find(c => (c.name || '').trim() && (c.name || '').trim() === (name || '').trim()) : null))
+                      : null;
+                    if (!cust) {
+                      return (
+                        <span key={roleKey} className="inline-flex items-center bg-white/60 border border-blue-200 px-1.5 py-0.5 rounded font-bold" title={label}>
+                          <Building2 size={10} className={`mr-1 ${color}`} />
+                          <span className="text-[9px] text-slate-400 mr-1">{label}</span>
+                          {name || <span className="italic text-slate-400">미지정</span>}
+                        </span>
+                      );
+                    }
+                    const contactCount = Array.isArray(cust.contacts) ? cust.contacts.length : 0;
+                    return (
+                      <div key={roleKey} className="relative">
+                        <button type="button" onClick={() => setPopoverOpen(v => !v)} className="inline-flex items-center bg-white/60 hover:bg-indigo-100 border border-blue-200 hover:border-indigo-300 px-1.5 py-0.5 rounded font-bold transition-colors" title={`${label} ${t('정보 보기 (담당자 포함)', '(View — contacts included)')}`}>
+                          <Building2 size={10} className={`mr-1 ${color}`} />
+                          <span className="text-[9px] text-slate-400 mr-1">{label}</span>
+                          {cust.name}
+                          {contactCount > 0 && <span className="ml-1 bg-amber-100 text-amber-700 border border-amber-200 px-1 py-0 rounded text-[9px]">{t('담당자', 'Contacts')} {contactCount}</span>}
+                        </button>
+                        <InfoPopover open={popoverOpen} onClose={() => setPopoverOpen(false)} align="left" width="w-[420px]">
+                          <div className="p-3">
+                            <div className="flex items-center gap-2 pb-2 mb-2 border-b border-slate-100">
+                              <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center"><Building2 size={16} /></div>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-sm font-bold text-slate-800 truncate">{cust.name} <span className="text-[10px] text-slate-400 font-normal">· {label}</span></div>
+                                <div className="text-[10px] text-slate-500">{cleanText(cust.domain)}{cleanText(cust.phone) ? ` · ${cleanText(cust.phone)}` : ''}</div>
+                              </div>
+                            </div>
+                            {cleanText(cust.address) && <div className="text-[11px] text-slate-600 mb-1.5 flex items-start"><MapPin size={10} className="mr-1 mt-0.5 text-slate-400 shrink-0" /><span>{cleanText(cust.address)}</span></div>}
+                            {Array.isArray(cust.contacts) && cust.contacts.length > 0 && (
+                              <div className="mb-2">
+                                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{t('담당자', 'Contacts')} ({cust.contacts.length})</div>
+                                <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                                  {cust.contacts.slice(0, 5).map(ct => {
+                                    const title = cleanText(ct.title);
+                                    const dept = cleanText(ct.dept);
+                                    const email = cleanText(ct.email);
+                                    const mobile = cleanText(ct.mobile);
+                                    const officePhone = cleanText(ct.officePhone);
+                                    return (
+                                      <div key={ct.id} className="bg-slate-50 border border-slate-200 rounded px-2 py-1.5">
+                                        <div className="flex items-baseline gap-1.5 flex-wrap">
+                                          <span className="text-xs font-bold text-slate-800">{ct.name}</span>
+                                          {title && <span className="text-[10px] text-slate-500">{title}</span>}
+                                          {dept && <span className="text-[10px] text-slate-400">· {dept}</span>}
+                                        </div>
+                                        {(email || mobile || officePhone) && (
+                                          <div className="text-[10px] text-slate-600 mt-1 flex flex-col gap-0.5">
+                                            {email && <span className="inline-flex items-center"><Mail size={9} className="mr-1 text-slate-400 shrink-0" />{email}</span>}
+                                            {mobile && <span className="inline-flex items-center"><Smartphone size={9} className="mr-1 text-slate-400 shrink-0" />{mobile}</span>}
+                                            {officePhone && <span className="inline-flex items-center"><Phone size={9} className="mr-1 text-slate-400 shrink-0" />{officePhone}</span>}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                  {cust.contacts.length > 5 && <div className="text-[10px] text-slate-400 text-center">+{cust.contacts.length - 5} {t('명 더', 'more')}</div>}
+                                </div>
+                              </div>
+                            )}
+                            {cleanText(cust.note) && <div className="text-[10px] text-slate-500 italic line-clamp-2 mb-2">{cleanText(cust.note)}</div>}
+                            {onOpenCustomer && (
+                              <button type="button" onClick={() => { setPopoverOpen(false); onOpenCustomer(cust); }} className="w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white py-1.5 rounded inline-flex items-center justify-center">
+                                {t('고객사 상세 열기', 'Open Customer')} <ArrowUpRight size={11} className="ml-1" />
+                              </button>
+                            )}
+                          </div>
+                        </InfoPopover>
+                      </div>
+                    );
+                  };
+                  return [
+                    renderRoleChip('endUser', t('엔드유저', 'End User'), 'text-indigo-500', endUserPopoverOpen, setEndUserPopoverOpen),
+                    renderRoleChip('vendor', t('설비업체', 'Vendor'), 'text-purple-500', vendorPopoverOpen, setVendorPopoverOpen)
+                  ].filter(Boolean);
+                })()}
+                <span className="inline-flex items-center bg-white/60 border border-blue-200 px-1.5 py-0.5 rounded font-bold" title={t('사이트', 'Site')}>
+                  <Database size={10} className="mr-1 text-emerald-500" />
+                  {project.site || <span className="italic text-slate-400">미지정</span>}
+                </span>
+                {(() => {
+                  const mgrEng = onShowEngineer && Array.isArray(engineers) ? engineers.find(e => e.name === project.manager) : null;
+                  if (mgrEng) {
+                    return (
+                      <button type="button" onClick={() => onShowEngineer(mgrEng.id)} className="inline-flex items-center bg-white/60 hover:bg-indigo-100 border border-blue-200 hover:border-indigo-300 px-1.5 py-0.5 rounded font-bold transition-colors" title={t('담당자 정보 보기', 'View Engineer')}>
+                        <User size={10} className="mr-1 text-blue-500" />
+                        {project.manager}
+                        <span className="ml-1 text-[9px] text-indigo-600">↗</span>
+                      </button>
+                    );
+                  }
+                  return (
+                    <span className="inline-flex items-center bg-white/60 border border-blue-200 px-1.5 py-0.5 rounded font-bold" title={t('담당자(PM)', 'PM')}>
+                      <User size={10} className="mr-1 text-blue-500" />
+                      {project.manager || <span className="italic text-slate-400">미지정</span>}
+                    </span>
+                  );
+                })()}
+                {project.domain && (
+                  <span className="inline-flex items-center bg-indigo-50 border border-indigo-200 text-indigo-700 px-1.5 py-0.5 rounded font-bold" title={t('산업군', 'Domain')}>
+                    {project.domain}
+                  </span>
+                )}
+              </div>
             </div>
             <button onClick={onClose} className="text-blue-400 hover:text-blue-600 p-2 shrink-0"><X size={20} /></button>
           </div>

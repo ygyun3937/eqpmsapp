@@ -7,8 +7,14 @@ const ProjectModal = memo(function ProjectModal({ engineers, customers, prefill,
   const [data, setData] = useState({
     domain: prefill?.domain || '반도체',
     name: '',
-    customer: prefill?.customer || '',
-    customerId: prefill?.customerId || '',
+    // 엔드유저 / 설비업체 분리
+    endUserId: prefill?.endUserId || prefill?.customerId || '',
+    endUser: prefill?.endUser || prefill?.customer || '',
+    vendorId: prefill?.vendorId || '',
+    vendor: prefill?.vendor || '',
+    // 호환
+    customer: prefill?.customer || prefill?.endUser || '',
+    customerId: prefill?.customerId || prefill?.endUserId || '',
     site: '',
     startDate: '', dueDate: '', startTBD: false, dueTBD: false,
     status: '진행중', manager: '',
@@ -45,40 +51,75 @@ const ProjectModal = memo(function ProjectModal({ engineers, customers, prefill,
         <input required className="w-full p-2.5 border rounded-lg text-sm" value={data.name} onChange={e=>setData({...data, name:e.target.value})} />
       </div>
       <div className="grid grid-cols-2 gap-4">
+        {/* 엔드유저 — 사이트 소유자 */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">{t('고객사', 'Customer')}</label>
+          <label className="block text-sm font-medium text-slate-700 mb-1">{t('엔드유저', 'End User')}</label>
           {customerList.length > 0 ? (
             <>
               <select
                 className="w-full p-2.5 border rounded-lg text-sm bg-white"
-                value={data.customerId || '__manual__'}
+                value={data.endUserId || '__manual__'}
                 onChange={e => {
                   const v = e.target.value;
                   if (v === '__manual__') {
-                    setData({ ...data, customerId: '', customer: data.customer || '' });
+                    setData({ ...data, endUserId: '', customerId: '' });
                   } else {
                     const c = customerList.find(x => x.id === v);
-                    setData({ ...data, customerId: v, customer: c?.name || '' });
+                    const name = c?.name || '';
+                    setData({ ...data, endUserId: v, endUser: name, customerId: v, customer: name });
                   }
                 }}
               >
-                <option value="__manual__">{t('-- 직접 입력 --', '-- Type manually --')}</option>
+                <option value="__manual__">{t('-- 직접 입력 / 미지정 --', '-- Type manually / None --')}</option>
                 {customerList.map(c => (
                   <option key={c.id} value={c.id}>{c.name}{c.domain ? ` · ${c.domain}` : ''}</option>
                 ))}
               </select>
-              {!data.customerId && (
-                <input required className="w-full p-2 mt-1.5 border rounded-lg text-sm" placeholder={t('고객사명 직접 입력', 'Enter customer name')} value={data.customer} onChange={e => setData({...data, customer: e.target.value})} />
+              {!data.endUserId && (
+                <input className="w-full p-2 mt-1.5 border rounded-lg text-sm" placeholder={t('엔드유저 직접 입력 (선택)', 'Enter end-user (optional)')} value={data.endUser} onChange={e => setData({...data, endUser: e.target.value, customer: e.target.value})} />
               )}
             </>
           ) : (
-            <input required className="w-full p-2.5 border rounded-lg text-sm" value={data.customer} onChange={e=>setData({...data, customer:e.target.value})} />
+            <input className="w-full p-2.5 border rounded-lg text-sm" value={data.endUser} onChange={e=>setData({...data, endUser:e.target.value, customer:e.target.value})} />
           )}
         </div>
+
+        {/* 설비업체 */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">{t('사이트(지역)', 'Site Location')}</label>
-          <input required className="w-full p-2.5 border rounded-lg text-sm" value={data.site} onChange={e=>setData({...data, site:e.target.value})} />
+          <label className="block text-sm font-medium text-slate-700 mb-1">{t('설비업체', 'Vendor')}</label>
+          {customerList.length > 0 ? (
+            <>
+              <select
+                className="w-full p-2.5 border rounded-lg text-sm bg-white"
+                value={data.vendorId || '__manual__'}
+                onChange={e => {
+                  const v = e.target.value;
+                  if (v === '__manual__') {
+                    setData({ ...data, vendorId: '' });
+                  } else {
+                    const c = customerList.find(x => x.id === v);
+                    setData({ ...data, vendorId: v, vendor: c?.name || '' });
+                  }
+                }}
+              >
+                <option value="__manual__">{t('-- 직접 입력 / 미지정 --', '-- Type manually / None --')}</option>
+                {customerList.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}{c.domain ? ` · ${c.domain}` : ''}</option>
+                ))}
+              </select>
+              {!data.vendorId && (
+                <input className="w-full p-2 mt-1.5 border rounded-lg text-sm" placeholder={t('설비업체 직접 입력 (선택)', 'Enter vendor (optional)')} value={data.vendor} onChange={e => setData({...data, vendor: e.target.value})} />
+              )}
+            </>
+          ) : (
+            <input className="w-full p-2.5 border rounded-lg text-sm" value={data.vendor} onChange={e=>setData({...data, vendor:e.target.value})} />
+          )}
         </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1">{t('사이트(지역)', 'Site Location')}</label>
+        <input required className="w-full p-2.5 border rounded-lg text-sm" value={data.site} onChange={e=>setData({...data, site:e.target.value})} />
       </div>
 
       {/* 2차전지 계열 추가 스펙 */}
@@ -108,21 +149,21 @@ const ProjectModal = memo(function ProjectModal({ engineers, customers, prefill,
           <div className="flex items-center justify-between mb-1">
             <label className="text-sm font-medium text-slate-700">{t('시작일', 'Start Date')}</label>
             <label className="text-[11px] text-slate-500 inline-flex items-center cursor-pointer">
-              <input type="checkbox" className="mr-1" checked={data.startTBD} onChange={e=>setData({...data, startTBD:e.target.checked})} />
+              <input type="checkbox" className="mr-1" checked={data.startTBD} onChange={e=>setData({...data, startTBD:e.target.checked, startDate: e.target.checked ? '' : data.startDate})} />
               {t('미정', 'TBD')}
             </label>
           </div>
-          <input required={!data.startTBD} disabled={data.startTBD} type="date" className={`w-full p-2.5 border rounded-lg text-sm ${data.startTBD ? 'bg-slate-100 text-slate-400' : ''}`} value={data.startTBD ? '' : data.startDate} onChange={e=>setData({...data, startDate:e.target.value})} />
+          <input required={!data.startTBD} type="date" className="w-full p-2.5 border rounded-lg text-sm" value={data.startDate || ''} onChange={e=>setData({...data, startDate:e.target.value, startTBD: !e.target.value})} />
         </div>
         <div>
           <div className="flex items-center justify-between mb-1">
             <label className="text-sm font-medium text-slate-700">{t('납기일', 'Due Date')}</label>
             <label className="text-[11px] text-slate-500 inline-flex items-center cursor-pointer">
-              <input type="checkbox" className="mr-1" checked={data.dueTBD} onChange={e=>setData({...data, dueTBD:e.target.checked})} />
+              <input type="checkbox" className="mr-1" checked={data.dueTBD} onChange={e=>setData({...data, dueTBD:e.target.checked, dueDate: e.target.checked ? '' : data.dueDate})} />
               {t('미정', 'TBD')}
             </label>
           </div>
-          <input required={!data.dueTBD} disabled={data.dueTBD} type="date" className={`w-full p-2.5 border rounded-lg text-sm ${data.dueTBD ? 'bg-slate-100 text-slate-400' : ''}`} value={data.dueTBD ? '' : data.dueDate} onChange={e=>setData({...data, dueDate:e.target.value})} />
+          <input required={!data.dueTBD} type="date" className="w-full p-2.5 border rounded-lg text-sm" value={data.dueDate || ''} onChange={e=>setData({...data, dueDate:e.target.value, dueTBD: !e.target.value})} />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">

@@ -6,6 +6,9 @@ import {
 import { DOMAINS } from '../../constants';
 
 const ensureArr = (v) => (Array.isArray(v) ? v : []);
+// 충돌 없는 contact id 생성 — Date.now() 단독은 같은 ms에 두 개 추가 시 충돌하여
+// 이후 saveEdit/removeContact가 양쪽 모두에 영향을 미치는 버그가 있었음.
+const newContactId = () => `CT-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
 // 명함 카드(미리보기)
 const BusinessCard = ({ contact, customerName, customerDomain, sites }) => {
@@ -103,8 +106,12 @@ const ContactEditForm = ({ form, setForm, sites, onSave, onCancel, t }) => (
                 type="button"
                 key={s.id}
                 onClick={() => {
-                  const cur = ensureArr(form.siteIds);
-                  setForm({...form, siteIds: checked ? cur.filter(x => x !== s.id) : [...cur, s.id]});
+                  // 함수형 업데이트 — 빠른 연속 클릭에 stale closure로 이전 토글이 사라지는 것을 방지
+                  setForm(prev => {
+                    const cur = ensureArr(prev.siteIds);
+                    const isOn = cur.includes(s.id);
+                    return { ...prev, siteIds: isOn ? cur.filter(x => x !== s.id) : [...cur, s.id] };
+                  });
                 }}
                 className={`text-[10px] px-1.5 py-0.5 rounded border font-bold transition-colors ${checked ? 'bg-indigo-100 text-indigo-700 border-indigo-300' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'}`}
               >
@@ -126,15 +133,149 @@ const ContactEditForm = ({ form, setForm, sites, onSave, onCancel, t }) => (
   </div>
 );
 
+// 역할별(엔드유저/설비업체) 프로젝트 섹션. 한 곳에서 정의해서 두 번 재사용.
+const ProjectRoleSection = ({
+  role, themeColor, title, linkedList, candidates,
+  showPicker, setShowPicker, pickerSearch, setPickerSearch,
+  customer, onAttachProject, onDetachProject, t
+}) => {
+  // 테마 컬러 매핑 (tailwind는 동적 클래스 안 되니까 명시적으로)
+  const themes = {
+    blue:   { border: 'border-blue-100', text: 'text-blue-700', btnBg: 'bg-blue-600 hover:bg-blue-700', cardBorder: 'border-blue-200', cardHover: 'hover:border-blue-400', pickerBorder: 'border-blue-200', pickerHover: 'hover:bg-blue-50 hover:border-blue-300', linkText: 'text-blue-600' },
+    purple: { border: 'border-purple-100', text: 'text-purple-700', btnBg: 'bg-purple-600 hover:bg-purple-700', cardBorder: 'border-purple-200', cardHover: 'hover:border-purple-400', pickerBorder: 'border-purple-200', pickerHover: 'hover:bg-purple-50 hover:border-purple-300', linkText: 'text-purple-600' }
+  };
+  const c = themes[themeColor] || themes.blue;
+  return (
+    <div>
+      <div className={`flex items-center justify-between border-b ${c.border} pb-1.5 mb-3`}>
+        <h3 className={`text-xs font-bold ${c.text} uppercase tracking-wider flex items-center`}>
+          <Link2 size={12} className="mr-1.5" />
+          {title}
+          <span className="ml-1.5 text-slate-400 normal-case font-normal">({linkedList.length})</span>
+        </h3>
+        {onAttachProject && (
+          <button
+            type="button"
+            onClick={() => { setShowPicker(v => !v); setPickerSearch(''); }}
+            className={`text-[11px] font-bold px-2 py-1 rounded inline-flex items-center transition-colors ${showPicker ? 'bg-slate-200 text-slate-700' : `${c.btnBg} text-white`}`}
+          >
+            {showPicker ? <X size={11} className="mr-1" /> : <Plus size={11} className="mr-1" />}
+            {showPicker ? t('닫기', 'Close') : t('프로젝트 연결', 'Link Project')}
+          </button>
+        )}
+      </div>
+
+      {showPicker && onAttachProject && (
+        <div className={`mb-3 p-3 bg-white border-2 ${c.pickerBorder} rounded-lg space-y-2`}>
+          <input
+            autoFocus
+            type="text"
+            value={pickerSearch}
+            onChange={e => setPickerSearch(e.target.value)}
+            placeholder={t('프로젝트 검색 (이름/현재 고객사/사이트/PM)...', 'Search projects (name / customer / site / PM)...')}
+            className="w-full text-xs p-2 border border-slate-300 rounded focus:outline-none"
+          />
+          <div className="text-[10px] text-slate-500">
+            {t(`연결 후보 ${candidates.length}건`, `${candidates.length} candidates`)}
+            {candidates.length > 0 && <span className="ml-1 text-slate-400">· {t('항목 클릭 시 즉시 연결됩니다.', 'Click to link.')}</span>}
+          </div>
+          <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
+            {candidates.length === 0 ? (
+              <div className="text-center text-[11px] text-slate-400 py-4">
+                {t('연결할 수 있는 프로젝트가 없습니다.', 'No projects available to link.')}
+              </div>
+            ) : candidates.map(p => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => { onAttachProject(p.id, customer.id, role); setPickerSearch(''); }}
+                className={`w-full text-left bg-slate-50 ${c.pickerHover} border border-slate-200 rounded p-2 transition-colors flex items-center justify-between gap-2`}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className="text-xs font-bold text-slate-800 truncate">{p.name}</span>
+                    {p.status && (
+                      <span className={`text-[9px] font-bold px-1 py-0.5 rounded shrink-0 ${p.status === '완료' ? 'bg-emerald-50 text-emerald-700' : p.status === '이슈발생' ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'}`}>{p.status}</span>
+                    )}
+                    {p.domain && <span className="text-[9px] text-slate-400 shrink-0">{p.domain}</span>}
+                  </div>
+                  <div className="text-[10px] text-slate-500 truncate">
+                    {p.endUser && <span>엔드유저: <strong>{p.endUser}</strong></span>}
+                    {p.vendor && <span className="ml-2">설비: <strong>{p.vendor}</strong></span>}
+                    {!p.endUser && !p.vendor && <span className="italic text-slate-400">{t('고객사 없음', 'No customer')}</span>}
+                    {p.site && <span className="ml-2 text-slate-400">· {p.site}</span>}
+                    {p.manager && <span className="ml-2 text-slate-400">· {p.manager}</span>}
+                  </div>
+                </div>
+                <span className={`text-[10px] font-bold ${c.linkText} shrink-0`}>{t('연결 →', 'Link →')}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {linkedList.length === 0 ? (
+        <div className="border-2 border-dashed border-slate-200 rounded-lg p-5 text-center text-slate-400 text-xs">
+          {t('연관된 프로젝트가 없습니다.', 'No linked projects.')}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-1">
+          {linkedList.map(p => (
+            <div key={p.id} className={`relative group bg-white border ${c.cardBorder} rounded-lg p-2.5 ${c.cardHover} transition-colors`}>
+              <div className="flex items-center justify-between mb-1 pr-10">
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${p.status === '완료' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : p.status === '이슈발생' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>{p.status || '진행중'}</span>
+                {p.domain && <span className="text-[9px] text-slate-400">{p.domain}</span>}
+              </div>
+              <div className="text-xs font-bold text-slate-800 truncate" title={p.name}>{p.name}</div>
+              {(p.site || p.manager) && (
+                <div className="text-[10px] text-slate-500 truncate mt-0.5">
+                  {p.site || ''}{p.site && p.manager ? ' · ' : ''}{p.manager || ''}
+                </div>
+              )}
+              <span className={`absolute top-1.5 right-1.5 text-[8px] font-bold px-1 py-0.5 rounded ${p._matchType === 'id' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>
+                {p._matchType === 'id' ? 'ID' : '名'}
+              </span>
+              {onDetachProject && (
+                <button
+                  type="button"
+                  onClick={() => onDetachProject(p.id, role)}
+                  className="absolute bottom-1.5 right-1.5 text-[9px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                  title={t('연결 해제', 'Detach')}
+                >
+                  {t('연결 해제', 'Detach')}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const CustomerModal = memo(function CustomerModal({ customer, sites, projects, onClose, onSubmit, onDetachProject, onDetachSite, onAttachSite, onAttachProject, t }) {
-  const [data, setData] = useState(() => ({
-    name: customer?.name || '',
-    domain: customer?.domain || '반도체',
-    phone: customer?.phone || '',
-    address: customer?.address || '',
-    note: customer?.note || '',
-    contacts: ensureArr(customer?.contacts)
-  }));
+  const [data, setData] = useState(() => {
+    // 기존 contact id 중복 자동 정리 — 과거 Date.now() 단독 사용 시 동일 ms 추가로 발생한 충돌 복구
+    const seen = new Set();
+    const normalizedContacts = ensureArr(customer?.contacts).map((c, idx) => {
+      const id = c.id;
+      if (!id || seen.has(id)) {
+        const newId = newContactId();
+        seen.add(newId);
+        return { ...c, id: newId };
+      }
+      seen.add(id);
+      return { ...c, siteIds: ensureArr(c.siteIds) };
+    });
+    return {
+      name: customer?.name || '',
+      domain: customer?.domain || '반도체',
+      phone: customer?.phone || '',
+      address: customer?.address || '',
+      note: customer?.note || '',
+      contacts: normalizedContacts
+    };
+  });
   const blankContact = { name: '', title: '', dept: '', email: '', officePhone: '', mobile: '', siteIds: [], note: '' };
   const [newContact, setNewContact] = useState(blankContact);
   const [editingId, setEditingId] = useState(null);
@@ -142,7 +283,8 @@ const CustomerModal = memo(function CustomerModal({ customer, sites, projects, o
   const [showNewForm, setShowNewForm] = useState(false);
   // 사이트/프로젝트 연결 추가 (기존 항목 선택)
   const [showSitePicker, setShowSitePicker] = useState(false);
-  const [showProjectPicker, setShowProjectPicker] = useState(false);
+  const [showEndUserPicker, setShowEndUserPicker] = useState(false);
+  const [showVendorPicker, setShowVendorPicker] = useState(false);
   const [sitePickerSearch, setSitePickerSearch] = useState('');
   const [projectPickerSearch, setProjectPickerSearch] = useState('');
 
@@ -161,18 +303,37 @@ const CustomerModal = memo(function CustomerModal({ customer, sites, projects, o
       .filter(Boolean);
   }, [sites, customer]);
 
-  const linkedProjects = useMemo(() => {
+  // 엔드유저로 연결된 프로젝트
+  const endUserProjects = useMemo(() => {
     if (!customer) return [];
     const cid = customer.id || '';
     const cname = String(customer.name || '').trim();
     return projects
       .map(p => {
-        if (cid && p.customerId === cid) return { ...p, _matchType: 'id' };
-        if (!p.customerId && cname && String(p.customer || '').trim() === cname) return { ...p, _matchType: 'name' };
+        const linkId = p.endUserId || p.customerId; // 마이그레이션 호환
+        if (cid && linkId === cid) return { ...p, _matchType: 'id' };
+        if (!linkId && cname && String(p.endUser || p.customer || '').trim() === cname) return { ...p, _matchType: 'name' };
         return null;
       })
       .filter(Boolean);
   }, [projects, customer]);
+
+  // 설비업체로 연결된 프로젝트
+  const vendorProjects = useMemo(() => {
+    if (!customer) return [];
+    const cid = customer.id || '';
+    const cname = String(customer.name || '').trim();
+    return projects
+      .map(p => {
+        if (cid && p.vendorId === cid) return { ...p, _matchType: 'id' };
+        if (!p.vendorId && cname && String(p.vendor || '').trim() === cname) return { ...p, _matchType: 'name' };
+        return null;
+      })
+      .filter(Boolean);
+  }, [projects, customer]);
+
+  // 두 역할 합친 총 수 — 헤더 카운트용 (중복 프로젝트는 중복 카운트)
+  const linkedProjects = useMemo(() => [...endUserProjects, ...vendorProjects], [endUserProjects, vendorProjects]);
 
   // 이 고객사에 아직 연결 안 된 후보 (다른 고객사 소속이거나 미연결)
   const candidateSites = useMemo(() => {
@@ -191,39 +352,57 @@ const CustomerModal = memo(function CustomerModal({ customer, sites, projects, o
     });
   }, [sites, customer, customerSites, sitePickerSearch]);
 
-  const candidateProjects = useMemo(() => {
+  // 엔드유저 후보: 이 고객사에 엔드유저로 안 묶인 프로젝트 (설비업체로만 연결돼 있는 건 OK — 다른 역할이라 추가 가능)
+  const candidateEndUserProjects = useMemo(() => {
     if (!customer) return [];
     const cid = customer.id || '';
-    const cname = String(customer.name || '').trim();
-    const linkedIds = new Set(linkedProjects.map(p => p.id));
+    const linkedIds = new Set(endUserProjects.map(p => p.id));
     const kw = projectPickerSearch.trim().toLowerCase();
     return projects.filter(p => {
       if (linkedIds.has(p.id)) return false;
-      if (cid && p.customerId === cid) return false;
-      if (!p.customerId && cname && String(p.customer || '').trim() === cname) return false;
+      const linkId = p.endUserId || p.customerId;
+      if (cid && linkId === cid) return false;
       if (!kw) return true;
-      const hay = [p.name, p.customer, p.site, p.manager, p.domain].filter(Boolean).join(' ').toLowerCase();
+      const hay = [p.name, p.customer, p.endUser, p.vendor, p.site, p.manager, p.domain].filter(Boolean).join(' ').toLowerCase();
       return hay.includes(kw);
     });
-  }, [projects, customer, linkedProjects, projectPickerSearch]);
+  }, [projects, customer, endUserProjects, projectPickerSearch]);
+
+  const candidateVendorProjects = useMemo(() => {
+    if (!customer) return [];
+    const cid = customer.id || '';
+    const linkedIds = new Set(vendorProjects.map(p => p.id));
+    const kw = projectPickerSearch.trim().toLowerCase();
+    return projects.filter(p => {
+      if (linkedIds.has(p.id)) return false;
+      if (cid && p.vendorId === cid) return false;
+      if (!kw) return true;
+      const hay = [p.name, p.customer, p.endUser, p.vendor, p.site, p.manager, p.domain].filter(Boolean).join(' ').toLowerCase();
+      return hay.includes(kw);
+    });
+  }, [projects, customer, vendorProjects, projectPickerSearch]);
 
   const addContact = () => {
     if (!newContact.name.trim()) return;
-    setData({...data, contacts: [...data.contacts, { ...newContact, id: Date.now() }]});
+    const newId = newContactId();
+    // 함수형 업데이트 — 다른 contact 수정 중에 add를 누르면 stale data로 인해 다른 contact가 사라지던 경우 방지
+    setData(prev => ({...prev, contacts: [...prev.contacts, { ...newContact, siteIds: [...ensureArr(newContact.siteIds)], id: newId }]}));
     setNewContact(blankContact);
     setShowNewForm(false);
   };
   const removeContact = (id) => {
-    setData({...data, contacts: data.contacts.filter(c => c.id !== id)});
+    setData(prev => ({...prev, contacts: prev.contacts.filter(c => c.id !== id)}));
     if (editingId === id) setEditingId(null);
   };
   const startEdit = (c) => {
     setEditingId(c.id);
-    setEditForm({ ...blankContact, ...c, siteIds: ensureArr(c.siteIds) });
+    // siteIds는 새 배열로 복사 — 원본 contact 객체의 siteIds 참조 공유 방지
+    setEditForm({ ...blankContact, ...c, siteIds: [...ensureArr(c.siteIds)] });
   };
   const saveEdit = () => {
     if (!editForm.name.trim()) return;
-    setData({...data, contacts: data.contacts.map(c => c.id === editingId ? { ...editForm } : c)});
+    // 함수형 업데이트 + 정확히 1건만 교체 (editingId가 정확한 id면 단일 매칭)
+    setData(prev => ({...prev, contacts: prev.contacts.map(c => c.id === editingId ? { ...editForm, siteIds: [...ensureArr(editForm.siteIds)] } : c)}));
     setEditingId(null);
   };
 
@@ -242,7 +421,7 @@ const CustomerModal = memo(function CustomerModal({ customer, sites, projects, o
             {customer ? t('고객사 정보 수정', 'Edit Customer') : t('새 고객사 등록', 'New Customer')}
             {customer && (
               <span className="ml-3 text-xs font-normal text-indigo-600">
-                · {t('연관 프로젝트', 'Linked')} <strong>{linkedProjects.length}</strong> / {t('사이트', 'Sites')} <strong>{customerSites.length}</strong>
+                · {t('엔드유저', 'End User')} <strong>{endUserProjects.length}</strong> / {t('설비업체', 'Vendor')} <strong>{vendorProjects.length}</strong> / {t('사이트', 'Sites')} <strong>{customerSites.length}</strong>
               </span>
             )}
           </h2>
@@ -409,8 +588,10 @@ const CustomerModal = memo(function CustomerModal({ customer, sites, projects, o
                       {t('연관된 사이트가 없습니다.', 'No linked sites.')}
                     </div>
                   ) : (
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                      {customerSites.map(s => (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {customerSites.map(s => {
+                        const siteContacts = data.contacts.filter(c => ensureArr(c.siteIds).includes(s.id));
+                        return (
                         <div key={s.id} className="relative group bg-white border border-emerald-200 rounded-lg p-2.5 hover:border-emerald-400 transition-colors">
                           <div className="flex items-baseline gap-1.5 mb-1 pr-12">
                             <span className="text-sm font-bold text-slate-800 truncate">{s.fab}</span>
@@ -421,137 +602,78 @@ const CustomerModal = memo(function CustomerModal({ customer, sites, projects, o
                           {Array.isArray(s.customSpecs) && s.customSpecs.length > 0 && (
                             <div className="text-[10px] text-purple-600 mt-1 font-bold">+{s.customSpecs.length}{t(' 추가 스펙', ' specs')}</div>
                           )}
+                          {/* 이 사이트에 배정된 담당자들 — 여러 명 가능 */}
+                          <div className="mt-2 pt-2 border-t border-slate-100">
+                            <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center">
+                              <IdCard size={9} className="mr-1" />
+                              {t('이 사이트 담당자', 'Site Contacts')} ({siteContacts.length})
+                            </div>
+                            {siteContacts.length === 0 ? (
+                              <div className="text-[10px] text-slate-400 italic">{t('아직 배정된 담당자 없음', 'No contacts assigned')}</div>
+                            ) : (
+                              <div className="flex flex-wrap gap-1">
+                                {siteContacts.map(ct => (
+                                  <span key={ct.id} className="inline-flex items-center text-[10px] bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded font-bold" title={[ct.title, ct.dept, ct.email].filter(Boolean).join(' · ')}>
+                                    {ct.name}{ct.title ? ` ${ct.title}` : ''}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                           {/* 매칭 이유 뱃지 */}
                           <span className={`absolute top-1.5 right-1.5 text-[8px] font-bold px-1 py-0.5 rounded ${s._matchType === 'id' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`} title={s._matchType === 'id' ? `customerId=${s.customerId}` : `텍스트 매칭: "${s.customer}"`}>
                             {s._matchType === 'id' ? 'ID' : '名'}
                           </span>
-                          {/* ID 매칭인 경우 해제 버튼 (잘못된 연결 정정용) */}
-                          {s._matchType === 'id' && onDetachSite && (
+                          {/* 연결 해제 버튼 — ID/名 매칭 모두 */}
+                          {onDetachSite && (
                             <button
                               type="button"
                               onClick={() => onDetachSite(s.id)}
                               className="absolute bottom-1.5 right-1.5 text-[9px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                              title={t('잘못된 연결이면 해제 (customerId만 비워짐, 사이트는 유지)', 'Detach if mismatched')}
+                              title={t('이 사이트의 고객사 연결을 해제 (사이트 자체는 유지)', 'Detach customer from this site')}
                             >
                               {t('연결 해제', 'Detach')}
                             </button>
                           )}
                         </div>
-                      ))}
+                      );})}
                     </div>
                   )}
                 </div>
 
-                {/* 연관 프로젝트 */}
-                <div>
-                  <div className="flex items-center justify-between border-b border-blue-100 pb-1.5 mb-3">
-                    <h3 className="text-xs font-bold text-blue-700 uppercase tracking-wider flex items-center">
-                      <Link2 size={12} className="mr-1.5" />
-                      {t('연관 프로젝트', 'Linked Projects')}
-                      <span className="ml-1.5 text-slate-400 normal-case font-normal">({linkedProjects.length})</span>
-                    </h3>
-                    {onAttachProject && (
-                      <button
-                        type="button"
-                        onClick={() => { setShowProjectPicker(v => !v); setProjectPickerSearch(''); }}
-                        className={`text-[11px] font-bold px-2 py-1 rounded inline-flex items-center transition-colors ${showProjectPicker ? 'bg-slate-200 text-slate-700' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
-                      >
-                        {showProjectPicker ? <X size={11} className="mr-1" /> : <Plus size={11} className="mr-1" />}
-                        {showProjectPicker ? t('닫기', 'Close') : t('프로젝트 연결', 'Link Project')}
-                      </button>
-                    )}
-                  </div>
+                {/* 엔드유저로 연결된 프로젝트 */}
+                <ProjectRoleSection
+                  role="endUser"
+                  themeColor="blue"
+                  title={t('엔드유저 프로젝트', 'End-User Projects')}
+                  linkedList={endUserProjects}
+                  candidates={candidateEndUserProjects}
+                  showPicker={showEndUserPicker}
+                  setShowPicker={setShowEndUserPicker}
+                  pickerSearch={projectPickerSearch}
+                  setPickerSearch={setProjectPickerSearch}
+                  customer={customer}
+                  onAttachProject={onAttachProject}
+                  onDetachProject={onDetachProject}
+                  t={t}
+                />
 
-                  {/* 프로젝트 선택 패널 */}
-                  {showProjectPicker && onAttachProject && (
-                    <div className="mb-3 p-3 bg-white border-2 border-blue-200 rounded-lg space-y-2">
-                      <input
-                        autoFocus
-                        type="text"
-                        value={projectPickerSearch}
-                        onChange={e => setProjectPickerSearch(e.target.value)}
-                        placeholder={t('프로젝트 검색 (이름/현재 고객사/사이트/PM)...', 'Search projects (name / customer / site / PM)...')}
-                        className="w-full text-xs p-2 border border-slate-300 rounded focus:outline-none focus:border-blue-500"
-                      />
-                      <div className="text-[10px] text-slate-500">
-                        {t(`연결 후보 ${candidateProjects.length}건`, `${candidateProjects.length} candidates`)}
-                        {candidateProjects.length > 0 && <span className="ml-1 text-slate-400">· {t('항목 클릭 시 즉시 연결됩니다.', 'Click to link.')}</span>}
-                      </div>
-                      <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
-                        {candidateProjects.length === 0 ? (
-                          <div className="text-center text-[11px] text-slate-400 py-4">
-                            {t('연결할 수 있는 프로젝트가 없습니다.', 'No projects available to link.')}
-                          </div>
-                        ) : candidateProjects.map(p => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => { onAttachProject(p.id, customer.id); setProjectPickerSearch(''); }}
-                            className="w-full text-left bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded p-2 transition-colors flex items-center justify-between gap-2"
-                          >
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5 mb-0.5">
-                                <span className="text-xs font-bold text-slate-800 truncate">{p.name}</span>
-                                {p.status && (
-                                  <span className={`text-[9px] font-bold px-1 py-0.5 rounded shrink-0 ${p.status === '완료' ? 'bg-emerald-50 text-emerald-700' : p.status === '이슈발생' ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'}`}>{p.status}</span>
-                                )}
-                                {p.domain && <span className="text-[9px] text-slate-400 shrink-0">{p.domain}</span>}
-                              </div>
-                              <div className="text-[10px] text-slate-500 truncate">
-                                {p.customer
-                                  ? <>{t('현재 고객사:', 'Current:')} <strong>{p.customer}</strong>{p.customerId ? '' : <span className="text-amber-600 ml-1">({t('미연결', 'Unlinked')})</span>}</>
-                                  : <span className="italic text-slate-400">{t('고객사 없음', 'No customer')}</span>}
-                                {p.site && <span className="ml-2 text-slate-400">· {p.site}</span>}
-                                {p.manager && <span className="ml-2 text-slate-400">· {p.manager}</span>}
-                              </div>
-                            </div>
-                            <span className="text-[10px] font-bold text-blue-600 shrink-0">{t('연결 →', 'Link →')}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {linkedProjects.length === 0 ? (
-                    <div className="border-2 border-dashed border-slate-200 rounded-lg p-5 text-center text-slate-400 text-xs">
-                      {t('연관된 프로젝트가 없습니다.', 'No linked projects.')}
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-1">
-                      {linkedProjects.map(p => (
-                        <div key={p.id} className="relative group bg-white border border-blue-200 rounded-lg p-2.5 hover:border-blue-400 transition-colors">
-                          <div className="flex items-center justify-between mb-1 pr-10">
-                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${p.status === '완료' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : p.status === '이슈발생' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>{p.status || '진행중'}</span>
-                            {p.domain && <span className="text-[9px] text-slate-400">{p.domain}</span>}
-                          </div>
-                          <div className="text-xs font-bold text-slate-800 truncate" title={p.name}>{p.name}</div>
-                          {p.customer && (
-                            <div className="text-[10px] text-slate-400 truncate" title={`customer 텍스트: ${p.customer}`}>"{p.customer}"</div>
-                          )}
-                          {(p.site || p.manager) && (
-                            <div className="text-[10px] text-slate-500 truncate mt-0.5">
-                              {p.site || ''}{p.site && p.manager ? ' · ' : ''}{p.manager || ''}
-                            </div>
-                          )}
-                          {/* 매칭 이유 뱃지 */}
-                          <span className={`absolute top-1.5 right-1.5 text-[8px] font-bold px-1 py-0.5 rounded ${p._matchType === 'id' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`} title={p._matchType === 'id' ? `customerId=${p.customerId}` : `텍스트 매칭: "${p.customer}"`}>
-                            {p._matchType === 'id' ? 'ID' : '名'}
-                          </span>
-                          {/* ID 매칭인 경우 해제 버튼 */}
-                          {p._matchType === 'id' && onDetachProject && (
-                            <button
-                              type="button"
-                              onClick={() => onDetachProject(p.id)}
-                              className="absolute bottom-1.5 right-1.5 text-[9px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                              title={t('잘못된 연결이면 해제 (customerId만 비워짐, 프로젝트는 유지)', 'Detach if mismatched')}
-                            >
-                              {t('연결 해제', 'Detach')}
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                {/* 설비업체로 연결된 프로젝트 */}
+                <ProjectRoleSection
+                  role="vendor"
+                  themeColor="purple"
+                  title={t('설비업체 프로젝트', 'Vendor Projects')}
+                  linkedList={vendorProjects}
+                  candidates={candidateVendorProjects}
+                  showPicker={showVendorPicker}
+                  setShowPicker={setShowVendorPicker}
+                  pickerSearch={projectPickerSearch}
+                  setPickerSearch={setProjectPickerSearch}
+                  customer={customer}
+                  onAttachProject={onAttachProject}
+                  onDetachProject={onDetachProject}
+                  t={t}
+                />
               </div>
             </div>
           )}
