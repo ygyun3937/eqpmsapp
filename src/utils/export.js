@@ -290,7 +290,7 @@ export const drawBarPng = ({ data, title, width = 720, height = 380, valueSuffix
 // ============ 1. 단순 시트 (헤더 + 데이터) ============
 export const exportToExcel = async (filename, sheets) => {
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'EQ-PMS';
+  wb.creator = 'MAK-PMS';
   wb.created = new Date();
 
   sheets.forEach(sheet => {
@@ -368,7 +368,7 @@ export const exportToExcel = async (filename, sheets) => {
 // ============ 2. 섹션형 시트 (한 시트에 여러 테이블) ============
 export const exportSectionedExcel = async (filename, sheets) => {
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'EQ-PMS';
+  wb.creator = 'MAK-PMS';
   wb.created = new Date();
 
   sheets.forEach(sheet => {

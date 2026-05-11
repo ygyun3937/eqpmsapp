@@ -21,4 +21,4 @@ http.createServer((req, res) => {
   const ext = path.extname(filePath);
   res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
   fs.createReadStream(filePath).pipe(res);
-}).listen(PORT, () => console.log('EQ-PMS running on port ' + PORT));
+}).listen(PORT, () => console.log('MAK-PMS running on port ' + PORT));

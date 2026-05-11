@@ -13,11 +13,12 @@ const cleanText = (v) => {
 
 const ensureArr = (v) => (Array.isArray(v) ? v : []);
 
-const ProjectEditModal = memo(function ProjectEditModal({ project, engineers, currentUser, onClose, onSubmit, t }) {
+const ProjectEditModal = memo(function ProjectEditModal({ project, engineers, customers, currentUser, onClose, onSubmit, t }) {
   const [data, setData] = useState({
     domain: project?.domain || '반도체',
     name: project?.name || '',
     customer: project?.customer || '',
+    customerId: project?.customerId || '',
     site: project?.site || '',
     startDate: fmtYMD(project?.startDate),
     dueDate: fmtYMD(project?.dueDate),
@@ -119,8 +120,39 @@ const ProjectEditModal = memo(function ProjectEditModal({ project, engineers, cu
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">{t('고객사', 'Customer')}</label>
-          <input required className="w-full p-2.5 border rounded-lg text-sm" value={data.customer} onChange={e => setData({...data, customer: e.target.value})} />
+          <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center justify-between">
+            <span>{t('고객사', 'Customer')}</span>
+            {!data.customerId && data.customer && (
+              <span className="text-[10px] text-amber-600 font-bold bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">{t('미연결', 'Unlinked')}</span>
+            )}
+          </label>
+          {(customers || []).length > 0 ? (
+            <>
+              <select
+                className="w-full p-2.5 border rounded-lg text-sm bg-white"
+                value={data.customerId || '__manual__'}
+                onChange={e => {
+                  const v = e.target.value;
+                  if (v === '__manual__') {
+                    setData({ ...data, customerId: '' });
+                  } else {
+                    const c = customers.find(x => x.id === v);
+                    setData({ ...data, customerId: v, customer: c?.name || data.customer });
+                  }
+                }}
+              >
+                <option value="__manual__">{t('-- 직접 입력 --', '-- Type manually --')}</option>
+                {customers.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}{c.domain ? ` · ${c.domain}` : ''}</option>
+                ))}
+              </select>
+              {!data.customerId && (
+                <input required className="w-full p-2 mt-1.5 border rounded-lg text-sm" placeholder={t('고객사명 직접 입력', 'Enter customer name')} value={data.customer} onChange={e => setData({...data, customer: e.target.value})} />
+              )}
+            </>
+          ) : (
+            <input required className="w-full p-2.5 border rounded-lg text-sm" value={data.customer} onChange={e => setData({...data, customer: e.target.value})} />
+          )}
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">{t('사이트', 'Site')}</label>

@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useMemo, lazy, Suspense } from
 import {
   LayoutDashboard, Kanban, AlertTriangle, Wrench, Database, Users,
   GitCommit, Search, Globe, Smartphone, Monitor, LogOut,
-  Building, Camera, CheckSquare, Package, LayoutDashboard as Home,
+  Building, Building2, Camera, CheckSquare, Package, LayoutDashboard as Home,
   KeyRound, UserCog, LifeBuoy, HelpCircle, ChevronsLeft, ChevronsRight,
   Settings as SettingsIcon, ClipboardList
 } from 'lucide-react';
@@ -34,6 +34,7 @@ const ResourceListView = lazy(() => import('./components/views/ResourceListView'
 const VersionHistoryView = lazy(() => import('./components/views/VersionHistoryView'));
 const ASManagementView = lazy(() => import('./components/views/ASManagementView'));
 const WeeklyReportView = lazy(() => import('./components/views/WeeklyReportView'));
+const CustomerListView = lazy(() => import('./components/views/CustomerListView'));
 const UserManagementView = lazy(() => import('./components/views/UserManagementView'));
 const SystemSettingsView = lazy(() => import('./components/views/SystemSettingsView'));
 const LoginScreen = lazy(() => import('./components/views/LoginScreen'));
@@ -43,6 +44,7 @@ const ProjectModal = lazy(() => import('./components/modals/ProjectModal'));
 const IssueModal = lazy(() => import('./components/modals/IssueModal'));
 const PartModal = lazy(() => import('./components/modals/PartModal'));
 const SiteModal = lazy(() => import('./components/modals/SiteModal'));
+const CustomerModal = lazy(() => import('./components/modals/CustomerModal'));
 const TaskModal = lazy(() => import('./components/modals/TaskModal'));
 const IssueDetailModal = lazy(() => import('./components/modals/IssueDetailModal'));
 const VersionModal = lazy(() => import('./components/modals/VersionModal'));
@@ -104,6 +106,9 @@ export default function App() {
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isPartModalOpen, setIsPartModalOpen] = useState(false);
   const [isSiteModalOpen, setIsSiteModalOpen] = useState(false);
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+  const [customerEditTarget, setCustomerEditTarget] = useState(null);
+  const [customerToDelete, setCustomerToDelete] = useState(null);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [isIssueDetailModalOpen, setIsIssueDetailModalOpen] = useState(false);
   const [selectedIssue, setSelectedIssue] = useState(null);
@@ -150,6 +155,7 @@ export default function App() {
   const [engineers, setEngineers] = useState([]);
   const [parts, setParts] = useState([]);
   const [sites, setSites] = useState([]);
+  const [customers, setCustomers] = useState([]);
   const [users, setUsers] = useState([]);
   const [settings, setSettings] = useState({ driveRootFolderId: '' });
   const [weeklyReports, setWeeklyReports] = useState([]);
@@ -305,7 +311,69 @@ export default function App() {
           }
           return sp;
         });
-        setProjects(migratedProjects);
+        // 고객사 로드 + 정규화 (contacts 배열 보장)
+        const rawCustomers = (data.customers || []).map(c => ({
+          ...c,
+          contacts: ensureArr(c.contacts).map(ct => ({ ...ct, siteIds: ensureArr(ct.siteIds) }))
+        }));
+
+        // 중복 id 자동 감지 및 정리 — 한 번에 등록 시 generateUniqueId 충돌로 같은 id를 받았던 customer들
+        const idSeen = new Map(); // id → 첫 번째 customer
+        const idRemap = new Map(); // oldId → newId (중복인 경우)
+        const fixedCustomers = rawCustomers.map((c, idx) => {
+          const id = c.id;
+          if (!id) {
+            const newId = `CST-fix${idx}-${Math.random().toString(36).slice(2, 7)}`;
+            return { ...c, id: newId };
+          }
+          if (!idSeen.has(id)) {
+            idSeen.set(id, c);
+            return c;
+          }
+          // 중복 — 새 id 부여
+          const newId = `CST-fix${idx}-${Math.random().toString(36).slice(2, 7)}`;
+          idRemap.set(`${id}__${idx}`, { from: id, to: newId, name: c.name });
+          return { ...c, id: newId };
+        });
+        const hadDuplicates = idRemap.size > 0;
+        if (hadDuplicates) {
+          console.warn('[MAK-PMS] 고객사 id 중복 ' + idRemap.size + '건 자동 정리. 잘못 매핑된 프로젝트·사이트의 customerId는 비워서 텍스트 매칭으로 fallback.');
+        }
+        setCustomers(fixedCustomers);
+        if (hadDuplicates) {
+          saveToGoogleDB('UPDATE_CUSTOMERS', fixedCustomers);
+        }
+
+        // 자동 매칭: projects.customer 텍스트 → customerId (대소문자 무시, trim)
+        // 중복 id가 있던 경우 → 잘못 매핑된 customerId 모두 비우고 텍스트 기준으로 재매칭
+        const nameToId = new Map();
+        fixedCustomers.forEach(c => {
+          const k = String(c.name || '').trim().toLowerCase();
+          if (k) nameToId.set(k, c.id);
+        });
+        // 중복 발견 시 다 비웠다가 재매칭이 안전. 발견 없으면 기존 customerId 보존.
+        const duplicatedIds = new Set();
+        if (hadDuplicates) {
+          Array.from(idRemap.values()).forEach(r => duplicatedIds.add(r.from));
+          // 살아남은(첫 번째) customer의 id도 동일 — 그 id도 신뢰 못 함
+        }
+        const autoMatch = (item) => {
+          // 중복 id로 잘못 매핑됐을 가능성 있으면 비우고 재매칭
+          if (hadDuplicates && item.customerId && duplicatedIds.has(item.customerId)) {
+            const k = String(item.customer || '').trim().toLowerCase();
+            const id = k ? nameToId.get(k) : null;
+            return id ? { ...item, customerId: id } : { ...item, customerId: '' };
+          }
+          if (item.customerId) return item;
+          const k = String(item.customer || '').trim().toLowerCase();
+          const id = k ? nameToId.get(k) : null;
+          return id ? { ...item, customerId: id } : item;
+        };
+        const projectsAfter = migratedProjects.map(autoMatch);
+        setProjects(projectsAfter);
+        if (hadDuplicates) {
+          saveToGoogleDB('UPDATE_PROJECTS', projectsAfter);
+        }
         // 이슈 comments 정규화
         // (아래 setIssues 호출 직전에 처리)
         setIssues((data.issues || []).map(i => ({ ...i, comments: ensureArr(i.comments) })));
@@ -337,12 +405,15 @@ export default function App() {
         });
         setEngineers(migratedEngineers);
         setParts(data.parts || []);
-        // 사이트 customSpecs 배열 정규화 (GAS에서 빈셀/문자열로 와도 안전)
-        const normalizedSites = (data.sites || []).map(s => ({
+        // 사이트 customSpecs 배열 정규화 (GAS에서 빈셀/문자열로 와도 안전) + customerId 자동 매칭
+        const normalizedSites = (data.sites || []).map(s => autoMatch({
           ...s,
           customSpecs: ensureArr(s.customSpecs)
         }));
         setSites(normalizedSites);
+        if (hadDuplicates) {
+          saveToGoogleDB('UPDATE_SITES', normalizedSites);
+        }
         // 시스템 설정 로드 (Settings 시트가 비어있으면 기본값)
         if (data.settings && typeof data.settings === 'object' && !Array.isArray(data.settings)) {
           setSettings({ driveRootFolderId: '', ...data.settings });
@@ -423,7 +494,8 @@ export default function App() {
       openProjectDetail(n.projectId, tab);
     }
   };
-  const generateUniqueId = (prefix) => `${prefix}-${Date.now().toString().slice(-6)}`;
+  // 충돌 방지: ms + 4자 랜덤 — 같은 밀리초 안에 여러 번 호출돼도 unique 보장
+  const generateUniqueId = (prefix) => `${prefix}-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 6)}`;
   const showToast = (msg) => { setToastMessage(msg); setTimeout(() => setToastMessage(''), 3000); };
   const addLog = (project, type, detail) => ({
     ...project,
@@ -437,6 +509,7 @@ export default function App() {
   const syncEngineers = (updated) => { setEngineers(updated); saveToGoogleDB('UPDATE_ENGINEERS', updated); };
   const syncParts = (updated) => { setParts(updated); saveToGoogleDB('UPDATE_PARTS', updated); };
   const syncSites = (updated) => { setSites(updated); saveToGoogleDB('UPDATE_SITES', updated); };
+  const syncCustomers = (updated) => { setCustomers(updated); saveToGoogleDB('UPDATE_CUSTOMERS', updated); };
   const syncWeeklyReports = (updated) => { setWeeklyReports(updated); saveToGoogleDB('UPDATE_WEEKLY_REPORTS', updated); };
 
   // 주간 보고서 upsert (user + weekStart 기준 매칭)
@@ -845,6 +918,112 @@ export default function App() {
     showToast(t('사이트 환경 정보가 삭제되었습니다.', 'Site info deleted.'));
   };
 
+  // === 고객사 핸들러 ===
+  const handleSubmitCustomer = (payload) => {
+    const stamp = new Date().toISOString();
+    if (customerEditTarget) {
+      const updated = customers.map(c => c.id === customerEditTarget.id ? { ...c, ...payload, id: customerEditTarget.id, updatedAt: stamp } : c);
+      syncCustomers(updated);
+      // 이름이 변경됐다면 기존 텍스트 매칭 재시도 (이름이 바뀌면 기존 customerId는 그대로 유지)
+      showToast(t('고객사 정보가 수정되었습니다.', 'Customer updated.'));
+    } else {
+      const newCustomer = { ...payload, id: generateUniqueId('CST'), createdAt: stamp };
+      const nextCustomers = [newCustomer, ...customers];
+      syncCustomers(nextCustomers);
+      // 신규 등록 시 같은 이름의 미연결 프로젝트·사이트 자동 매칭
+      const k = String(payload.name || '').trim().toLowerCase();
+      if (k) {
+        const matchP = projects.filter(p => !p.customerId && String(p.customer || '').trim().toLowerCase() === k);
+        const matchS = sites.filter(s => !s.customerId && String(s.customer || '').trim().toLowerCase() === k);
+        if (matchP.length > 0) {
+          syncProjects(projects.map(p => (!p.customerId && String(p.customer || '').trim().toLowerCase() === k) ? { ...p, customerId: newCustomer.id } : p));
+        }
+        if (matchS.length > 0) {
+          syncSites(sites.map(s => (!s.customerId && String(s.customer || '').trim().toLowerCase() === k) ? { ...s, customerId: newCustomer.id } : s));
+        }
+        const linked = matchP.length + matchS.length;
+        showToast(t(
+          linked > 0 ? `고객사가 등록되었고 ${linked}건이 자동 연결됐습니다.` : '고객사가 등록되었습니다.',
+          linked > 0 ? `Customer added; ${linked} items auto-linked.` : 'Customer added.'
+        ));
+      } else {
+        showToast(t('고객사가 등록되었습니다.', 'Customer added.'));
+      }
+    }
+    setIsCustomerModalOpen(false);
+    setCustomerEditTarget(null);
+  };
+
+  const handleDeleteCustomer = () => {
+    if (!customerToDelete) return;
+    const id = customerToDelete.id;
+    syncCustomers(customers.filter(c => c.id !== id));
+    // 연결되어 있던 프로젝트·사이트는 customerId만 해제 (텍스트는 보존)
+    const detachedP = projects.some(p => p.customerId === id);
+    const detachedS = sites.some(s => s.customerId === id);
+    if (detachedP) syncProjects(projects.map(p => p.customerId === id ? { ...p, customerId: '' } : p));
+    if (detachedS) syncSites(sites.map(s => s.customerId === id ? { ...s, customerId: '' } : s));
+    setCustomerToDelete(null);
+    showToast(t('고객사가 삭제되었습니다. (연결됐던 프로젝트·사이트는 텍스트 정보로 유지)', 'Customer deleted; linked items kept as text.'));
+  };
+
+  // 고객사 모달에서 → 기존 사이트/프로젝트를 이 고객사로 연결 (customer 텍스트도 같이 갱신)
+  const handleAttachSiteToCustomer = (siteId, customerId) => {
+    const cust = customers.find(c => c.id === customerId);
+    if (!cust) return;
+    syncSites(sites.map(s => s.id === siteId ? { ...s, customerId: cust.id, customer: cust.name } : s));
+    showToast(t(`사이트가 "${cust.name}"에 연결됐습니다.`, `Site linked to "${cust.name}".`));
+  };
+  const handleAttachProjectToCustomer = (projectId, customerId) => {
+    const cust = customers.find(c => c.id === customerId);
+    if (!cust) return;
+    syncProjects(projects.map(p => p.id === projectId ? { ...p, customerId: cust.id, customer: cust.name } : p));
+    showToast(t(`프로젝트가 "${cust.name}"에 연결됐습니다.`, `Project linked to "${cust.name}".`));
+  };
+
+  // 개별 프로젝트·사이트 연결 해제 (잘못된 customerId 정정용 — 텍스트는 보존)
+  const handleDetachProjectFromCustomer = (projectId) => {
+    syncProjects(projects.map(p => p.id === projectId ? { ...p, customerId: '' } : p));
+    showToast(t('프로젝트 연결이 해제됐습니다.', 'Project unlinked.'));
+  };
+  const handleDetachSiteFromCustomer = (siteId) => {
+    syncSites(sites.map(s => s.id === siteId ? { ...s, customerId: '' } : s));
+    showToast(t('사이트 연결이 해제됐습니다.', 'Site unlinked.'));
+  };
+
+  // 자동 발견된 고객사들을 한 번에 등록
+  const handleQuickRegisterCustomers = (unregisteredList) => {
+    if (!Array.isArray(unregisteredList) || unregisteredList.length === 0) return;
+    const stamp = new Date().toISOString();
+    const newOnes = unregisteredList.map(u => ({
+      id: generateUniqueId('CST'),
+      name: u.name,
+      domain: u.domain || '',
+      phone: '', address: '', note: '',
+      contacts: [],
+      createdAt: stamp
+    }));
+    const nextCustomers = [...newOnes, ...customers];
+    syncCustomers(nextCustomers);
+    // 매칭 다시 적용
+    const nameToId = new Map();
+    nextCustomers.forEach(c => {
+      const k = String(c.name || '').trim().toLowerCase();
+      if (k) nameToId.set(k, c.id);
+    });
+    syncProjects(projects.map(p => {
+      if (p.customerId) return p;
+      const id = nameToId.get(String(p.customer || '').trim().toLowerCase());
+      return id ? { ...p, customerId: id } : p;
+    }));
+    syncSites(sites.map(s => {
+      if (s.customerId) return s;
+      const id = nameToId.get(String(s.customer || '').trim().toLowerCase());
+      return id ? { ...s, customerId: id } : s;
+    }));
+    showToast(t(`${newOnes.length}개 고객사가 등록되고 자동 연결됐습니다.`, `${newOnes.length} customers added and auto-linked.`));
+  };
+
   const handleAddRelease = (newRelease) => {
     const releaseData = { ...newRelease, id: generateUniqueId('REL'), date: TODAY.toISOString().split('T')[0] };
     syncReleases([releaseData, ...releases]);
@@ -1154,13 +1333,14 @@ export default function App() {
     showToast(t('참고자료가 삭제되었습니다.', 'Attachment deleted.'));
   };
 
-  // 회의록 등록: text(본문) + summary(선택) + meetingDate/attendees/decisions/actions(상세 모드 선택) + files[] (선택, 다중)
+  // 회의록 / 노트 등록: text(본문) + kind('meeting'|'note') + summary(선택) + meetingDate/attendees/decisions/actions(회의록 상세 모드 선택) + files[] (선택, 다중)
   const handleAddNote = async (projectId, text, opts) => {
+    const kind = (opts && opts.kind === 'note') ? 'note' : 'meeting';
     const summary = (opts && opts.summary) || '';
-    const meetingDate = (opts && opts.meetingDate) || '';
-    const attendees = (opts && opts.attendees) || '';
-    const decisions = (opts && opts.decisions) || '';
-    const actions = (opts && opts.actions) || '';
+    const meetingDate = (kind === 'meeting' && opts && opts.meetingDate) || '';
+    const attendees = (kind === 'meeting' && opts && opts.attendees) || '';
+    const decisions = (kind === 'meeting' && opts && opts.decisions) || '';
+    const actions = (kind === 'meeting' && opts && opts.actions) || '';
     // 백워드 호환: 단일 file 또는 다중 files 모두 수용
     const filesIn = (opts && Array.isArray(opts.files)) ? opts.files
       : (opts && opts.file) ? [opts.file] : [];
@@ -1187,6 +1367,7 @@ export default function App() {
     const note = {
       id: Date.now(),
       author: currentUser.name,
+      kind,
       text,
       summary,
       meetingDate,
@@ -1197,9 +1378,10 @@ export default function App() {
       date: new Date().toLocaleString()
     };
     const firstName = filesMeta[0] && filesMeta[0].fileName;
-    const headline = text ? text.substring(0, 30) + (text.length > 30 ? '...' : '') : (firstName ? `${firstName}${filesMeta.length > 1 ? ` 외 ${filesMeta.length - 1}건` : ''}` : '회의록');
+    const kindLabel = kind === 'note' ? '노트' : '회의록';
+    const headline = text ? text.substring(0, 30) + (text.length > 30 ? '...' : '') : (firstName ? `${firstName}${filesMeta.length > 1 ? ` 외 ${filesMeta.length - 1}건` : ''}` : kindLabel);
     setProjects(prev => {
-      const next = prev.map(p => p.id !== projectId ? p : addLog({ ...p, notes: [...(p.notes || []), note] }, 'NOTE_ADD', `회의록: ${headline}`));
+      const next = prev.map(p => p.id !== projectId ? p : addLog({ ...p, notes: [...(p.notes || []), note] }, 'NOTE_ADD', `${kindLabel}: ${headline}`));
       saveToGoogleDB('UPDATE_PROJECTS', next);
       return next;
     });
@@ -1283,7 +1465,7 @@ export default function App() {
       <div className="flex flex-col h-screen bg-slate-100 font-sans text-slate-800 animate-[fadeIn_0.3s_ease-in-out]">
         {renderToast()}
         <div className="bg-slate-900 text-white p-4 shadow-md flex justify-between items-center sticky top-0 z-20 shrink-0">
-          <div className="flex items-center space-x-2"><div className="w-8 h-8 bg-blue-500 rounded flex items-center justify-center font-bold text-lg">E</div><div><h1 className="font-bold text-sm leading-tight">EQ-PMS</h1><p className="text-[10px] text-blue-300">{t('모바일 모드', 'Mobile Mode')}</p></div></div>
+          <div className="flex items-center space-x-2"><div className="w-8 h-8 bg-blue-500 rounded flex items-center justify-center font-bold text-lg">M</div><div><h1 className="font-bold text-sm leading-tight">MAK-PMS</h1><p className="text-[10px] text-blue-300">{t('모바일 모드', 'Mobile Mode')}</p></div></div>
           <div className="flex items-center gap-1.5">
             <NotificationBell notifications={notifications} lastSeen={notifLastSeen} onMarkAllRead={handleMarkAllRead} onJump={handleNotificationJump} t={t} />
             <button onClick={() => setIsHelpOpen(true)} className="text-xs bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 rounded-full border border-indigo-700 transition-colors shadow-sm flex items-center" title="도움말"><HelpCircle size={14} /></button>
@@ -1357,11 +1539,11 @@ export default function App() {
         </div>
 
         <Suspense fallback={null}>
-          {isProjectModalOpen && <ProjectModal engineers={engineers} onClose={() => setIsProjectModalOpen(false)} onSubmit={handleAddProject} t={t} />}
+          {isProjectModalOpen && <ProjectModal engineers={engineers} customers={customers} onClose={() => setIsProjectModalOpen(false)} onSubmit={handleAddProject} t={t} />}
           {isIssueModalOpen && <MobileIssueModal projects={projects} onClose={() => setIsIssueModalOpen(false)} onSubmit={handleAddIssue} t={t} />}
           {isPartModalOpen && <MobilePartModal projects={projects} onClose={() => setIsPartModalOpen(false)} onSubmit={handleAddPart} t={t} />}
           {isDailyReportOpen && <DailyReportModal projects={projects} onClose={() => setIsDailyReportOpen(false)} onSubmit={handleAddDailyReport} t={t} />}
-          {isSiteModalOpen && <SiteModal site={selectedSite} onClose={() => setIsSiteModalOpen(false)} onSubmit={handleAddSite} t={t} />}
+          {isSiteModalOpen && <SiteModal site={selectedSite} customers={customers} onClose={() => setIsSiteModalOpen(false)} onSubmit={handleAddSite} t={t} />}
           {isTaskModalOpen && <TaskModal {...taskModalProps} />}
           {isIssueDetailModalOpen && <IssueDetailModal issue={selectedIssue} issuesList={issues} engineers={engineers} currentUser={currentUser} onClose={() => setIsIssueDetailModalOpen(false)} onAddComment={handleAddComment} onUpdateIssueStatus={handleUpdateIssueStatus} onUpdateIssue={handleUpdateIssue} getStatusColor={getStatusColor} t={t} />}
           {siteToDelete && <DeleteConfirmModal type="site" item={siteToDelete} onClose={() => setSiteToDelete(null)} onConfirm={handleDeleteSite} t={t} />}
@@ -1381,8 +1563,8 @@ export default function App() {
       <div className="flex flex-1 overflow-hidden">
         <aside className={`${sidebarCollapsed ? 'w-16' : 'w-64'} bg-slate-900 text-slate-300 flex flex-col shrink-0 transition-all duration-200`}>
           <div className={`h-16 flex items-center border-b border-slate-800 shrink-0 ${sidebarCollapsed ? 'justify-center px-2' : 'px-6'}`}>
-            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center shrink-0"><span className="text-white font-bold text-lg">E</span></div>
-            {!sidebarCollapsed && <span className="text-white font-bold text-lg tracking-wider ml-3 truncate">EQ-PMS</span>}
+            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center shrink-0"><span className="text-white font-bold text-lg">M</span></div>
+            {!sidebarCollapsed && <span className="text-white font-bold text-lg tracking-wider ml-3 truncate">MAK-PMS</span>}
           </div>
           <nav className={`flex-1 py-4 ${sidebarCollapsed ? 'px-2' : 'px-4'} space-y-1.5 overflow-y-auto`}>
             <NavItem icon={<LayoutDashboard size={20} />} label={t('대시보드', 'Dashboard')} active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} collapsed={sidebarCollapsed} />
@@ -1391,6 +1573,7 @@ export default function App() {
             {currentUser.role !== 'CUSTOMER' && (
               <>
                 <NavItem icon={<Wrench size={20} />} label={t('자재/스페어 파트', 'Parts')} active={activeTab === 'parts'} onClick={() => setActiveTab('parts')} collapsed={sidebarCollapsed} />
+                <NavItem icon={<Building2 size={20} />} label={t('고객사 관리', 'Customers')} active={activeTab === 'customers'} onClick={() => setActiveTab('customers')} collapsed={sidebarCollapsed} />
                 <NavItem icon={<Database size={20} />} label={t('사이트/유틸 마스터', 'Site Master')} active={activeTab === 'sites'} onClick={() => setActiveTab('sites')} collapsed={sidebarCollapsed} />
                 <NavItem icon={<Users size={20} />} label={t('인력/리소스 관리', 'Resources')} active={activeTab === 'resources'} onClick={() => setActiveTab('resources')} collapsed={sidebarCollapsed} />
                 <NavItem icon={<LifeBuoy size={20} />} label={t('AS 통합 관리', 'AS Management')} active={activeTab === 'as'} onClick={() => setActiveTab('as')} collapsed={sidebarCollapsed} />
@@ -1440,7 +1623,20 @@ export default function App() {
               {activeTab === 'projects' && <ProjectListView projects={projects} issues={issues} engineers={engineers} getStatusColor={getStatusColor} onAddClick={() => setIsProjectModalOpen(true)} onManageTasks={(id) => { setSelectedProjectId(id); setIsTaskModalOpen(true); }} onEditVersion={(prj) => { setVersionEditProject(prj); setIsVersionModalOpen(true); }} onChangeManager={(prj) => { setTeamEditProjectId(prj.id); setIsTeamModalOpen(true); }} onManageTeam={(prj) => { setTeamEditProjectId(prj.id); setIsTeamModalOpen(true); }} onViewPhaseGantt={(prj) => { setPhaseGanttProject(prj); setIsPhaseGanttOpen(true); }} onEditProject={(prj) => { setProjectEditTarget(prj); setIsProjectEditOpen(true); }} onDeleteProject={(prj) => setProjectToDelete(prj)} onUpdatePhase={handleUpdatePhase} onEditPhases={(prjId) => { setPhaseEditProjectId(prjId); setIsPhaseEditOpen(true); }} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} calcExp={calcExp} calcAct={calcAct} currentUser={currentUser} t={t} />}
               {activeTab === 'issues' && <IssueListView issues={issues} getStatusColor={getStatusColor} onAddClick={() => setIsIssueModalOpen(true)} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} onDeleteIssue={(issue) => setIssueToDelete(issue)} currentUser={currentUser} t={t} />}
               {activeTab === 'parts' && <PartsListView parts={parts} getStatusColor={getStatusColor} onUpdateStatus={handleUpdatePartStatus} onDeletePart={(part) => setPartToDelete(part)} onAddClick={() => setIsPartModalOpen(true)} currentUser={currentUser} t={t} />}
-              {activeTab === 'sites' && <SiteListView sites={sites} onAddClick={() => { setSelectedSite(null); setIsSiteModalOpen(true); }} onEditClick={(site) => { setSelectedSite(site); setIsSiteModalOpen(true); }} onDeleteClick={(site) => setSiteToDelete(site)} currentUser={currentUser} t={t} />}
+              {activeTab === 'sites' && <SiteListView sites={sites} customers={customers} onAddClick={() => { setSelectedSite(null); setIsSiteModalOpen(true); }} onEditClick={(site) => { setSelectedSite(site); setIsSiteModalOpen(true); }} onDeleteClick={(site) => setSiteToDelete(site)} currentUser={currentUser} t={t} />}
+              {activeTab === 'customers' && currentUser.role !== 'CUSTOMER' && (
+                <CustomerListView
+                  customers={customers}
+                  sites={sites}
+                  projects={projects}
+                  onAddClick={() => { setCustomerEditTarget(null); setIsCustomerModalOpen(true); }}
+                  onEditClick={(c) => { setCustomerEditTarget(c); setIsCustomerModalOpen(true); }}
+                  onDeleteClick={(c) => setCustomerToDelete(c)}
+                  onQuickRegister={handleQuickRegisterCustomers}
+                  currentUser={currentUser}
+                  t={t}
+                />
+              )}
               {activeTab === 'resources' && <ResourceListView engineers={engineers} projects={projects} issues={issues} getStatusColor={getStatusColor} TODAY={TODAY} onAddClick={() => { setSelectedEngineer(null); setIsEngineerModalOpen(true); }} onEditClick={(eng) => { setSelectedEngineer(eng); setIsEngineerModalOpen(true); }} onManageCertificates={(eng) => { setCertEngineerId(eng.id); setIsCertModalOpen(true); }} onShowActivity={(eng) => { setActivityEngineerId(eng.id); setIsActivityModalOpen(true); }} onDeleteClick={(eng) => setEngineerToDelete(eng)} currentUser={currentUser} t={t} />}
               {activeTab === 'as' && currentUser.role !== 'CUSTOMER' && (
                 <ASManagementView projects={projects} onProjectClick={openProjectDetail} onUpdateAS={handleUpdateAS} currentUser={currentUser} t={t} />
@@ -1489,10 +1685,24 @@ export default function App() {
           </div>
 
           <Suspense fallback={null}>
-            {isProjectModalOpen && <ProjectModal engineers={engineers} onClose={() => setIsProjectModalOpen(false)} onSubmit={handleAddProject} t={t} />}
+            {isProjectModalOpen && <ProjectModal engineers={engineers} customers={customers} onClose={() => setIsProjectModalOpen(false)} onSubmit={handleAddProject} t={t} />}
             {isIssueModalOpen && <IssueModal projects={projects} onClose={() => setIsIssueModalOpen(false)} onSubmit={handleAddIssue} t={t} />}
             {isPartModalOpen && <PartModal projects={projects} onClose={() => setIsPartModalOpen(false)} onSubmit={handleAddPart} t={t} />}
-            {isSiteModalOpen && <SiteModal site={selectedSite} onClose={() => setIsSiteModalOpen(false)} onSubmit={handleAddSite} t={t} />}
+            {isSiteModalOpen && <SiteModal site={selectedSite} customers={customers} onClose={() => setIsSiteModalOpen(false)} onSubmit={handleAddSite} t={t} />}
+            {isCustomerModalOpen && (
+              <CustomerModal
+                customer={customerEditTarget}
+                sites={sites}
+                projects={projects}
+                onClose={() => { setIsCustomerModalOpen(false); setCustomerEditTarget(null); }}
+                onSubmit={handleSubmitCustomer}
+                onDetachProject={handleDetachProjectFromCustomer}
+                onDetachSite={handleDetachSiteFromCustomer}
+                onAttachSite={handleAttachSiteToCustomer}
+                onAttachProject={handleAttachProjectToCustomer}
+                t={t}
+              />
+            )}
             {isTaskModalOpen && <TaskModal {...taskModalProps} />}
             {isIssueDetailModalOpen && <IssueDetailModal issue={selectedIssue} issuesList={issues} engineers={engineers} currentUser={currentUser} onClose={() => setIsIssueDetailModalOpen(false)} onAddComment={handleAddComment} onUpdateIssueStatus={handleUpdateIssueStatus} onUpdateIssue={handleUpdateIssue} getStatusColor={getStatusColor} t={t} />}
             {isVersionModalOpen && versionEditProject && (() => {
@@ -1501,7 +1711,7 @@ export default function App() {
               return <VersionModal project={liveProject} onClose={() => setIsVersionModalOpen(false)} onAdd={handleAddVersion} onUpdate={handleUpdateVersion} onDelete={handleDeleteVersion} t={t} />;
             })()}
             {isPhaseGanttOpen && <PhaseGanttModal project={phaseGanttProject} onClose={() => setIsPhaseGanttOpen(false)} t={t} />}
-            {isProjectEditOpen && <ProjectEditModal project={projectEditTarget} engineers={engineers} currentUser={currentUser} onClose={() => setIsProjectEditOpen(false)} onSubmit={handleEditProject} t={t} />}
+            {isProjectEditOpen && <ProjectEditModal project={projectEditTarget} engineers={engineers} customers={customers} currentUser={currentUser} onClose={() => setIsProjectEditOpen(false)} onSubmit={handleEditProject} t={t} />}
             {isPhaseEditOpen && phaseEditProjectId && (() => {
               const lp = projects.find(p => p.id === phaseEditProjectId);
               if (!lp) return null;
@@ -1536,6 +1746,7 @@ export default function App() {
             {engineerToDelete && <DeleteConfirmModal type="engineer" item={engineerToDelete} onClose={() => setEngineerToDelete(null)} onConfirm={handleDeleteEngineer} t={t} />}
             {partToDelete && <DeleteConfirmModal type="part" item={partToDelete} onClose={() => setPartToDelete(null)} onConfirm={handleDeletePart} t={t} />}
             {siteToDelete && <DeleteConfirmModal type="site" item={siteToDelete} onClose={() => setSiteToDelete(null)} onConfirm={handleDeleteSite} t={t} />}
+            {customerToDelete && <DeleteConfirmModal type="customer" item={customerToDelete} onClose={() => setCustomerToDelete(null)} onConfirm={handleDeleteCustomer} t={t} />}
             {userToDelete && <DeleteConfirmModal type="user" item={userToDelete} onClose={() => setUserToDelete(null)} onConfirm={handleDeleteUser} t={t} />}
 
             {isUserModalOpen && currentUser.role === 'ADMIN' && (

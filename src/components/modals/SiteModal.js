@@ -11,11 +11,16 @@ const SUGGESTED_SPECS = [
 
 const ensureArr = (v) => (Array.isArray(v) ? v : []);
 
-const SiteModal = memo(function SiteModal({ site, onClose, onSubmit, t }) {
+const SiteModal = memo(function SiteModal({ site, customers, prefill, onClose, onSubmit, t }) {
+  const isEdit = !!(site && site.id);
   const [data, setData] = useState(() => {
-    const base = site || { customer: '', fab: '', line: '', power: '', pcw: '', gas: '', limit: '', note: '' };
-    return { ...base, customSpecs: ensureArr(base.customSpecs) };
+    if (isEdit) {
+      return { customerId: '', ...site, customSpecs: ensureArr(site.customSpecs) };
+    }
+    const base = { customer: prefill?.customer || '', customerId: prefill?.customerId || '', fab: '', line: '', power: '', pcw: '', gas: '', limit: '', note: '' };
+    return { ...base, customSpecs: [] };
   });
+  const customerList = customers || [];
 
   const [newSpec, setNewSpec] = useState({ label: '', value: '', note: '' });
   const [editingId, setEditingId] = useState(null);
@@ -52,11 +57,42 @@ const SiteModal = memo(function SiteModal({ site, onClose, onSubmit, t }) {
   };
 
   return (
-    <ModalWrapper title={site ? t('사이트 수정', 'Edit Site') : t('새 사이트 등록', 'New Site')} icon={<Database size={20}/>} color="indigo" onClose={onClose} onSubmit={(e)=>{e.preventDefault();onSubmit(data);}} submitText={site ? t('수정하기', 'Update') : t('등록하기', 'Submit')}>
+    <ModalWrapper title={isEdit ? t('사이트 수정', 'Edit Site') : t('새 사이트 등록', 'New Site')} icon={<Database size={20}/>} color="indigo" onClose={onClose} onSubmit={(e)=>{e.preventDefault();onSubmit(data);}} submitText={isEdit ? t('수정하기', 'Update') : t('등록하기', 'Submit')}>
       <div className="grid grid-cols-3 gap-4">
         <div>
-          <label className="block text-sm font-bold text-slate-700 mb-1">{t('고객사', 'Customer')}</label>
-          <input required className="w-full p-2.5 border rounded-lg text-sm" value={data.customer} onChange={e=>setData({...data, customer:e.target.value})} />
+          <label className="block text-sm font-bold text-slate-700 mb-1 flex items-center justify-between">
+            <span>{t('고객사', 'Customer')}</span>
+            {!data.customerId && data.customer && customerList.length > 0 && (
+              <span className="text-[10px] text-amber-600 font-bold bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">{t('미연결', 'Unlinked')}</span>
+            )}
+          </label>
+          {customerList.length > 0 ? (
+            <>
+              <select
+                className="w-full p-2.5 border rounded-lg text-sm bg-white"
+                value={data.customerId || '__manual__'}
+                onChange={e => {
+                  const v = e.target.value;
+                  if (v === '__manual__') {
+                    setData({ ...data, customerId: '' });
+                  } else {
+                    const c = customerList.find(x => x.id === v);
+                    setData({ ...data, customerId: v, customer: c?.name || data.customer });
+                  }
+                }}
+              >
+                <option value="__manual__">{t('-- 직접 입력 --', '-- Type manually --')}</option>
+                {customerList.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}{c.domain ? ` · ${c.domain}` : ''}</option>
+                ))}
+              </select>
+              {!data.customerId && (
+                <input required className="w-full p-2 mt-1.5 border rounded-lg text-sm" placeholder={t('고객사명 직접 입력', 'Enter customer name')} value={data.customer} onChange={e=>setData({...data, customer:e.target.value})} />
+              )}
+            </>
+          ) : (
+            <input required className="w-full p-2.5 border rounded-lg text-sm" value={data.customer} onChange={e=>setData({...data, customer:e.target.value})} />
+          )}
         </div>
         <div className="col-span-2">
           <label className="block text-sm font-bold text-slate-700 mb-1">{t('공장/라인', 'Fab/Line')}</label>

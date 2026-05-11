@@ -3,15 +3,20 @@ import { DOMAINS, BATTERY_DOMAINS } from '../../constants';
 import { Zap } from 'lucide-react';
 import ModalWrapper from '../common/ModalWrapper';
 
-const ProjectModal = memo(function ProjectModal({ engineers, onClose, onSubmit, t }) {
+const ProjectModal = memo(function ProjectModal({ engineers, customers, prefill, onClose, onSubmit, t }) {
   const [data, setData] = useState({
-    domain: '반도체', name: '', customer: '', site: '',
+    domain: prefill?.domain || '반도체',
+    name: '',
+    customer: prefill?.customer || '',
+    customerId: prefill?.customerId || '',
+    site: '',
     startDate: '', dueDate: '', startTBD: false, dueTBD: false,
     status: '진행중', manager: '',
     hwVersion: '', swVersion: '', fwVersion: '', phaseIndex: 0,
     voltage: '', current: '', spec: ''
   });
   const list = engineers || [];
+  const customerList = customers || [];
   const isBattery = BATTERY_DOMAINS.includes(data.domain);
 
   const handleSubmit = (e) => {
@@ -42,7 +47,33 @@ const ProjectModal = memo(function ProjectModal({ engineers, onClose, onSubmit, 
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">{t('고객사', 'Customer')}</label>
-          <input required className="w-full p-2.5 border rounded-lg text-sm" value={data.customer} onChange={e=>setData({...data, customer:e.target.value})} />
+          {customerList.length > 0 ? (
+            <>
+              <select
+                className="w-full p-2.5 border rounded-lg text-sm bg-white"
+                value={data.customerId || '__manual__'}
+                onChange={e => {
+                  const v = e.target.value;
+                  if (v === '__manual__') {
+                    setData({ ...data, customerId: '', customer: data.customer || '' });
+                  } else {
+                    const c = customerList.find(x => x.id === v);
+                    setData({ ...data, customerId: v, customer: c?.name || '' });
+                  }
+                }}
+              >
+                <option value="__manual__">{t('-- 직접 입력 --', '-- Type manually --')}</option>
+                {customerList.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}{c.domain ? ` · ${c.domain}` : ''}</option>
+                ))}
+              </select>
+              {!data.customerId && (
+                <input required className="w-full p-2 mt-1.5 border rounded-lg text-sm" placeholder={t('고객사명 직접 입력', 'Enter customer name')} value={data.customer} onChange={e => setData({...data, customer: e.target.value})} />
+              )}
+            </>
+          ) : (
+            <input required className="w-full p-2.5 border rounded-lg text-sm" value={data.customer} onChange={e=>setData({...data, customer:e.target.value})} />
+          )}
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">{t('사이트(지역)', 'Site Location')}</label>

@@ -1,5 +1,5 @@
 /**
- * EQ-PMS Google Apps Script Backend
+ * MAK-PMS Google Apps Script Backend
  *
  * [설치 방법]
  * 1. 구글 스프레드시트를 생성합니다.
@@ -17,13 +17,14 @@
  *
  * [지원 액션 (POST body { action, data })]
  *   UPDATE_PROJECTS, UPDATE_ISSUES, UPDATE_RELEASES,
- *   UPDATE_ENGINEERS, UPDATE_PARTS, UPDATE_SITES, UPDATE_USERS, UPDATE_SETTINGS
+ *   UPDATE_ENGINEERS, UPDATE_PARTS, UPDATE_SITES, UPDATE_CUSTOMERS,
+ *   UPDATE_USERS, UPDATE_SETTINGS, UPDATE_WEEKLY_REPORTS
  *   UPLOAD_FILE       — Drive에 파일 업로드 (data: { projectId, customer, projectName, fileName, mimeType, base64, category })
  *                       category: '명세서' | '도면' | '회의록' | '기타' (생략 시 '기타')
  *   DELETE_FILE       — Drive 파일 휴지통 이동 (data: { fileId })
  *   VERIFY_DRIVE_FOLDER — 폴더 ID 접근 검증 (data: { folderId })
  *
- * [알림 (POST body 가 'EQ-PMS 알림' 텍스트 포함)]
+ * [알림 (POST body 가 'MAK-PMS 알림' 텍스트 포함)]
  *   handleWebhook 으로 전달 → MailApp.sendEmail 발송
  *   meta.targetEmail 가 유효하면 그 주소로, 아니면 기본 수신자(DEFAULT_NOTIFY_EMAIL)
  *   meta.{projectName, issueTitle, severity} 있으면 [프로젝트][이슈][레벨] 제목 포맷
@@ -44,7 +45,9 @@ function doGet(e) {
     engineers: readFromSheet("Engineers") || [],
     parts: readFromSheet("Parts") || [],
     sites: readFromSheet("Sites") || [],
+    customers: readFromSheet("Customers") || [],
     users: readFromSheet("Users") || [],
+    weeklyReports: readFromSheet("WeeklyReports") || [],
     settings: settings
   };
 
@@ -61,7 +64,7 @@ function doPost(e) {
 
     // 만약 클라이언트에서 'action' 없이 단순 텍스트(웹훅 형태)로 보냈다면
     var rawData = e.postData.contents;
-    if (rawData && rawData.indexOf('EQ-PMS 알림') !== -1) {
+    if (rawData && rawData.indexOf('MAK-PMS 알림') !== -1) {
       var success = handleWebhook(rawData);
       return ContentService.createTextOutput(JSON.stringify({ status: success ? "webhook_success" : "webhook_error" }))
         .setMimeType(ContentService.MimeType.JSON);
@@ -80,8 +83,12 @@ function doPost(e) {
       writeToSheet("Parts", data);
     } else if (action === 'UPDATE_SITES') {
       writeToSheet("Sites", data);
+    } else if (action === 'UPDATE_CUSTOMERS') {
+      writeToSheet("Customers", data);
     } else if (action === 'UPDATE_USERS') {
       writeToSheet("Users", data);
+    } else if (action === 'UPDATE_WEEKLY_REPORTS') {
+      writeToSheet("WeeklyReports", data);
     } else if (action === 'UPDATE_SETTINGS') {
       // Settings는 단일 객체 → 1행짜리 배열로 감싸 저장
       writeToSheet("Settings", [data || {}]);
@@ -293,7 +300,7 @@ function handleWebhook(payload) {
 
     // 기본값
     var targetEmail = DEFAULT_NOTIFY_EMAIL;
-    var subject = "[EQ-PMS 시스템 자동 알림]";
+    var subject = "[MAK-PMS 시스템 자동 알림]";
 
     // meta에 구조화된 데이터가 있으면 제목 포맷: [프로젝트][이슈명][레벨]
     if (meta) {
@@ -327,7 +334,7 @@ function handleWebhook(payload) {
 // 테스트용: Apps Script 편집기에서 함수 선택 후 [실행] 으로 메일 발송 검증
 function testEmail() {
   var testPayload = JSON.stringify({
-    text: "테스트 메시지\nEQ-PMS 알림: 동작 검증",
+    text: "테스트 메시지\nMAK-PMS 알림: 동작 검증",
     type: "ISSUE",
     meta: {
       projectName: "테스트 프로젝트",

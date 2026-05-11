@@ -1,4 +1,4 @@
-# EQ-PMS (Equipment Project Management System)
+# MAK-PMS (Equipment Project Management System)
 
 장비 프로젝트 셋업 관리 시스템  
 반도체 / 디스플레이 / 2차전지 장비의 현장 셋업 프로젝트를 통합 관리하는 웹 애플리케이션
@@ -616,7 +616,7 @@ npx serve -s build -l 3000
 
 ```mermaid
 gantt
-    title EQ-PMS 향후 발전 로드맵
+    title MAK-PMS 향후 발전 로드맵
     dateFormat  YYYY-MM
     section 단기 (1~2개월)
     Teams/Slack 알림 연동    :a1, 2026-05, 1M
@@ -636,14 +636,14 @@ gantt
 ```mermaid
 graph LR
     subgraph Before["현재 (자체 인증)"]
-        U1[사용자] -->|ID/PW 별도| EQ1[EQ-PMS]
+        U1[사용자] -->|ID/PW 별도| EQ1[MAK-PMS]
         U1 -->|ID/PW 별도| S1[다른 시스템1]
         U1 -->|ID/PW 별도| S2[다른 시스템2]
     end
 
     subgraph After["SSO 도입 후"]
         U2[사용자] -->|한 번 로그인| SSO[Azure AD / Google Workspace]
-        SSO -->|자동 인증| EQ2[EQ-PMS]
+        SSO -->|자동 인증| EQ2[MAK-PMS]
         SSO -->|자동 인증| S3[다른 시스템1]
         SSO -->|자동 인증| S4[다른 시스템2]
     end
@@ -652,7 +652,7 @@ graph LR
 **도입 효과:**
 | 항목 | 현재 | SSO 도입 후 |
 |------|------|------------|
-| 계정 관리 | EQ-PMS 자체 계정 (admin/pm/eng/client) | 회사 메일 계정과 통합 |
+| 계정 관리 | MAK-PMS 자체 계정 (admin/pm/eng/client) | 회사 메일 계정과 통합 |
 | 보안 | 고정 비밀번호 (1234) | 회사 정책 적용 (2FA 등) |
 | 입/퇴사 처리 | 수동 계정 생성/삭제 | 자동 권한 부여/회수 |
 | 부서/직급 | 수동 입력 | AD에서 자동 연동 |
@@ -719,7 +719,7 @@ mindmap
 ```mermaid
 sequenceDiagram
     participant U as 현장 엔지니어
-    participant App as EQ-PMS PWA
+    participant App as MAK-PMS PWA
     participant Cache as 로컬 캐시
     participant Server as 서버
 

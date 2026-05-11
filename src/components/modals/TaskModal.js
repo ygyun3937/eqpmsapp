@@ -1,5 +1,5 @@
 import React, { useState, memo } from 'react';
-import { X, ListTodo, CheckSquare, AlertTriangle, CheckCircle, User, Edit, Trash, PenTool, Info, ShieldCheck, FileText, ImageIcon, History, GitCommit as TimelineIcon, Package, Wrench, HardDrive, MessageSquare, Send, LifeBuoy, Plus, ShieldOff, Sparkles, Paperclip, Upload, Download, ExternalLink, Loader, FolderOpen, CalendarDays, Star, Calendar, Clock } from 'lucide-react';
+import { X, ListTodo, CheckSquare, AlertTriangle, CheckCircle, User, Edit, Trash, PenTool, Info, ShieldCheck, FileText, ImageIcon, History, GitCommit as TimelineIcon, Package, Wrench, HardDrive, MessageSquare, Send, LifeBuoy, Plus, ShieldOff, Sparkles, Paperclip, Upload, Download, ExternalLink, Loader, FolderOpen, CalendarDays, Star, Calendar, Clock, StickyNote } from 'lucide-react';
 import { PROJECT_PHASES } from '../../constants';
 import { calcAct as calcSetupProgress, calcPhaseProgress, calcOverallProgress } from '../../utils/calc';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
@@ -21,7 +21,9 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
   const [newNoteSummary, setNewNoteSummary] = useState('');
   const [newNoteFiles, setNewNoteFiles] = useState([]);
   const [noteUploadIdx, setNoteUploadIdx] = useState(0);
-  const [newNoteMode, setNewNoteMode] = useState('quick'); // 'quick' | 'detail'
+  const [newNoteMode, setNewNoteMode] = useState('quick'); // 'quick' | 'detail' — 회의록일 때만 유효
+  const [newNoteKind, setNewNoteKind] = useState('meeting'); // 'meeting' | 'note'
+  const [noteListFilter, setNoteListFilter] = useState('all'); // 'all' | 'meeting' | 'note'
   const [noteFormOpen, setNoteFormOpen] = useState(false);
   const [newNoteMeetingDate, setNewNoteMeetingDate] = useState('');
   const [newNoteAttendees, setNewNoteAttendees] = useState('');
@@ -91,7 +93,7 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
           <button onClick={() => setActiveModalTab('extras')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'extras' ? 'border-pink-600 text-pink-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><Sparkles size={16} className="mb-0.5" /><span>{t('추가 대응', 'Extras')} ({(project.extraTasks || []).length})</span></button>
           <button onClick={() => setActiveModalTab('issues')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'issues' ? 'border-red-600 text-red-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><AlertTriangle size={16} className="mb-0.5" /><span>{t('이슈', 'Issues')} ({projectIssues.length})</span></button>
           <button onClick={() => setActiveModalTab('history')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'history' ? 'border-slate-600 text-slate-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><History size={16} className="mb-0.5" /><span>{t('이력', 'History')} ({(project.activityLog || []).length})</span></button>
-          <button onClick={() => setActiveModalTab('notes')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'notes' ? 'border-amber-600 text-amber-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><FileText size={16} className="mb-0.5" /><span>{t('회의록', 'Meetings')} ({(project.notes || []).length})</span></button>
+          <button onClick={() => setActiveModalTab('notes')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'notes' ? 'border-amber-600 text-amber-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><FileText size={16} className="mb-0.5" /><span>{t('회의록/노트', 'Notes')} ({(project.notes || []).length})</span></button>
           <button onClick={() => setActiveModalTab('attachments')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'attachments' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><Paperclip size={16} className="mb-0.5" /><span>{t('참고 자료', 'Files')} ({(project.attachments || []).length})</span></button>
           <button onClick={() => setActiveModalTab('requests')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'requests' ? 'border-cyan-600 text-cyan-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><MessageSquare size={16} className="mb-0.5" /><span>{t('고객요청', 'Requests')} ({(project.customerRequests || []).length})</span></button>
           <button onClick={() => setActiveModalTab('as')} className={`px-2 py-2 text-xs font-bold border-b-2 transition-colors flex flex-col items-center justify-center ${activeModalTab === 'as' ? 'border-purple-600 text-purple-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><LifeBuoy size={16} className="mb-0.5" /><span>{t('AS 관리', 'AS')} ({(project.asRecords || []).length})</span></button>
@@ -583,11 +585,12 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
               setNoteUploading(true);
               try {
                 await onAddNote(project.id, newNoteText.trim(), {
+                  kind: newNoteKind,
                   summary: newNoteSummary.trim(),
-                  meetingDate: newNoteMeetingDate || '',
-                  attendees: newNoteAttendees.trim(),
-                  decisions: newNoteDecisions.trim(),
-                  actions: newNoteActions.trim(),
+                  meetingDate: newNoteKind === 'meeting' ? (newNoteMeetingDate || '') : '',
+                  attendees: newNoteKind === 'meeting' ? newNoteAttendees.trim() : '',
+                  decisions: newNoteKind === 'meeting' ? newNoteDecisions.trim() : '',
+                  actions: newNoteKind === 'meeting' ? newNoteActions.trim() : '',
                   files: newNoteFiles,
                   onProgress: ({ percent, index }) => {
                     setNoteUploadProgress(percent || 0);
@@ -609,22 +612,39 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setNoteFormOpen(true)}
+                      onClick={() => { setNewNoteKind('meeting'); setNoteFormOpen(true); }}
                       className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-lg transition-colors shadow-sm"
                     >
-                      <Plus size={16} />{t('새 회의록 작성', 'New Meeting Note')}
+                      <FileText size={16} />{t('새 회의록 작성', 'New Meeting')}
                     </button>
-                    <span className="text-[11px] text-slate-400 hidden sm:block">
-                      {t('빠른 / 상세 모드 모두 지원 · 다중 파일', 'Quick/Detail modes · multi-file')}
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => { setNewNoteKind('note'); setNoteFormOpen(true); }}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-slate-600 hover:bg-slate-700 text-white text-sm font-bold rounded-lg transition-colors shadow-sm"
+                    >
+                      <StickyNote size={16} />{t('새 노트 작성', 'New Note')}
+                    </button>
                   </div>
                 )}
 
-                {currentUser.role !== 'CUSTOMER' && noteFormOpen && (
-                  <div className="bg-white p-4 rounded-xl border-2 border-amber-300 shadow-md space-y-3 ring-2 ring-amber-100">
-                    {/* 폼 헤더 (제목 + 닫기) */}
-                    <div className="flex items-center justify-between -mt-1 mb-1 pb-2 border-b border-amber-200">
-                      <span className="text-sm font-black text-amber-800 flex items-center"><FileText size={14} className="mr-1.5" />{t('새 회의록 작성', 'New Meeting Note')}</span>
+                {currentUser.role !== 'CUSTOMER' && noteFormOpen && (() => {
+                  const isMeeting = newNoteKind === 'meeting';
+                  const kindColor = isMeeting ? 'amber' : 'slate';
+                  return (
+                  <div className={`bg-white p-4 rounded-xl border-2 ${isMeeting ? 'border-amber-300 ring-amber-100' : 'border-slate-400 ring-slate-100'} shadow-md space-y-3 ring-2`}>
+                    {/* 폼 헤더 (종류 토글 + 닫기) */}
+                    <div className={`flex items-center justify-between -mt-1 mb-1 pb-2 border-b ${isMeeting ? 'border-amber-200' : 'border-slate-200'}`}>
+                      <div className="flex items-center gap-2">
+                        {isMeeting ? <FileText size={14} className="text-amber-700" /> : <StickyNote size={14} className="text-slate-700" />}
+                        <span className={`text-sm font-black ${isMeeting ? 'text-amber-800' : 'text-slate-800'}`}>
+                          {isMeeting ? t('새 회의록 작성', 'New Meeting') : t('새 노트 작성', 'New Note')}
+                        </span>
+                        {/* 종류 전환 토글 */}
+                        <div className="ml-2 flex bg-slate-100 rounded p-0.5 border border-slate-200">
+                          <button type="button" onClick={() => setNewNoteKind('meeting')} className={`px-2 py-0.5 text-[10px] font-bold rounded transition-colors ${isMeeting ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>{t('회의록', 'Meeting')}</button>
+                          <button type="button" onClick={() => setNewNoteKind('note')} className={`px-2 py-0.5 text-[10px] font-bold rounded transition-colors ${!isMeeting ? 'bg-slate-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>{t('노트', 'Note')}</button>
+                        </div>
+                      </div>
                       <button
                         type="button"
                         onClick={() => setNoteFormOpen(false)}
@@ -636,40 +656,43 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                       </button>
                     </div>
 
-                    <div className="bg-amber-50 text-amber-800 p-2 rounded-lg text-[11px] font-medium border border-amber-200 flex items-start">
+                    <div className={`p-2 rounded-lg text-[11px] font-medium border flex items-start ${isMeeting ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>
                       <Info size={12} className="mr-1.5 shrink-0 mt-0.5" />
                       <div>
-                        {t('파일은 ', 'Files go to ')}
-                        <code className="bg-white px-1 rounded text-[10px]">[프로젝트]/회의록</code>
-                        {t(' 폴더에 저장됩니다.', ' folder.')}
+                        {isMeeting
+                          ? <>{t('회의록은 회의 일시·참석자·결정·액션을 함께 기록할 수 있습니다.', 'Meetings include date / attendees / decisions / actions.')}</>
+                          : <>{t('노트는 본문 + 첨부만 — 회의가 아닌 중요 정보·결정 메모를 자유롭게 남기세요.', 'Notes: body + files only — for non-meeting info / decisions.')}</>}
                       </div>
-                    </div>
-                    {/* 모드 토글 — 빠른 / 상세 */}
-                    <div className="flex items-center gap-2 -mb-1">
-                      <span className="text-[11px] font-bold text-slate-500">{t('등록 모드', 'Mode')}</span>
-                      <div className="flex bg-slate-100 rounded-md p-0.5 border border-slate-200">
-                        <button
-                          type="button"
-                          onClick={() => setNewNoteMode('quick')}
-                          className={`px-2.5 py-1 text-[11px] font-bold rounded transition-colors ${newNoteMode === 'quick' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                        >
-                          {t('빠른', 'Quick')}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setNewNoteMode('detail')}
-                          className={`px-2.5 py-1 text-[11px] font-bold rounded transition-colors ${newNoteMode === 'detail' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                        >
-                          {t('상세', 'Detail')}
-                        </button>
-                      </div>
-                      <span className="text-[10px] text-slate-400 ml-auto">
-                        {newNoteMode === 'quick' ? t('본문 + 첨부만', 'Body + files only') : t('회의 일시 / 참석자 / 결정 / 액션 포함', 'Includes date / attendees / decisions / actions')}
-                      </span>
                     </div>
 
-                    {/* 상세 모드 — 회의 일시 + 참석자 */}
-                    {newNoteMode === 'detail' && (
+                    {/* 모드 토글 — 회의록일 때만 표시 (빠른 / 상세) */}
+                    {isMeeting && (
+                      <div className="flex items-center gap-2 -mb-1">
+                        <span className="text-[11px] font-bold text-slate-500">{t('등록 모드', 'Mode')}</span>
+                        <div className="flex bg-slate-100 rounded-md p-0.5 border border-slate-200">
+                          <button
+                            type="button"
+                            onClick={() => setNewNoteMode('quick')}
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded transition-colors ${newNoteMode === 'quick' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                          >
+                            {t('빠른', 'Quick')}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setNewNoteMode('detail')}
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded transition-colors ${newNoteMode === 'detail' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                          >
+                            {t('상세', 'Detail')}
+                          </button>
+                        </div>
+                        <span className="text-[10px] text-slate-400 ml-auto">
+                          {newNoteMode === 'quick' ? t('본문 + 첨부만', 'Body + files only') : t('회의 일시 / 참석자 / 결정 / 액션 포함', 'Includes date / attendees / decisions / actions')}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* 상세 모드 — 회의 일시 + 참석자 (회의록 + 상세 모드일 때만) */}
+                    {isMeeting && newNoteMode === 'detail' && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-amber-50/50 border border-amber-100 rounded-lg">
                         <div>
                           <label className="block text-[11px] font-bold text-amber-800 mb-1 flex items-center"><Calendar size={11} className="mr-1" />{t('회의 일시', 'Meeting Date')}</label>
@@ -694,12 +717,12 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                     )}
 
                     <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">{t('논의 내용 (본문)', 'Discussion (Body)')}</label>
-                      <textarea rows="4" className="w-full text-sm p-3 border border-slate-300 rounded-lg resize-none focus:outline-none focus:border-amber-500" value={newNoteText} onChange={(e) => setNewNoteText(e.target.value)} placeholder={t(newNoteMode === 'detail' ? '주요 논의 내용을 입력하세요. (안건·진행 상황·이슈 등)' : '회의 내용을 자유롭게 입력하세요.', newNoteMode === 'detail' ? 'Discussion details (topics, progress, issues)' : 'Meeting notes')}></textarea>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">{isMeeting ? t('논의 내용 (본문)', 'Discussion (Body)') : t('노트 본문', 'Note Body')}</label>
+                      <textarea rows="4" className={`w-full text-sm p-3 border border-slate-300 rounded-lg resize-none focus:outline-none ${isMeeting ? 'focus:border-amber-500' : 'focus:border-slate-500'}`} value={newNoteText} onChange={(e) => setNewNoteText(e.target.value)} placeholder={isMeeting ? t(newNoteMode === 'detail' ? '주요 논의 내용을 입력하세요. (안건·진행 상황·이슈 등)' : '회의 내용을 자유롭게 입력하세요.', newNoteMode === 'detail' ? 'Discussion details (topics, progress, issues)' : 'Meeting notes') : t('회의가 아닌 중요 정보·결정·메모 (예: 고객사 전결권자 변경, 시방서 해석 차이 등)', 'Non-meeting key info / decisions / memos')}></textarea>
                     </div>
 
-                    {/* 상세 모드 — 결정사항 + 액션 아이템 */}
-                    {newNoteMode === 'detail' && (
+                    {/* 상세 모드 — 결정사항 + 액션 아이템 (회의록 + 상세 모드일 때만) */}
+                    {isMeeting && newNoteMode === 'detail' && (
                       <>
                         <div>
                           <label className="block text-xs font-bold text-slate-600 mb-1 flex items-center"><CheckSquare size={11} className="mr-1 text-emerald-600" />{t('결정사항', 'Decisions')}</label>
@@ -763,16 +786,42 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                       </div>
                     )}
                     <div className="flex justify-end">
-                      <button onClick={handleSubmitNote} disabled={noteUploading || (!newNoteText.trim() && newNoteFiles.length === 0)} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 text-white text-sm font-bold rounded-lg transition-colors flex items-center"><FileText size={14} className="mr-1.5" />{t('회의록 등록', 'Add Meeting')}</button>
+                      <button onClick={handleSubmitNote} disabled={noteUploading || (!newNoteText.trim() && newNoteFiles.length === 0)} className={`px-4 py-2 disabled:bg-slate-300 text-white text-sm font-bold rounded-lg transition-colors flex items-center ${isMeeting ? 'bg-amber-500 hover:bg-amber-600' : 'bg-slate-600 hover:bg-slate-700'}`}>
+                        {isMeeting ? <FileText size={14} className="mr-1.5" /> : <StickyNote size={14} className="mr-1.5" />}
+                        {isMeeting ? t('회의록 등록', 'Add Meeting') : t('노트 등록', 'Add Note')}
+                      </button>
                     </div>
                   </div>
-                )}
+                  );
+                })()}
+
+                {/* 리스트 필터 칩 — 회의록 / 노트 */}
+                {project.notes && project.notes.length > 0 && (() => {
+                  const cnt = { all: project.notes.length, meeting: 0, note: 0 };
+                  project.notes.forEach(n => { const k = n.kind === 'note' ? 'note' : 'meeting'; cnt[k] += 1; });
+                  return (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[11px] font-bold text-slate-500 mr-1">{t('필터', 'Filter')}</span>
+                      <button type="button" onClick={() => setNoteListFilter('all')} className={`text-[11px] font-bold px-2 py-1 rounded-full border transition-colors ${noteListFilter === 'all' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>{t('전체', 'All')} {cnt.all}</button>
+                      <button type="button" onClick={() => setNoteListFilter('meeting')} className={`text-[11px] font-bold px-2 py-1 rounded-full border transition-colors inline-flex items-center ${noteListFilter === 'meeting' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50'}`}><FileText size={10} className="mr-1" />{t('회의록', 'Meeting')} {cnt.meeting}</button>
+                      <button type="button" onClick={() => setNoteListFilter('note')} className={`text-[11px] font-bold px-2 py-1 rounded-full border transition-colors inline-flex items-center ${noteListFilter === 'note' ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'}`}><StickyNote size={10} className="mr-1" />{t('노트', 'Note')} {cnt.note}</button>
+                    </div>
+                  );
+                })()}
 
                 {(!project.notes || project.notes.length === 0) ? (
-                  <div className="text-center py-10 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl bg-white">{t('등록된 회의록이 없습니다.', 'No meeting notes yet.')}</div>
+                  <div className="text-center py-10 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl bg-white">{t('등록된 회의록/노트가 없습니다.', 'No meeting notes / notes yet.')}</div>
                 ) : (() => {
-                  // 날짜순 desc 정렬 (note.id = timestamp)
-                  const sorted = [...project.notes].sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
+                  // 필터 적용 + 날짜순 desc 정렬 (note.id = timestamp)
+                  const filteredNotes = project.notes.filter(n => {
+                    if (noteListFilter === 'all') return true;
+                    const k = n.kind === 'note' ? 'note' : 'meeting';
+                    return k === noteListFilter;
+                  });
+                  if (filteredNotes.length === 0) {
+                    return <div className="text-center py-10 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl bg-white">{noteListFilter === 'meeting' ? t('등록된 회의록이 없습니다.', 'No meetings yet.') : t('등록된 노트가 없습니다.', 'No notes yet.')}</div>;
+                  }
+                  const sorted = [...filteredNotes].sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
                   const today = new Date();
                   const today0 = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
                   const DAY = 86400000;
@@ -816,11 +865,15 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                                 <div className="text-[8px] font-medium leading-none mt-0.5 opacity-70">{valid ? `${dow}요일` : ''}</div>
                               </div>
                               {/* 우측 본문 카드 */}
-                              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                              <div className={`bg-white p-4 rounded-xl border shadow-sm ${note.kind === 'note' ? 'border-slate-300' : 'border-slate-200'}`}>
                                 <div className="flex justify-between items-center mb-2 pb-2 border-b border-slate-100">
                                   <div className="flex items-center gap-2">
-                                    <div className="w-7 h-7 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-xs font-bold">{note.author.charAt(0)}</div>
+                                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${note.kind === 'note' ? 'bg-slate-200 text-slate-700' : 'bg-amber-100 text-amber-600'}`}>{note.author.charAt(0)}</div>
                                     <span className="text-sm font-bold text-slate-800">{note.author}</span>
+                                    {/* 종류 뱃지 */}
+                                    <span className={`inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded border ${note.kind === 'note' ? 'bg-slate-100 text-slate-700 border-slate-300' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                                      {note.kind === 'note' ? <><StickyNote size={9} className="mr-1" />{t('노트', 'Note')}</> : <><FileText size={9} className="mr-1" />{t('회의록', 'Meeting')}</>}
+                                    </span>
                                     {valid && (
                                       <span className="text-[10px] text-slate-500 flex items-center"><Clock size={10} className="mr-0.5" />{hh}:{mi}{rel && <span className="ml-1.5 text-slate-400 font-medium">· {rel}</span>}</span>
                                     )}

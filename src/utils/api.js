@@ -84,7 +84,7 @@ export const notifyWebhook = async (message, type = 'INFO', meta = null) => {
   if (!WEBHOOK_URL) return;
   try {
     const payload = {
-      text: `[EQ-PMS 알림: ${type}]\n${message}`,
+      text: `[MAK-PMS 알림: ${type}]\n${message}`,
       type,
       meta
     };

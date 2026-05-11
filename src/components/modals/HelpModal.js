@@ -1,5 +1,5 @@
 import React, { useState, memo } from 'react';
-import { HelpCircle, Kanban, Users, AlertTriangle, LifeBuoy, GitCommit, ShieldCheck, Sparkles, Plane, FileText, X, ChevronRight, Info, Bell, ClipboardList } from 'lucide-react';
+import { HelpCircle, Kanban, Users, AlertTriangle, LifeBuoy, GitCommit, ShieldCheck, Sparkles, Plane, FileText, X, ChevronRight, Info, Bell, ClipboardList, Building2 } from 'lucide-react';
 
 const Section = ({ title, children }) => (
   <div className="mb-5 last:mb-0">
@@ -26,6 +26,7 @@ const TABS = [
   { key: 'start', label: '시작하기', icon: HelpCircle },
   { key: 'project', label: '프로젝트', icon: Kanban },
   { key: 'team', label: '담당자/팀/출장', icon: Plane },
+  { key: 'customer', label: '고객사/명함', icon: Building2 },
   { key: 'checklist', label: '검수표/Buy-off', icon: ShieldCheck },
   { key: 'extras', label: '추가 대응', icon: Sparkles },
   { key: 'resource', label: '인력/리소스', icon: Users },
@@ -48,7 +49,7 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
             <HelpCircle size={20} className="text-indigo-600 mr-2" />
             <div>
               <h2 className="text-lg font-bold text-indigo-800">{t('사용자 가이드', 'User Guide')}</h2>
-              <p className="text-xs text-indigo-600 mt-0.5">{t('EQ-PMS 주요 기능 사용 안내', 'EQ-PMS feature guide')}</p>
+              <p className="text-xs text-indigo-600 mt-0.5">{t('MAK-PMS 주요 기능 사용 안내', 'MAK-PMS feature guide')}</p>
             </div>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-2"><X size={20} /></button>
@@ -292,6 +293,60 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                   <Step n={4}>카드의 <strong>"수정 이력 (N)"</strong> 토글로 전체 변경 내역 확인 가능</Step>
                 </Section>
                 <Note>출장 일정은 인력/리소스 화면과 대시보드에 자동으로 출장 상태(현장 파견 / 출장 예정 / 복귀 N일 전 등)로 반영됩니다. 수정 이력은 활동 로그(TRIP_UPDATE)에도 함께 남습니다.</Note>
+              </>
+            )}
+
+            {tab === 'customer' && (
+              <>
+                <h2 className="text-base font-bold text-slate-800 mb-3">{t('고객사 정보 / 명함 관리', 'Customers & Business Cards')}</h2>
+                <Section title="페이지 진입 — 사이드바 → 고객사 관리">
+                  <p>고객사 마스터를 별도 페이지에서 관리합니다. <strong>한 담당자가 여러 사이트를 담당</strong>하는 케이스를 자연스럽게 처리하기 위해 사이트와 분리된 별도 엔티티로 운영합니다.</p>
+                </Section>
+
+                <Section title="① 고객사 등록 (관리자)">
+                  <Step n={1}>우측 상단 <strong>"새 고객사 등록"</strong> 클릭</Step>
+                  <Step n={2}>좌측 <strong>기본 정보</strong>: 고객사명 / 산업군 / 대표 전화 / 주소 / 메모</Step>
+                  <Step n={3}>우측 <strong>"담당자 추가"</strong> 버튼으로 명함 정보 입력 → 카드 자동 렌더</Step>
+                  <Step n={4}>저장 시 같은 이름의 미연결 프로젝트·사이트가 <strong>자동으로 연결</strong>됨</Step>
+                </Section>
+
+                <Section title="② 명함 카드 — 정보 입력만으로 자동 디자인">
+                  <p>실물 명함 이미지를 올리는 대신, 정보를 입력하면 시스템이 명함 카드 디자인으로 렌더링합니다.</p>
+                  <p>입력 필드:</p>
+                  <p>· <strong>이름·직책·부서</strong> (이름 필수)</p>
+                  <p>· <strong>이메일 / 사무실 전화 / 모바일</strong></p>
+                  <p>· <strong>담당 사이트 (다중 선택)</strong> — 한 담당자가 여러 사이트 담당 가능</p>
+                  <p>· <strong>메모</strong> (전결 권한, 보고 라인 등)</p>
+                  <p>카드 hover 시 <strong>수정/삭제</strong> 아이콘이 우상단에 나타납니다.</p>
+                </Section>
+
+                <Section title="③ 자동 발견 — 미등록 고객사 일괄 등록">
+                  <p>이미 프로젝트·사이트에 고객사명이 텍스트로 입력돼 있다면, 페이지 상단 amber 배너에 <strong>"X개의 미등록 고객사가 발견됐습니다"</strong>가 표시됩니다.</p>
+                  <p><strong>"한 번에 등록"</strong> 버튼 클릭 시 모두 고객사로 등록되고, 동시에 프로젝트·사이트의 <code className="bg-slate-100 px-1 rounded text-[11px]">customerId</code>가 자동으로 채워집니다 — 기존 텍스트는 보존되므로 데이터 손실 없습니다.</p>
+                </Section>
+
+                <Section title="④ 프로젝트·사이트 모달 — 드롭다운 선택">
+                  <p>고객사가 1개 이상 등록되면 프로젝트 생성/수정과 사이트 모달의 <strong>고객사 필드가 드롭다운으로 전환</strong>됩니다.</p>
+                  <p>· 드롭다운에서 선택 시 자동으로 customerId 연결</p>
+                  <p>· <strong>"-- 직접 입력 --"</strong> 옵션을 선택하면 기존처럼 텍스트 직접 입력 가능 (마스터에 없는 일회성 고객사 등)</p>
+                  <p>· 직접 입력 상태에서 텍스트만 있는 경우 <strong>amber "미연결"</strong> 뱃지로 시각적 표시</p>
+                </Section>
+
+                <Section title="⑤ 고객사 카드 정보 / 통계">
+                  <p>각 고객사 카드는 다음 3가지 통계를 함께 보여줍니다:</p>
+                  <p>· <strong>담당자 명함 수</strong> (회색)</p>
+                  <p>· <strong>연관 사이트 수</strong> (초록)</p>
+                  <p>· <strong>연관 프로젝트 수</strong> (파랑)</p>
+                  <p>주요 담당자(상위 2명)는 카드 하단에 미리보기로 표시되며, 검색은 고객사명·담당자명·이메일·전화 모두 가능합니다.</p>
+                </Section>
+
+                <Section title="⑥ 삭제 정책 — 안전한 연결 해제">
+                  <p>고객사를 삭제해도 <strong>연결됐던 프로젝트·사이트는 사라지지 않습니다</strong>.</p>
+                  <p>· customerId만 해제 → 기존 customer 텍스트만 남음 (미연결 상태)</p>
+                  <p>· 명함(담당자) 정보는 함께 삭제됩니다</p>
+                </Section>
+
+                <Note>마이그레이션 정책: 기존에 텍스트로만 들어가 있던 고객사 정보는 <strong>그대로 보존</strong>되며, 같은 이름의 고객사가 신규 등록되거나 "한 번에 등록"으로 처리되면 자동으로 customerId가 채워집니다.</Note>
               </>
             )}
 
@@ -634,6 +689,33 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
               <>
                 <h2 className="text-base font-bold text-slate-800 mb-3">{t('업데이트 내역', "What's New")}</h2>
                 <p className="text-xs text-slate-500 mb-4">{t('v1.0 베타 출시 이후 추가/개선된 기능을 시간 역순으로 정리합니다.', 'Recent improvements since v1.0 beta release.')}</p>
+
+                <Section title={t('★ 서비스명 변경 — EQ-PMS → MAK-PMS (NEW)', 'Rebrand — EQ-PMS → MAK-PMS (NEW)')}>
+                  <p>· 사용자 노출 텍스트 전반(사이드바·로그인·도움말·브라우저 탭·Excel 내보내기 등) <strong>EQ-PMS → MAK-PMS</strong> 일괄 변경</p>
+                  <p>· 로고 글자 <code className="bg-slate-100 px-1 rounded text-[10px]">E</code> → <code className="bg-blue-100 px-1 rounded text-[10px]">M</code></p>
+                  <p>· <strong>Webhook 알림 메시지 prefix</strong>도 <code className="bg-slate-100 px-1 rounded text-[10px]">[MAK-PMS 알림: …]</code>로 변경 — GAS 백엔드도 같이 재배포해야 알림 메일이 정상 발송됨</p>
+                  <p>· <strong>호환 유지</strong>: localStorage 키(<code className="bg-slate-100 px-1 rounded text-[10px]">eq_pms_*</code>)·비밀번호 SALT는 그대로 둠 — 기존 사용자 설정·로그인 정보 보존</p>
+                  <p>· 사용자 교육 자료(슬라이드 md / pptx) 파일명도 <code className="bg-slate-100 px-1 rounded text-[10px]">MAK-PMS_사용자교육.*</code>로 변경</p>
+                </Section>
+
+                <Section title={t('★ 회의록 탭 — 회의록 / 노트 두 종류 + 필터 (NEW)', 'Notes Tab — Meeting / Note + Filter (NEW)')}>
+                  <p>· 회의록 탭이 <strong>회의록 + 일반 노트</strong> 두 종류를 함께 관리하도록 확장</p>
+                  <p>· "새 회의록 작성" / "새 노트 작성" 버튼이 분리되어 진입 즉시 종류 선택</p>
+                  <p>· <strong>노트 모드</strong>: 회의 일시·참석자·결정·액션 필드 없이 본문 + 첨부만 — 회의가 아닌 중요 정보·결정 메모용</p>
+                  <p>· <strong>리스트 상단 필터 칩</strong>: 전체 / 회의록 N / 노트 N — 필요한 종류만 빠르게 조회</p>
+                  <p>· 카드에 <strong>종류 뱃지</strong>(<code className="bg-amber-100 text-amber-800 px-1 rounded text-[10px]">회의록</code> amber / <code className="bg-slate-200 text-slate-800 px-1 rounded text-[10px]">노트</code> slate) 표시</p>
+                  <p>· 알림 센터·활동 이력에서는 그대로 <strong>"공유 노트"</strong>로 분류 (기존 호환)</p>
+                </Section>
+
+                <Section title={t('★ 고객사 정보 / 명함 관리 — 별도 마스터 페이지 신설 (NEW)', 'Customers & Business Cards — New Master Page (NEW)')}>
+                  <p>· <strong>사이드바 새 메뉴 "고객사 관리"</strong> — 고객사 기본 정보(이름/산업군/전화/주소/홈페이지/메모)와 담당자(명함)를 한 곳에서 관리</p>
+                  <p>· <strong>한 담당자가 여러 사이트를 담당</strong>하는 케이스 지원 — 담당자 명함에 사이트 다중 매핑 가능</p>
+                  <p>· <strong>명함 카드 자동 렌더링</strong> — 이미지 첨부 대신 정보 입력(이름/직책/부서/이메일/전화/모바일/사이트) → 시스템이 명함 디자인으로 렌더. 카드 hover 시 수정/삭제 아이콘</p>
+                  <p>· <strong>프로젝트·사이트 모달 → 드롭다운 전환</strong> — 등록된 고객사는 select로 선택, "직접 입력" 옵션도 유지. 미연결 시 amber 뱃지로 표시</p>
+                  <p>· <strong>자동 발견 + 일괄 등록</strong> — 기존 텍스트 customer 중 customers에 없는 이름들을 상단 amber 배너로 안내하고 "한 번에 등록" 버튼 제공</p>
+                  <p>· <strong>안전한 마이그레이션</strong> — customer 텍스트 필드는 보존, customerId만 신규 추가. 자동 매칭 실패 시에도 데이터 손실 없음</p>
+                  <p>· <strong>안전한 삭제</strong> — 고객사 삭제 시 연관 프로젝트·사이트는 customerId만 해제, 텍스트 정보는 유지</p>
+                </Section>
 
                 <Section title={t('★ 주간 업무 보고 — 자동 집계 보고 + 팀 종합 보고서 (NEW)', 'Weekly Reports — Auto-aggregated + Team Consolidation (NEW)')}>
                   <p>· <strong>수기 작성 X, 자동 집계 O</strong> — 한 주간 시스템에 등록된 본인 활동(이슈/회의록/AS/고객요청/버전/출장/추가 대응 등)을 분석해 <strong>금주 실적 / 차주 계획 / 이슈·리스크</strong> 3개 섹션을 자동으로 채움</p>

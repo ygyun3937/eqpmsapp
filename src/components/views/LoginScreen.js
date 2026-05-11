@@ -47,9 +47,9 @@ const LoginScreen = memo(function LoginScreen({ users, onLogin, lang, setLang, t
       </div>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 relative z-10 animate-[fadeIn_0.3s_ease-out]">
         <div className="flex justify-center mb-6">
-          <div className="w-14 h-14 bg-blue-600 rounded-xl flex items-center justify-center font-bold text-white text-2xl shadow-lg shadow-blue-500/30">E</div>
+          <div className="w-14 h-14 bg-blue-600 rounded-xl flex items-center justify-center font-bold text-white text-2xl shadow-lg shadow-blue-500/30">M</div>
         </div>
-        <h1 className="text-2xl font-black text-center text-slate-800 mb-2">EQ-PMS</h1>
+        <h1 className="text-2xl font-black text-center text-slate-800 mb-2">MAK-PMS</h1>
         <p className="text-center text-slate-500 text-sm mb-8">{t('장비 프로젝트 셋업 관리 시스템', 'Equipment Project Management System')}</p>
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
