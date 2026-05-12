@@ -9,7 +9,7 @@ import SignaturePad from '../common/SignaturePad';
 import { generatePDF } from '../../utils/export';
 import { downloadICS, openGoogleCalendar } from '../../utils/calendar';
 
-const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusColor, onClose, onToggleTask, onAddTask, onEditTaskName, onDeleteTask, onUpdateDelayReason, onUpdateTaskDates, onUpdateChecklistItem, onLoadDefaultChecklist, onAddChecklistItem, onDeleteChecklistItem, onUpdatePhase, onEditPhases, onEditSetupTasks, onSetCurrentSetupTask, onSignOff, onCancelSignOff, onAddExtraTask, onUpdateExtraTask, onDeleteExtraTask, onAddNote, onDeleteNote, onAddCustomerRequest, onUpdateCustomerRequestStatus, onAddCustomerResponse, onDeleteCustomerRequest, onAddAS, onUpdateAS, onDeleteAS, onUploadAttachment, onDeleteAttachment, onDeleteProject, driveConfigured, calcAct, currentUser, t, initialTab, engineers, onShowEngineer, customers, onOpenCustomer }) {
+const TaskModal = memo(function TaskModal({ project, allProjects, projectIssues, getStatusColor, onClose, onToggleTask, onAddTask, onEditTaskName, onDeleteTask, onUpdateDelayReason, onUpdateTaskDates, onUpdateChecklistItem, onLoadDefaultChecklist, onAddChecklistItem, onDeleteChecklistItem, onUpdatePhase, onEditPhases, onEditSetupTasks, onSetCurrentSetupTask, onSignOff, onCancelSignOff, onAddExtraTask, onUpdateExtraTask, onDeleteExtraTask, onAddNote, onDeleteNote, onEditNote, onAddCustomerRequest, onUpdateCustomerRequestStatus, onAddCustomerResponse, onDeleteCustomerRequest, onAddAS, onUpdateAS, onDeleteAS, onAddASComment, onCompleteAS, onRevertCompleteAS, onUploadAttachment, onDeleteAttachment, onDeleteProject, driveConfigured, calcAct, currentUser, t, initialTab, engineers, onShowEngineer, customers, onOpenCustomer }) {
   const [activeModalTab, setActiveModalTab] = useState(initialTab || 'tasks');
   const [scheduleSubTab, setScheduleSubTab] = useState('phase');
   const [attachUploading, setAttachUploading] = useState(false);
@@ -26,6 +26,10 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
   const [newNoteKind, setNewNoteKind] = useState('meeting'); // 'meeting' | 'note'
   const [noteListFilter, setNoteListFilter] = useState('all'); // 'all' | 'meeting' | 'note'
   const [noteFormOpen, setNoteFormOpen] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const [editNoteDraft, setEditNoteDraft] = useState({});
+  const [newNoteExtraProjectIds, setNewNoteExtraProjectIds] = useState([]); // 다른 프로젝트에 동시 등록할 ID
+  const [showProjectShareDropdown, setShowProjectShareDropdown] = useState(false);
   const [newNoteMeetingDate, setNewNoteMeetingDate] = useState('');
   const [newNoteAttendees, setNewNoteAttendees] = useState('');
   const [newNoteDecisions, setNewNoteDecisions] = useState('');
@@ -44,7 +48,19 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
   const [responseText, setResponseText] = useState({});
   // 처리결과 입력 폼: { id: requestId, status: '반영 완료'|'반려', text: '' }
   const [resolvingRequest, setResolvingRequest] = useState(null);
-  const [newASForm, setNewASForm] = useState({ category: 'HW', type: '정기점검', engineer: '', description: '', resolution: '' });
+  const [newASForm, setNewASForm] = useState({ category: 'HW', type: '정기점검', engineer: '', description: '', resolution: '', priority: '보통', manager: '', contact: '', serial: '', part: '', cost: '', reqDate: '', visit: '' });
+  const [asFormOpen, setAsFormOpen] = useState(false);
+  const [newASFiles, setNewASFiles] = useState([]);
+  const [asDragOver, setAsDragOver] = useState(false);
+  const [asUploading, setAsUploading] = useState(false);
+  const [asUploadIdx, setAsUploadIdx] = useState(0);
+  const [asUploadProgress, setAsUploadProgress] = useState(0);
+  const [asError, setAsError] = useState('');
+  const [asListFilter, setAsListFilter] = useState('all'); // 'all' | 'HW' | 'SW'
+  const [asStatusFilter, setAsStatusFilter] = useState('all'); // 'all' | 'open' | 'done'
+  const [asReplyText, setAsReplyText] = useState({}); // asId → text
+  const [asCompleteModal, setAsCompleteModal] = useState(null); // { asId, file, isNA, uploading }
+  const [asRevertPrompt, setAsRevertPrompt] = useState(null); // { asId, reason }
   const [historyFilter, setHistoryFilter] = useState('all');
   const [newExtraForm, setNewExtraForm] = useState({ name: '', requester: '', type: '기능 추가', startDate: '', endDate: '', note: '' });
   const [confirmCancelSignOff, setConfirmCancelSignOff] = useState(false);
@@ -715,6 +731,7 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                   decisions: newNoteKind === 'meeting' ? newNoteDecisions.trim() : '',
                   actions: newNoteKind === 'meeting' ? newNoteActions.trim() : '',
                   files: newNoteFiles,
+                  additionalProjectIds: newNoteExtraProjectIds,
                   onProgress: ({ percent, index }) => {
                     setNoteUploadProgress(percent || 0);
                     if (typeof index === 'number') setNoteUploadIdx(index);
@@ -722,6 +739,7 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                 });
                 setNewNoteText(''); setNewNoteSummary(''); setNewNoteFiles([]); setNoteUploadProgress(0); setNoteUploadIdx(0);
                 setNewNoteMeetingDate(''); setNewNoteAttendees(''); setNewNoteDecisions(''); setNewNoteActions('');
+                setNewNoteExtraProjectIds([]); setShowProjectShareDropdown(false);
                 setNoteFormOpen(false); // 등록 후 폼 자동 접힘
               } catch (e) {
                 setNoteError((e && e.message) || String(e));
@@ -862,6 +880,59 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                       <label className="block text-xs font-bold text-slate-600 mb-1">{t('한줄 요약 (대시보드 노출, 선택)', 'One-line Summary (shown on dashboard, optional)')}</label>
                       <textarea rows="2" className="w-full text-sm p-3 border border-slate-300 rounded-lg resize-none focus:outline-none focus:border-amber-500" value={newNoteSummary} onChange={(e) => setNewNoteSummary(e.target.value)} placeholder={t('대시보드 카드에 보일 한 줄 요약', 'Short summary visible on the dashboard card')}></textarea>
                     </div>
+
+                    {/* 다중 프로젝트 동시 등록 — 같은 노트를 여러 프로젝트에 broadcast */}
+                    {Array.isArray(allProjects) && allProjects.length > 1 && (
+                      <div className="bg-indigo-50/50 border border-indigo-200 rounded-lg p-2.5">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-xs font-bold text-indigo-800 flex items-center"><FolderOpen size={11} className="mr-1" />{t('다른 프로젝트에도 동시 등록 (선택)', 'Also register to other projects (optional)')}</label>
+                          {newNoteExtraProjectIds.length > 0 && (
+                            <button type="button" onClick={() => setNewNoteExtraProjectIds([])} className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold">{t('전체 해제', 'Clear')}</button>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-indigo-700 mb-2">{t('선택한 프로젝트마다 동일 본문/첨부가 별도 사본으로 등록되고, 첨부는 각 프로젝트 Drive 폴더에 따로 업로드됩니다.', 'Same content/files copied as independent records — files re-uploaded into each project\'s Drive folder.')}</div>
+                        {newNoteExtraProjectIds.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mb-1.5">
+                            {newNoteExtraProjectIds.map(extraId => {
+                              const extra = allProjects.find(p => p.id === extraId);
+                              if (!extra) return null;
+                              return (
+                                <span key={extraId} className="inline-flex items-center bg-white border border-indigo-300 text-indigo-700 text-[11px] font-bold px-2 py-0.5 rounded">
+                                  {extra.name}
+                                  <button type="button" onClick={() => setNewNoteExtraProjectIds(prev => prev.filter(id => id !== extraId))} className="ml-1 text-indigo-400 hover:text-indigo-700"><X size={10} /></button>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+                        <div className="relative">
+                          <button type="button" onClick={() => setShowProjectShareDropdown(v => !v)} className="w-full text-left text-[11px] px-2 py-1.5 bg-white border border-indigo-300 rounded text-indigo-700 hover:bg-indigo-50 transition-colors flex items-center justify-between">
+                            <span>{newNoteExtraProjectIds.length > 0 ? t(`+ 더 추가 (현재 ${newNoteExtraProjectIds.length}개 선택)`, `+ Add more (${newNoteExtraProjectIds.length} selected)`) : t('+ 프로젝트 선택', '+ Select projects')}</span>
+                            <span className="text-[10px]">{showProjectShareDropdown ? '▲' : '▼'}</span>
+                          </button>
+                          {showProjectShareDropdown && (
+                            <>
+                              <div className="fixed inset-0 z-40" onClick={() => setShowProjectShareDropdown(false)} />
+                              <div className="absolute left-0 right-0 mt-1 z-50 bg-white border border-indigo-300 rounded shadow-xl max-h-64 overflow-y-auto">
+                                {allProjects.filter(p => p.id !== project.id).map(p => {
+                                  const checked = newNoteExtraProjectIds.includes(p.id);
+                                  return (
+                                    <label key={p.id} className="flex items-center gap-2 px-2 py-1.5 hover:bg-indigo-50 cursor-pointer border-b border-slate-100 last:border-0">
+                                      <input type="checkbox" checked={checked} onChange={(e) => {
+                                        if (e.target.checked) setNewNoteExtraProjectIds(prev => [...prev, p.id]);
+                                        else setNewNoteExtraProjectIds(prev => prev.filter(id => id !== p.id));
+                                      }} className="accent-indigo-600" />
+                                      <span className="text-[11px] font-bold text-slate-800 flex-1">{p.name}</span>
+                                      <span className="text-[10px] text-slate-500">{p.customer}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     <div>
                       <label className="block text-xs font-bold text-slate-600 mb-1">{t('첨부 파일 (선택, 다중 첨부 가능)', 'Attached Files (optional, multiple)')}</label>
                       {newNoteFiles.length > 0 && (
@@ -1002,71 +1073,196 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                                     )}
                                     {!valid && note.date && <span className="text-[10px] text-slate-400">{note.date}</span>}
                                   </div>
-                                  {(currentUser.role === 'ADMIN' || currentUser.name === note.author) && (
-                                    <button onClick={() => onDeleteNote(project.id, note.id)} className="inline-flex items-center px-1.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 transition-colors" title={t('삭제', 'Delete')}>
-                                      <Trash size={11} className="mr-0.5" />{t('삭제', 'Delete')}
-                                    </button>
-                                  )}
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    {note.editedAt && <span className="text-[9px] text-slate-400 italic" title={`${t('수정됨', 'Edited')}: ${note.editedAt}`}>{t('수정됨', '(edited)')}</span>}
+                                    {(currentUser.role === 'ADMIN' || currentUser.name === note.author) && editingNoteId !== note.id && onEditNote && (
+                                      <button onClick={() => { setEditingNoteId(note.id); setEditNoteDraft({ kind: note.kind || 'meeting', summary: note.summary || '', text: note.text || '', meetingDate: note.meetingDate || '', attendees: note.attendees || '', decisions: note.decisions || '', actions: note.actions || '', keepFiles: [...files], newFiles: [], saving: false, error: '' }); }} className="inline-flex items-center px-1.5 py-1 rounded bg-amber-50 hover:bg-amber-100 text-amber-700 text-[10px] font-bold border border-amber-200 transition-colors" title={t('수정', 'Edit')}>
+                                        <Edit size={11} className="mr-0.5" />{t('수정', 'Edit')}
+                                      </button>
+                                    )}
+                                    {(currentUser.role === 'ADMIN' || currentUser.name === note.author) && editingNoteId !== note.id && (
+                                      <button onClick={() => {
+                                        const fileCount = (Array.isArray(note.files) ? note.files.length : (note.file ? 1 : 0));
+                                        const kindLabel = note.kind === 'note' ? t('노트', 'this note') : t('회의록', 'this meeting');
+                                        const msg = fileCount > 0
+                                          ? t(`${kindLabel}을(를) 삭제할까요?\n첨부 파일 ${fileCount}건도 Drive 휴지통으로 이동됩니다.`, `Delete ${kindLabel}?\n${fileCount} attachment(s) will be moved to Drive trash.`)
+                                          : t(`${kindLabel}을(를) 삭제할까요?`, `Delete ${kindLabel}?`);
+                                        if (window.confirm(msg)) onDeleteNote(project.id, note.id);
+                                      }} className="inline-flex items-center px-1.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 transition-colors" title={t('삭제', 'Delete')}>
+                                        <Trash size={11} className="mr-0.5" />{t('삭제', 'Delete')}
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
-                                {/* 상세 모드 메타: 회의 일시 + 참석자 */}
-                                {(note.meetingDate || note.attendees) && (
-                                  <div className="mb-2 flex items-center gap-2 flex-wrap text-[11px]">
-                                    {note.meetingDate && (
-                                      <span className="inline-flex items-center bg-indigo-50 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded font-bold">
-                                        <Calendar size={10} className="mr-1" />{note.meetingDate.replace('T', ' ').slice(0, 16)}
-                                      </span>
-                                    )}
-                                    {note.attendees && (
-                                      <span className="inline-flex items-center bg-slate-50 text-slate-700 border border-slate-200 px-2 py-0.5 rounded font-bold">
-                                        <User size={10} className="mr-1" />
-                                        <span className="truncate max-w-[400px]">{note.attendees}</span>
-                                      </span>
-                                    )}
-                                  </div>
-                                )}
-                                {note.summary && (
-                                  <div className="mb-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
-                                    <div className="text-[10px] font-bold text-amber-700 mb-1">{t('요약', 'Summary')}</div>
-                                    <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{note.summary}</p>
-                                  </div>
-                                )}
-                                {note.text && <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{note.text}</p>}
-                                {/* 결정사항 */}
-                                {note.decisions && (
-                                  <div className="mt-2 bg-emerald-50 border border-emerald-200 rounded-lg p-2.5">
-                                    <div className="text-[10px] font-bold text-emerald-700 mb-1 flex items-center"><CheckSquare size={11} className="mr-1" />{t('결정사항', 'Decisions')}</div>
-                                    <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{note.decisions}</p>
-                                  </div>
-                                )}
-                                {/* 액션 아이템 */}
-                                {note.actions && (
-                                  <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg p-2.5">
-                                    <div className="text-[10px] font-bold text-blue-700 mb-1 flex items-center"><ListTodo size={11} className="mr-1" />{t('액션 아이템', 'Action Items')}</div>
-                                    <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{note.actions}</p>
-                                  </div>
-                                )}
-                                {files.length > 0 && (
-                                  <div className="mt-3 space-y-1.5">
-                                    {files.map((f, fIdx) => (
-                                      <div key={fIdx} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5">
-                                        <div className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0">
-                                          <Paperclip size={13} className="text-amber-600" />
+
+                                {editingNoteId === note.id ? (
+                                  /* 인라인 편집 모드 — 모든 필드 + 첨부 추가/삭제 */
+                                  <div className="p-3 bg-amber-50/60 border-2 border-amber-300 rounded-lg ring-2 ring-amber-100 space-y-2">
+                                    <div className="text-[11px] font-bold text-amber-800 flex items-center"><Edit size={11} className="mr-1" />{editNoteDraft.kind === 'note' ? t('노트 수정', 'Edit Note') : t('회의록 수정', 'Edit Meeting')}</div>
+                                    {/* 종류 토글 */}
+                                    <div className="flex bg-slate-100 rounded p-0.5 border border-slate-200 w-fit">
+                                      <button type="button" onClick={() => setEditNoteDraft({ ...editNoteDraft, kind: 'meeting' })} className={`px-2 py-0.5 text-[10px] font-bold rounded transition-colors ${editNoteDraft.kind !== 'note' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>{t('회의록', 'Meeting')}</button>
+                                      <button type="button" onClick={() => setEditNoteDraft({ ...editNoteDraft, kind: 'note' })} className={`px-2 py-0.5 text-[10px] font-bold rounded transition-colors ${editNoteDraft.kind === 'note' ? 'bg-slate-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>{t('노트', 'Note')}</button>
+                                    </div>
+                                    {/* 회의록일 때만 회의 일시 + 참석자 */}
+                                    {editNoteDraft.kind !== 'note' && (
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                        <div>
+                                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('회의 일시', 'Meeting Date')}</label>
+                                          <input type="datetime-local" className="w-full text-xs p-1.5 border border-slate-300 rounded" value={editNoteDraft.meetingDate || ''} onChange={(e) => setEditNoteDraft({ ...editNoteDraft, meetingDate: e.target.value })} />
                                         </div>
-                                        <div className="flex-1 min-w-0">
-                                          <div className="text-xs font-bold text-slate-800 truncate" title={f.fileName}>{f.fileName}</div>
-                                          <div className="text-[10px] text-slate-500 font-mono">{fmtSize(f.size)}</div>
-                                        </div>
-                                        <div className="flex items-center gap-1 shrink-0">
-                                          {f.viewUrl && (
-                                            <a href={f.viewUrl} target="_blank" rel="noreferrer" className="p-1.5 rounded-md text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 border border-transparent hover:border-emerald-200 transition-colors" title={t('Drive에서 열기', 'Open in Drive')}><ExternalLink size={13} /></a>
-                                          )}
-                                          {f.downloadUrl && (
-                                            <a href={f.downloadUrl} target="_blank" rel="noreferrer" className="p-1.5 rounded-md text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-200 transition-colors" title={t('다운로드', 'Download')}><Download size={13} /></a>
-                                          )}
+                                        <div>
+                                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('참석자', 'Attendees')}</label>
+                                          <input type="text" className="w-full text-xs p-1.5 border border-slate-300 rounded" value={editNoteDraft.attendees || ''} onChange={(e) => setEditNoteDraft({ ...editNoteDraft, attendees: e.target.value })} />
                                         </div>
                                       </div>
-                                    ))}
+                                    )}
+                                    {/* 본문 */}
+                                    <div>
+                                      <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{editNoteDraft.kind === 'note' ? t('노트 본문', 'Note Body') : t('논의 내용', 'Discussion')}</label>
+                                      <textarea rows="4" className="w-full text-xs p-2 border border-slate-300 rounded" value={editNoteDraft.text || ''} onChange={(e) => setEditNoteDraft({ ...editNoteDraft, text: e.target.value })}></textarea>
+                                    </div>
+                                    {/* 요약 */}
+                                    <div>
+                                      <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('한줄 요약 (선택)', 'Summary (Optional)')}</label>
+                                      <textarea rows="2" className="w-full text-xs p-2 border border-slate-300 rounded" value={editNoteDraft.summary || ''} onChange={(e) => setEditNoteDraft({ ...editNoteDraft, summary: e.target.value })}></textarea>
+                                    </div>
+                                    {/* 회의록일 때만 결정사항 + 액션 */}
+                                    {editNoteDraft.kind !== 'note' && (
+                                      <>
+                                        <div>
+                                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5"><CheckSquare size={9} className="inline mr-1 text-emerald-600" />{t('결정사항', 'Decisions')}</label>
+                                          <textarea rows="2" className="w-full text-xs p-2 border border-slate-300 rounded" value={editNoteDraft.decisions || ''} onChange={(e) => setEditNoteDraft({ ...editNoteDraft, decisions: e.target.value })}></textarea>
+                                        </div>
+                                        <div>
+                                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5"><ListTodo size={9} className="inline mr-1 text-blue-600" />{t('액션 아이템', 'Action Items')}</label>
+                                          <textarea rows="2" className="w-full text-xs p-2 border border-slate-300 rounded" value={editNoteDraft.actions || ''} onChange={(e) => setEditNoteDraft({ ...editNoteDraft, actions: e.target.value })}></textarea>
+                                        </div>
+                                      </>
+                                    )}
+                                    {/* 기존 파일 — 제거 가능 */}
+                                    {(editNoteDraft.keepFiles || []).length > 0 && (
+                                      <div>
+                                        <label className="block text-[10px] font-bold text-slate-600 mb-1">{t('기존 첨부 — 제거하려면 ×', 'Existing — × to remove')}</label>
+                                        <div className="space-y-1">
+                                          {editNoteDraft.keepFiles.map((f, fIdx) => (
+                                            <div key={fIdx} className="flex items-center gap-2 bg-white border border-slate-200 rounded p-1.5">
+                                              <Paperclip size={11} className="text-slate-500 shrink-0" />
+                                              <span className="text-[11px] font-bold text-slate-800 flex-1 truncate">{f.fileName}</span>
+                                              <button type="button" onClick={() => setEditNoteDraft({ ...editNoteDraft, keepFiles: editNoteDraft.keepFiles.filter((_, i) => i !== fIdx) })} className="text-slate-400 hover:text-red-600 p-0.5"><X size={11} /></button>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {/* 새 파일 */}
+                                    {(editNoteDraft.newFiles || []).length > 0 && (
+                                      <div>
+                                        <label className="block text-[10px] font-bold text-amber-700 mb-1">{t('새로 추가될 파일', 'Files to add')}</label>
+                                        <div className="space-y-1">
+                                          {editNoteDraft.newFiles.map((f, fIdx) => (
+                                            <div key={fIdx} className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded p-1.5">
+                                              <Paperclip size={11} className="text-amber-600 shrink-0" />
+                                              <span className="text-[11px] font-bold text-slate-800 flex-1 truncate">{f.name}</span>
+                                              <span className="text-[10px] text-slate-500 font-mono">{fmtSize(f.size)}</span>
+                                              <button type="button" onClick={() => setEditNoteDraft({ ...editNoteDraft, newFiles: editNoteDraft.newFiles.filter((_, i) => i !== fIdx) })} className="text-slate-400 hover:text-red-600 p-0.5"><X size={11} /></button>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    <label className="block border-2 border-dashed border-amber-300 hover:border-amber-500 hover:bg-amber-100/40 rounded p-2 text-center cursor-pointer transition-colors">
+                                      <input type="file" multiple className="hidden" disabled={!driveConfigured} onChange={(e) => { const fs = Array.from(e.target.files || []); if (fs.length) setEditNoteDraft({ ...editNoteDraft, newFiles: [...(editNoteDraft.newFiles || []), ...fs] }); e.target.value = ''; }} />
+                                      <Upload size={14} className="mx-auto mb-0.5 text-amber-600" />
+                                      <div className="text-[11px] font-bold text-amber-800">{driveConfigured ? t('파일 추가 (클릭)', 'Add files (click)') : t('Drive 미연동', 'Drive not configured')}</div>
+                                    </label>
+                                    {editNoteDraft.saving && <div className="text-[11px] font-bold text-amber-700 flex items-center"><Loader size={11} className="animate-spin mr-1" />{t('저장 중...', 'Saving...')}</div>}
+                                    {editNoteDraft.error && <div className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded p-1.5 flex items-center"><AlertTriangle size={11} className="mr-1" />{editNoteDraft.error}</div>}
+                                    <div className="flex items-center gap-2">
+                                      <button type="button" disabled={editNoteDraft.saving} onClick={async () => {
+                                        setEditNoteDraft({ ...editNoteDraft, saving: true, error: '' });
+                                        try {
+                                          await onEditNote(project.id, note.id, {
+                                            kind: editNoteDraft.kind,
+                                            summary: editNoteDraft.summary,
+                                            text: editNoteDraft.text,
+                                            meetingDate: editNoteDraft.meetingDate,
+                                            attendees: editNoteDraft.attendees,
+                                            decisions: editNoteDraft.decisions,
+                                            actions: editNoteDraft.actions,
+                                            files: editNoteDraft.keepFiles,
+                                            newFiles: editNoteDraft.newFiles
+                                          });
+                                          setEditingNoteId(null);
+                                          setEditNoteDraft({});
+                                        } catch (e) {
+                                          setEditNoteDraft(prev => ({ ...prev, saving: false, error: e?.message || t('저장 실패', 'Save failed') }));
+                                        }
+                                      }} className="px-3 py-1.5 text-[11px] font-bold rounded bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white inline-flex items-center"><CheckCircle size={11} className="mr-1" />{t('저장', 'Save')}</button>
+                                      <button type="button" disabled={editNoteDraft.saving} onClick={() => { setEditingNoteId(null); setEditNoteDraft({}); }} className="px-3 py-1.5 text-[11px] font-bold rounded border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50">{t('취소', 'Cancel')}</button>
+                                    </div>
                                   </div>
+                                ) : (
+                                  /* 읽기 모드 */
+                                  <>
+                                    {(note.meetingDate || note.attendees) && (
+                                      <div className="mb-2 flex items-center gap-2 flex-wrap text-[11px]">
+                                        {note.meetingDate && (
+                                          <span className="inline-flex items-center bg-indigo-50 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded font-bold">
+                                            <Calendar size={10} className="mr-1" />{note.meetingDate.replace('T', ' ').slice(0, 16)}
+                                          </span>
+                                        )}
+                                        {note.attendees && (
+                                          <span className="inline-flex items-center bg-slate-50 text-slate-700 border border-slate-200 px-2 py-0.5 rounded font-bold">
+                                            <User size={10} className="mr-1" />
+                                            <span className="truncate max-w-[400px]">{note.attendees}</span>
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                    {note.summary && (
+                                      <div className="mb-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                                        <div className="text-[10px] font-bold text-amber-700 mb-1">{t('요약', 'Summary')}</div>
+                                        <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{note.summary}</p>
+                                      </div>
+                                    )}
+                                    {note.text && <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{note.text}</p>}
+                                    {note.decisions && (
+                                      <div className="mt-2 bg-emerald-50 border border-emerald-200 rounded-lg p-2.5">
+                                        <div className="text-[10px] font-bold text-emerald-700 mb-1 flex items-center"><CheckSquare size={11} className="mr-1" />{t('결정사항', 'Decisions')}</div>
+                                        <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{note.decisions}</p>
+                                      </div>
+                                    )}
+                                    {note.actions && (
+                                      <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg p-2.5">
+                                        <div className="text-[10px] font-bold text-blue-700 mb-1 flex items-center"><ListTodo size={11} className="mr-1" />{t('액션 아이템', 'Action Items')}</div>
+                                        <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{note.actions}</p>
+                                      </div>
+                                    )}
+                                    {files.length > 0 && (
+                                      <div className="mt-3 space-y-1.5">
+                                        {files.map((f, fIdx) => (
+                                          <div key={fIdx} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+                                            <div className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0">
+                                              <Paperclip size={13} className="text-amber-600" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                              <div className="text-xs font-bold text-slate-800 truncate" title={f.fileName}>{f.fileName}</div>
+                                              <div className="text-[10px] text-slate-500 font-mono">{fmtSize(f.size)}</div>
+                                            </div>
+                                            <div className="flex items-center gap-1 shrink-0">
+                                              {f.viewUrl && (
+                                                <a href={f.viewUrl} target="_blank" rel="noreferrer" className="p-1.5 rounded-md text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 border border-transparent hover:border-emerald-200 transition-colors" title={t('Drive에서 열기', 'Open in Drive')}><ExternalLink size={13} /></a>
+                                              )}
+                                              {f.downloadUrl && (
+                                                <a href={f.downloadUrl} target="_blank" rel="noreferrer" className="p-1.5 rounded-md text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-200 transition-colors" title={t('다운로드', 'Download')}><Download size={13} /></a>
+                                              )}
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </>
                                 )}
                               </div>
                             </div>
@@ -1437,7 +1633,49 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
               )}
             </div>
           )}
-          {activeModalTab === 'as' && (
+          {activeModalTab === 'as' && (() => {
+            const fmtSize = (b) => {
+              if (!b && b !== 0) return '';
+              if (b < 1024) return b + ' B';
+              if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+              return (b / 1024 / 1024).toFixed(2) + ' MB';
+            };
+            const handleSubmitAS = async () => {
+              if (!newASForm.description.trim() || !newASForm.engineer.trim()) return;
+              setAsError('');
+              if (newASFiles.length > 0 && !driveConfigured) {
+                setAsError(t('Drive 연동이 설정되지 않아 파일을 업로드할 수 없습니다.', 'Drive not configured — cannot upload file.'));
+                return;
+              }
+              setAsUploading(true);
+              try {
+                await onAddAS(project.id, {
+                  ...newASForm,
+                  files: newASFiles,
+                  onProgress: ({ percent, index }) => {
+                    setAsUploadProgress(percent || 0);
+                    if (typeof index === 'number') setAsUploadIdx(index);
+                  }
+                });
+                const keepCat = newASForm.category;
+                setNewASForm({ category: keepCat, type: keepCat === 'SW' ? AS_SW_TYPES[0] : AS_HW_TYPES[0], engineer: '', description: '', resolution: '', priority: '보통', manager: '', contact: '', serial: '', part: '', cost: '', reqDate: '', visit: '' });
+                setNewASFiles([]); setAsUploadProgress(0); setAsUploadIdx(0);
+                setAsFormOpen(false); // 등록 후 자동 접힘
+              } catch (e) {
+                setAsError(e?.message || t('등록 실패', 'Save failed'));
+              } finally {
+                setAsUploading(false);
+              }
+            };
+            // 카테고리별/상태별 카운트 (목록 필터 칩용)
+            const recs = project.asRecords || [];
+            const asCnt = { all: recs.length, HW: 0, SW: 0, open: 0, done: 0 };
+            recs.forEach(r => {
+              const c = r.category || AS_DEFAULT_CATEGORY;
+              asCnt[c] += 1;
+              if (r.status === '완료') asCnt.done += 1; else asCnt.open += 1;
+            });
+            return (
             <div className="space-y-4">
               <div className="bg-purple-50 text-purple-800 p-3 rounded-lg text-xs font-medium border border-purple-200 flex items-center">
                 <Info size={14} className="mr-1.5 shrink-0" />
@@ -1446,32 +1684,79 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                   : t('※ AS 관리는 Buy-off 완료 후 본격 활용됩니다. 현재 설치 중 AS도 등록 가능합니다.', 'AS management activates after Buy-off.')}
               </div>
 
-              {/* AS 등록 폼 */}
-              {currentUser.role !== 'CUSTOMER' && (
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
-                  {/* 카테고리 라디오 — HW(현장 출동형) / SW(원격 패치형) */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">{t('분류', 'Category')}</label>
-                    <div className="flex gap-2">
-                      {['HW', 'SW'].map(cat => {
-                        const active = newASForm.category === cat;
-                        const color = cat === 'HW' ? (active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50') : (active ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-white text-cyan-700 border-cyan-200 hover:bg-cyan-50');
-                        const sublabel = cat === 'HW' ? t('현장 출동형', 'On-site') : t('원격 패치형', 'Remote patch');
-                        return (
-                          <button key={cat} type="button" onClick={() => {
-                            const defaultType = cat === 'HW' ? AS_HW_TYPES[0] : AS_SW_TYPES[0];
-                            setNewASForm({ ...newASForm, category: cat, type: defaultType });
-                          }} className={`flex-1 px-3 py-2 rounded-lg border-2 text-sm font-bold transition-colors ${color}`}>
-                            <div>{cat}</div>
-                            <div className={`text-[10px] font-normal mt-0.5 ${active ? 'opacity-80' : 'opacity-60'}`}>{sublabel}</div>
-                          </button>
-                        );
-                      })}
+              {/* 등록 영역 — 평소엔 접혀 있고 작성 버튼 클릭 시 펼침 (회의록과 동일 패턴) */}
+              {currentUser.role !== 'CUSTOMER' && !asFormOpen && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setNewASForm({ ...newASForm, category: 'HW', type: AS_HW_TYPES[0] }); setAsFormOpen(true); }}
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-lg transition-colors shadow-sm"
+                  >
+                    <Wrench size={16} />{t('새 HW AS 작성', 'New HW AS')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setNewASForm({ ...newASForm, category: 'SW', type: AS_SW_TYPES[0] }); setAsFormOpen(true); }}
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-bold rounded-lg transition-colors shadow-sm"
+                  >
+                    <HardDrive size={16} />{t('새 SW AS 작성', 'New SW AS')}
+                  </button>
+                </div>
+              )}
+
+              {/* 펼침 폼 */}
+              {currentUser.role !== 'CUSTOMER' && asFormOpen && (() => {
+                const isHW = newASForm.category === 'HW';
+                const themeBorder = isHW ? 'border-indigo-300 ring-indigo-100' : 'border-cyan-300 ring-cyan-100';
+                const themeDivider = isHW ? 'border-indigo-200' : 'border-cyan-200';
+                const themeText = isHW ? 'text-indigo-800' : 'text-cyan-800';
+                const themeIconColor = isHW ? 'text-indigo-700' : 'text-cyan-700';
+                const themeBtn = isHW ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-cyan-600 hover:bg-cyan-700';
+                const themeBg = isHW ? 'bg-indigo-50 text-indigo-800 border-indigo-200' : 'bg-cyan-50 text-cyan-800 border-cyan-200';
+                const themeDrop = isHW ? 'hover:border-indigo-400 hover:bg-indigo-50/40' : 'hover:border-cyan-400 hover:bg-cyan-50/40';
+                const themeDropActive = isHW ? 'border-indigo-500 bg-indigo-50' : 'border-cyan-500 bg-cyan-50';
+                const themeChipBg = isHW ? 'bg-indigo-50 border-indigo-200' : 'bg-cyan-50 border-cyan-200';
+                const fileLimitGuide = isHW
+                  ? t('현장 조치 사진 / 보고서 / 부품 사진 등', 'Field photos / report / parts photos')
+                  : t('에러 스크린샷 / 로그 파일 / 패치 스니펫 등', 'Error screenshots / log files / patch snippets');
+                return (
+                <div className={`bg-white p-4 rounded-xl border-2 ${themeBorder} shadow-md space-y-3 ring-2`}>
+                  {/* 헤더 (분류 토글 + 닫기) */}
+                  <div className={`flex items-center justify-between -mt-1 mb-1 pb-2 border-b ${themeDivider}`}>
+                    <div className="flex items-center gap-2">
+                      {isHW ? <Wrench size={14} className={themeIconColor} /> : <HardDrive size={14} className={themeIconColor} />}
+                      <span className={`text-sm font-black ${themeText}`}>
+                        {isHW ? t('새 HW AS 작성', 'New HW AS') : t('새 SW AS 작성', 'New SW AS')}
+                      </span>
+                      {/* 분류 전환 토글 */}
+                      <div className="ml-2 flex bg-slate-100 rounded p-0.5 border border-slate-200">
+                        <button type="button" onClick={() => setNewASForm({ ...newASForm, category: 'HW', type: AS_HW_TYPES[0] })} className={`px-2 py-0.5 text-[10px] font-bold rounded transition-colors ${isHW ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>HW</button>
+                        <button type="button" onClick={() => setNewASForm({ ...newASForm, category: 'SW', type: AS_SW_TYPES[0] })} className={`px-2 py-0.5 text-[10px] font-bold rounded transition-colors ${!isHW ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>SW</button>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAsFormOpen(false)}
+                      disabled={asUploading}
+                      className="text-slate-400 hover:text-slate-700 p-1 disabled:opacity-50"
+                      title={t('접기', 'Collapse')}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  <div className={`p-2 rounded-lg text-[11px] font-medium border flex items-start ${themeBg}`}>
+                    <Info size={12} className="mr-1.5 shrink-0 mt-0.5" />
+                    <div>
+                      {isHW
+                        ? <>{t('HW AS는 접수 → 출동 → 조치 → 완료의 4단계 흐름입니다. 현장 조치 사진을 함께 첨부하세요.', 'HW: 접수→출동→조치→완료. Attach on-site photos.')}</>
+                        : <>{t('SW AS는 접수 → 분석 → 개발 → 적용 → 검증 → 완료의 6단계 흐름입니다. 에러 화면·로그·패치 코드를 함께 첨부하세요.', 'SW: 접수→분석→개발→적용→검증→완료. Attach screenshots / logs / patch.')}</>}
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+
+                  <div className="grid grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">{t('AS 유형', 'Type')}</label>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">{t('AS 유형', 'Type')}</label>
                       <select className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newASForm.type} onChange={(e) => setNewASForm({...newASForm, type: e.target.value})}>
                         {getASTypesByCategory(newASForm.category).map(ty => (
                           <option key={ty} value={ty}>{ty}</option>
@@ -1479,81 +1764,499 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">{newASForm.category === 'SW' ? t('담당자', 'Owner') : t('담당 엔지니어', 'Engineer')}</label>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">{isHW ? t('담당 엔지니어', 'Engineer') : t('담당자', 'Owner')}</label>
                       <input type="text" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newASForm.engineer} onChange={(e) => setNewASForm({...newASForm, engineer: e.target.value})} placeholder={t('이름 입력', 'Name')} />
                     </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">{t('중요도', 'Priority')}</label>
+                      <select className={`w-full text-sm p-2 border rounded-lg font-bold ${newASForm.priority === '긴급' ? 'border-red-300 bg-red-50 text-red-700' : 'border-slate-300 text-slate-700'}`} value={newASForm.priority} onChange={(e) => setNewASForm({...newASForm, priority: e.target.value})}>
+                        <option value="보통">{t('보통 (일반)', 'Normal')}</option>
+                        <option value="긴급">{t('상 (긴급)', 'Urgent')}</option>
+                      </select>
+                    </div>
                   </div>
+
+                  {/* V3 풍부 필드 — 고객사 담당자·연락처·시리얼 */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">{t('고객사 담당자', 'Customer Manager')}</label>
+                      <input type="text" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newASForm.manager} onChange={(e) => setNewASForm({...newASForm, manager: e.target.value})} placeholder={t('성함 (선택)', 'Name (optional)')} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">{t('연락처', 'Contact')}</label>
+                      <input type="text" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newASForm.contact} onChange={(e) => setNewASForm({...newASForm, contact: e.target.value})} placeholder="010-0000-0000" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">{t('장비 시리얼', 'Serial')}</label>
+                      <input type="text" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newASForm.serial} onChange={(e) => setNewASForm({...newASForm, serial: e.target.value})} placeholder={t('예: SN-12345', 'e.g. SN-12345')} />
+                    </div>
+                  </div>
+
+                  {/* V3 풍부 필드 — 희망 처리일정 + 방문 필요사항 (HW만 노출) */}
+                  {isHW && (
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">{t('희망 처리일정', 'Desired Date')}</label>
+                        <input type="date" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newASForm.reqDate} onChange={(e) => setNewASForm({...newASForm, reqDate: e.target.value})} />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs font-bold text-slate-600 mb-1">{t('방문 시 필요사항', 'Visit Requirements')}</label>
+                        <input type="text" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newASForm.visit} onChange={(e) => setNewASForm({...newASForm, visit: e.target.value})} placeholder={t('보안 절차 / 안전화·헬멧 / 출입증 등', 'Safety / Access requirements')} />
+                      </div>
+                    </div>
+                  )}
+
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">{newASForm.category === 'SW' ? t('증상 / 요청 내용 (재현 절차·로그 등)', 'Symptoms / Request (steps to reproduce, logs)') : t('증상 / 요청 내용', 'Symptoms / Request')}</label>
-                    <textarea rows="5" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newASForm.description} onChange={(e) => setNewASForm({...newASForm, description: e.target.value})} placeholder={newASForm.category === 'SW' ? t('재현 절차 / 발생 빈도 / 영향 범위 / 로그 위치 등', 'Repro steps, frequency, scope, log refs') : t('고객이 신고한 증상', 'Reported symptoms')}></textarea>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">{isHW ? t('증상 / 요청 내용 (이미지는 Ctrl+V로 붙여넣기)', 'Symptoms / Request (Ctrl+V to paste image)') : t('증상 / 요청 내용 (재현 절차·로그 등 — Ctrl+V로 캡처 첨부)', 'Symptoms / Request (Ctrl+V to paste screenshot)')}</label>
+                    <textarea rows="5" className="w-full text-sm p-3 border border-slate-300 rounded-lg" value={newASForm.description} onChange={(e) => setNewASForm({...newASForm, description: e.target.value})} onPaste={(e) => {
+                      // 이미지 paste 캡처 → 자동으로 첨부 파일 목록에 추가
+                      const items = e.clipboardData && e.clipboardData.items;
+                      if (!items) return;
+                      const imgs = [];
+                      for (let i = 0; i < items.length; i++) {
+                        const it = items[i];
+                        if (it.kind === 'file' && it.type && it.type.startsWith('image/')) {
+                          const blob = it.getAsFile();
+                          if (blob) {
+                            const ext = (it.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+                            const renamed = new File([blob], `clipboard-${Date.now()}.${ext}`, { type: it.type });
+                            imgs.push(renamed);
+                          }
+                        }
+                      }
+                      if (imgs.length > 0) {
+                        e.preventDefault();
+                        setNewASFiles(prev => [...prev, ...imgs]);
+                      }
+                    }} placeholder={isHW ? t('고객이 신고한 증상 (이미지 캡처는 Ctrl+V)', 'Reported symptoms (Ctrl+V to paste image)') : t('재현 절차 / 발생 빈도 / 영향 범위 / 로그 위치 등 (캡처 Ctrl+V)', 'Repro steps, frequency, scope, log refs (Ctrl+V image)')}></textarea>
                   </div>
+
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">{newASForm.category === 'SW' ? t('분석 / 조치 내용 (선택)', 'Analysis / Resolution (Optional)') : t('조치 내용 (선택)', 'Resolution (Optional)')}</label>
-                    <textarea rows="4" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newASForm.resolution} onChange={(e) => setNewASForm({...newASForm, resolution: e.target.value})} placeholder={newASForm.category === 'SW' ? t('원인 분석 결과 / 패치 버전 / 적용 결과 등', 'Root cause, patch version, applied result') : t('출동 후 작성', 'Fill after visit')}></textarea>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">{isHW ? t('조치 내용 (선택)', 'Resolution (Optional)') : t('분석 / 조치 내용 (선택)', 'Analysis / Resolution (Optional)')}</label>
+                    <textarea rows="4" className="w-full text-sm p-3 border border-slate-300 rounded-lg" value={newASForm.resolution} onChange={(e) => setNewASForm({...newASForm, resolution: e.target.value})} placeholder={isHW ? t('출동 후 작성', 'Fill after visit') : t('원인 분석 결과 / 패치 버전 / 적용 결과 등', 'Root cause, patch version, applied result')}></textarea>
                   </div>
+
+                  {/* V3 풍부 필드 — HW일 때만 부품/금액 노출 (SW는 의미 없음) */}
+                  {isHW && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">{t('사용 부품 (선택)', 'Parts Used (Optional)')}</label>
+                        <input type="text" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newASForm.part} onChange={(e) => setNewASForm({...newASForm, part: e.target.value})} placeholder={t('예: O-Ring V-50, 모터 드라이버', 'e.g. O-Ring, motor driver')} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">{t('금액 (선택)', 'Cost (Optional)')}</label>
+                        <input type="text" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newASForm.cost} onChange={(e) => setNewASForm({...newASForm, cost: e.target.value})} placeholder={t('예: 50,000원 / 무상', 'e.g. ₩50,000 / Free')} />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 첨부 파일 — 회의록과 동일 UX */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">{t('첨부 파일 (선택, 다중 첨부 가능)', 'Attached Files (optional, multiple)')}</label>
+                    {newASFiles.length > 0 && (
+                      <div className="space-y-1.5 mb-2">
+                        {newASFiles.map((f, idx) => (
+                          <div key={idx} className={`flex items-center gap-2 border rounded-lg p-2 ${themeChipBg}`}>
+                            <Paperclip size={14} className={`${themeIconColor} shrink-0`} />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-bold text-slate-800 truncate">{f.name}</div>
+                              <div className="text-[10px] text-slate-500">{fmtSize(f.size)}</div>
+                            </div>
+                            <button type="button" onClick={() => setNewASFiles(prev => prev.filter((_, i) => i !== idx))} className="text-slate-400 hover:text-red-600 p-1" title={t('제거', 'Remove')}><X size={12} /></button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <label
+                      onDragOver={(e) => { if (!driveConfigured) return; e.preventDefault(); setAsDragOver(true); }}
+                      onDragLeave={() => setAsDragOver(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setAsDragOver(false);
+                        if (!driveConfigured) return;
+                        const fs = Array.from(e.dataTransfer.files || []);
+                        if (fs.length) setNewASFiles(prev => [...prev, ...fs]);
+                      }}
+                      className={`block border-2 border-dashed rounded-lg p-3 text-center cursor-pointer transition-colors ${!driveConfigured ? 'border-slate-200 bg-slate-50 cursor-not-allowed opacity-60' : asDragOver ? themeDropActive : `border-slate-300 bg-white ${themeDrop}`}`}
+                    >
+                      <input type="file" multiple accept="image/*,.pdf,.txt,.log,.json,.zip,.xlsx,.xls,.docx,.doc,.pptx,.ppt" className="hidden" disabled={!driveConfigured} onChange={(e) => { const fs = Array.from(e.target.files || []); if (fs.length) setNewASFiles(prev => [...prev, ...fs]); e.target.value = ''; }} />
+                      <Upload size={18} className={`mx-auto mb-1 ${themeIconColor}`} />
+                      <div className="text-xs font-bold text-slate-600">{driveConfigured ? t(newASFiles.length > 0 ? '파일 추가 (드래그 또는 클릭)' : '파일을 드래그하거나 클릭하여 첨부 (다중 가능)', newASFiles.length > 0 ? 'Add more files' : 'Drag or click to attach files (multiple)') : t('Drive 미연동 — 첨부 불가', 'Drive not configured')}</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">{fileLimitGuide}{t(' · 파일당 최대 18MB', ' · Up to 18MB per file')}</div>
+                    </label>
+                  </div>
+
+                  {asError && (
+                    <div className="bg-red-50 border border-red-200 text-red-800 text-xs rounded-lg p-2 flex items-center">
+                      <AlertTriangle size={12} className="mr-1.5 shrink-0" />{asError}
+                    </div>
+                  )}
+                  {asUploading && (
+                    <div className={`text-xs font-bold flex items-center ${themeText}`}>
+                      <Loader size={12} className="animate-spin mr-1.5" />
+                      {t('등록 중...', 'Saving...')}
+                      {newASFiles.length > 0 && ` ${asUploadIdx + 1}/${newASFiles.length} · ${asUploadProgress}%`}
+                    </div>
+                  )}
+
                   <div className="flex justify-end">
-                    <button onClick={() => { if (newASForm.description.trim() && newASForm.engineer.trim()) { onAddAS(project.id, newASForm); setNewASForm({ category: newASForm.category, type: newASForm.category === 'SW' ? AS_SW_TYPES[0] : AS_HW_TYPES[0], engineer: '', description: '', resolution: '' }); } }} disabled={!newASForm.description.trim() || !newASForm.engineer.trim()} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-300 text-white text-sm font-bold rounded-lg transition-colors flex items-center"><LifeBuoy size={14} className="mr-1.5" />{t('AS 등록', 'Add AS')}</button>
+                    <button onClick={handleSubmitAS} disabled={asUploading || !newASForm.description.trim() || !newASForm.engineer.trim()} className={`px-4 py-2 disabled:bg-slate-300 text-white text-sm font-bold rounded-lg transition-colors flex items-center ${themeBtn}`}>
+                      <LifeBuoy size={14} className="mr-1.5" />
+                      {isHW ? t('HW AS 등록', 'Add HW AS') : t('SW AS 등록', 'Add SW AS')}
+                    </button>
+                  </div>
+                </div>
+                );
+              })()}
+
+              {/* 리스트 필터 칩 — 분류(HW/SW) + 상태(처리중/완료) */}
+              {recs.length > 0 && (
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] font-bold text-slate-500 mr-1">{t('분류', 'Type')}</span>
+                    <button type="button" onClick={() => setAsListFilter('all')} className={`text-[11px] font-bold px-2 py-1 rounded-full border transition-colors ${asListFilter === 'all' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>{t('전체', 'All')} {asCnt.all}</button>
+                    <button type="button" onClick={() => setAsListFilter('HW')} className={`text-[11px] font-bold px-2 py-1 rounded-full border transition-colors inline-flex items-center ${asListFilter === 'HW' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'}`}><Wrench size={10} className="mr-1" />HW {asCnt.HW}</button>
+                    <button type="button" onClick={() => setAsListFilter('SW')} className={`text-[11px] font-bold px-2 py-1 rounded-full border transition-colors inline-flex items-center ${asListFilter === 'SW' ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-white text-cyan-700 border-cyan-200 hover:bg-cyan-50'}`}><HardDrive size={10} className="mr-1" />SW {asCnt.SW}</button>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] font-bold text-slate-500 mr-1">{t('상태', 'Status')}</span>
+                    <button type="button" onClick={() => setAsStatusFilter('all')} className={`text-[11px] font-bold px-2 py-1 rounded-full border transition-colors ${asStatusFilter === 'all' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>{t('전체', 'All')}</button>
+                    <button type="button" onClick={() => setAsStatusFilter('open')} className={`text-[11px] font-bold px-2 py-1 rounded-full border transition-colors inline-flex items-center ${asStatusFilter === 'open' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50'}`}><Clock size={10} className="mr-1" />{t('처리중', 'Open')} {asCnt.open}</button>
+                    <button type="button" onClick={() => setAsStatusFilter('done')} className={`text-[11px] font-bold px-2 py-1 rounded-full border transition-colors inline-flex items-center ${asStatusFilter === 'done' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50'}`}><CheckCircle size={10} className="mr-1" />{t('완료', 'Done')} {asCnt.done}</button>
                   </div>
                 </div>
               )}
 
-              {/* AS 목록 */}
-              {(!project.asRecords || project.asRecords.length === 0) ? (
+              {/* AS 목록 — 타임라인 브랜치 (회의록과 동일 패턴) */}
+              {(!recs || recs.length === 0) ? (
                 <div className="text-center py-10 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl bg-white">{t('등록된 AS 내역이 없습니다.', 'No AS records.')}</div>
-              ) : (
-                <div className="space-y-3">
-                  {[...project.asRecords].reverse().map(as => {
-                    const cat = as.category || AS_DEFAULT_CATEGORY;
-                    const statusColor = as.status === '완료' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : (cat === 'SW' && (as.status === '검증' || as.status === '적용')) ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : as.status === '출동' || as.status === '조치' ? 'bg-blue-50 text-blue-700 border-blue-200' : as.status === '분석' || as.status === '개발' ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-amber-50 text-amber-700 border-amber-200';
-                    const typeColor = as.type === '긴급출동' ? 'bg-red-100 text-red-700' : as.type === '정기점검' ? 'bg-blue-100 text-blue-700' : as.type === '부품교체' ? 'bg-amber-100 text-amber-700' : as.type === '보증수리' ? 'bg-indigo-100 text-indigo-700' : cat === 'SW' ? 'bg-cyan-100 text-cyan-700' : 'bg-slate-100 text-slate-700';
-                    const catBadge = cat === 'SW' ? 'bg-cyan-600 text-white' : 'bg-indigo-600 text-white';
-                    const statuses = getASStatusesByCategory(cat);
-                    return (
-                      <div key={as.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="flex items-center flex-wrap gap-1.5">
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${catBadge}`}>{cat}</span>
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${typeColor}`}>{as.type}</span>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${statusColor}`}>{as.status}</span>
-                            <span className="text-xs font-bold text-slate-700 ml-1"><User size={10} className="inline mr-0.5" />{as.engineer}</span>
-                          </div>
-                          <div className="flex items-center space-x-1 shrink-0">
-                            <span className="text-[10px] text-slate-400">{as.date}</span>
-                            {(currentUser.role === 'ADMIN' || currentUser.role === 'PM') && (
-                              <button onClick={() => onDeleteAS(project.id, as.id)} className="inline-flex items-center px-1.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 transition-colors" title={t('삭제', 'Delete')}>
-                                <Trash size={11} className="mr-0.5" />{t('삭제', 'Delete')}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
-                            <div className="text-[10px] font-bold text-slate-500 mb-1">{cat === 'SW' ? t('증상 / 요청', 'Symptoms / Request') : t('증상', 'Symptoms')}</div>
-                            <p className="text-sm text-slate-800 whitespace-pre-wrap">{as.description}</p>
-                          </div>
-                          {as.resolution && (
-                            <div className="p-2 bg-emerald-50 rounded-lg border border-emerald-100">
-                              <div className="text-[10px] font-bold text-emerald-600 mb-1">{cat === 'SW' ? t('분석 / 조치', 'Analysis / Resolution') : t('조치 내용', 'Resolution')}</div>
-                              <p className="text-sm text-slate-800 whitespace-pre-wrap">{as.resolution}</p>
+              ) : (() => {
+                const filteredRecs = recs.filter(r => {
+                  const c = r.category || AS_DEFAULT_CATEGORY;
+                  if (asListFilter !== 'all' && c !== asListFilter) return false;
+                  if (asStatusFilter === 'open' && r.status === '완료') return false;
+                  if (asStatusFilter === 'done' && r.status !== '완료') return false;
+                  return true;
+                });
+                if (filteredRecs.length === 0) {
+                  return <div className="text-center py-10 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl bg-white">{t('필터 조건에 맞는 AS가 없습니다.', 'No AS matching the filter.')}</div>;
+                }
+                const sorted = [...filteredRecs].sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
+                const today = new Date();
+                const today0 = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+                const DAY = 86400000;
+                return (
+                  <div className="relative">
+                    {/* 좌측 세로 타임라인 라인 — 보라(AS 테마) */}
+                    <div className="absolute left-7 top-2 bottom-2 w-0.5 bg-purple-200"></div>
+                    <div className="space-y-3">
+                      {sorted.map((as) => {
+                        const cat = as.category || AS_DEFAULT_CATEGORY;
+                        const isHW = cat === 'HW';
+                        const ts = Number(as.id) || 0;
+                        const d = ts > 0 ? new Date(ts) : null;
+                        const valid = d && !isNaN(d);
+                        const d0 = valid ? new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() : null;
+                        const diff = d0 !== null ? Math.floor((today0 - d0) / DAY) : null;
+                        const dow = valid ? ['일','월','화','수','목','금','토'][d.getDay()] : '';
+                        const mm = valid ? d.getMonth() + 1 : '';
+                        const dd = valid ? d.getDate() : '';
+                        const hh = valid ? String(d.getHours()).padStart(2,'0') : '';
+                        const mi = valid ? String(d.getMinutes()).padStart(2,'0') : '';
+                        let rel = '';
+                        if (diff === 0) rel = t('오늘', 'Today');
+                        else if (diff === 1) rel = t('어제', 'Yesterday');
+                        else if (diff > 1 && diff < 7) rel = t(`${diff}일 전`, `${diff}d ago`);
+                        else if (diff >= 7 && diff < 30) rel = t(`${Math.floor(diff/7)}주 전`, `${Math.floor(diff/7)}w ago`);
+                        else if (diff >= 30 && diff < 365) rel = t(`${Math.floor(diff/30)}개월 전`, `${Math.floor(diff/30)}mo ago`);
+                        else if (diff >= 365) rel = t(`${Math.floor(diff/365)}년 전`, `${Math.floor(diff/365)}y ago`);
+                        // 날짜 노드 색상 — 카테고리 + 신선도
+                        const stripCls = isHW
+                          ? (diff === null ? 'bg-slate-200 text-slate-700 border-slate-300'
+                            : diff <= 1 ? 'bg-indigo-300 text-indigo-900 border-indigo-400'
+                            : diff < 7 ? 'bg-indigo-200 text-indigo-800 border-indigo-300'
+                            : diff < 30 ? 'bg-indigo-100 text-indigo-700 border-indigo-200'
+                            : 'bg-slate-200 text-slate-700 border-slate-300')
+                          : (diff === null ? 'bg-slate-200 text-slate-700 border-slate-300'
+                            : diff <= 1 ? 'bg-cyan-300 text-cyan-900 border-cyan-400'
+                            : diff < 7 ? 'bg-cyan-200 text-cyan-800 border-cyan-300'
+                            : diff < 30 ? 'bg-cyan-100 text-cyan-700 border-cyan-200'
+                            : 'bg-slate-200 text-slate-700 border-slate-300');
+                        const statusColor = as.status === '완료' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : (cat === 'SW' && (as.status === '검증' || as.status === '적용')) ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : as.status === '출동' || as.status === '조치' ? 'bg-blue-50 text-blue-700 border-blue-200' : as.status === '분석' || as.status === '개발' ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-amber-50 text-amber-700 border-amber-200';
+                        const typeColor = as.type === '긴급출동' ? 'bg-red-100 text-red-700' : as.type === '정기점검' ? 'bg-blue-100 text-blue-700' : as.type === '부품교체' ? 'bg-amber-100 text-amber-700' : as.type === '보증수리' ? 'bg-indigo-100 text-indigo-700' : cat === 'SW' ? 'bg-cyan-100 text-cyan-700' : 'bg-slate-100 text-slate-700';
+                        const catBadgeCls = cat === 'SW' ? 'bg-cyan-600 text-white' : 'bg-indigo-600 text-white';
+                        const cardBorder = isHW ? 'border-indigo-100' : 'border-cyan-100';
+                        const avatarBg = isHW ? 'bg-indigo-100 text-indigo-700' : 'bg-cyan-100 text-cyan-700';
+                        const statuses = getASStatusesByCategory(cat);
+                        const files = Array.isArray(as.files) ? as.files : [];
+                        return (
+                          <div key={as.id} className="relative pl-[68px]">
+                            {/* 좌측 날짜 노드 (캘린더 스타일) */}
+                            <div className={`absolute left-0 top-1 w-14 rounded-lg border-2 shadow-sm flex flex-col items-center justify-center py-1.5 z-10 ${stripCls}`} title={valid ? `${mm}/${dd} ${hh}:${mi}` : as.date}>
+                              <div className="text-[9px] font-black leading-none">{valid ? `${mm}월` : '-'}</div>
+                              <div className="text-xl font-black leading-none mt-0.5 tabular-nums">{valid ? dd : '-'}</div>
+                              <div className="text-[8px] font-medium leading-none mt-0.5 opacity-70">{valid ? `${dow}요일` : ''}</div>
                             </div>
-                          )}
-                        </div>
+                            {/* 우측 본문 카드 */}
+                            <div className={`bg-white p-4 rounded-xl border shadow-sm ${cardBorder} ${as.priority === '긴급' && as.status !== '완료' ? 'ring-2 ring-red-200' : ''}`}>
+                              <div className="flex justify-between items-center mb-2 pb-2 border-b border-slate-100">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${avatarBg}`}>{(as.engineer || '?').charAt(0)}</div>
+                                  <span className="text-sm font-bold text-slate-800">{as.engineer}</span>
+                                  <span className={`inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded ${catBadgeCls}`}>
+                                    {isHW ? <Wrench size={9} className="mr-1" /> : <HardDrive size={9} className="mr-1" />}{cat}
+                                  </span>
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${typeColor}`}>{as.type}</span>
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${statusColor}`}>{as.status}</span>
+                                  {as.priority === '긴급' && (
+                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200 inline-flex items-center"><AlertTriangle size={9} className="mr-0.5" />{t('긴급', 'Urgent')}</span>
+                                  )}
+                                  {valid && (
+                                    <span className="text-[10px] text-slate-500 flex items-center"><Clock size={10} className="mr-0.5" />{hh}:{mi}{rel && <span className="ml-1.5 text-slate-400 font-medium">· {rel}</span>}</span>
+                                  )}
+                                </div>
+                                {(currentUser.role === 'ADMIN' || currentUser.role === 'PM') && (
+                                  <button onClick={() => {
+                                    const fileCount = (Array.isArray(as.files) ? as.files.length : 0);
+                                    const hasReport = as.status === '완료' && as.report && !as.report.naReason;
+                                    const extra = fileCount > 0 || hasReport ? `\n${t('첨부', 'Attachments')}: ${fileCount + (hasReport ? 1 : 0)}${t('건', '')}` : '';
+                                    if (window.confirm(t(`이 AS(${as.type})를 삭제할까요?\n처리 이력·코멘트·첨부가 모두 사라집니다.${extra}`, `Delete this AS (${as.type})?\nAll comments and attachments will be removed.${extra}`))) {
+                                      onDeleteAS(project.id, as.id);
+                                    }
+                                  }} className="inline-flex items-center px-1.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 transition-colors shrink-0" title={t('삭제', 'Delete')}>
+                                    <Trash size={11} className="mr-0.5" />{t('삭제', 'Delete')}
+                                  </button>
+                                )}
+                              </div>
 
-                        {currentUser.role !== 'CUSTOMER' && (
-                          <div className="flex flex-wrap gap-1 mt-3">
-                            {statuses.map(s => (
-                              <button key={s} onClick={() => onUpdateAS(project.id, as.id, { status: s })} className={`text-[10px] px-2 py-1 rounded font-bold border transition-colors ${as.status === s ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>{s}</button>
-                            ))}
+                              {/* V3 메타 정보 — 담당자/연락처/시리얼/희망일/방문/부품/금액 — 값 있을 때만 인라인 칩으로 */}
+                              {(as.manager || as.contact || as.serial || as.reqDate || as.visit || as.part || as.cost) && (
+                                <div className="flex items-center gap-1.5 flex-wrap mb-2 text-[11px]">
+                                  {as.manager && <span className="inline-flex items-center bg-slate-50 text-slate-700 border border-slate-200 px-2 py-0.5 rounded font-bold"><User size={10} className="mr-1" />{as.manager}</span>}
+                                  {as.contact && <span className="inline-flex items-center bg-slate-50 text-slate-700 border border-slate-200 px-2 py-0.5 rounded font-bold"><Phone size={10} className="mr-1" />{as.contact}</span>}
+                                  {as.serial && <span className="inline-flex items-center bg-slate-50 text-slate-700 border border-slate-200 px-2 py-0.5 rounded font-bold font-mono"><HardDrive size={10} className="mr-1" />{as.serial}</span>}
+                                  {as.reqDate && <span className="inline-flex items-center bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded font-bold"><CalendarDays size={10} className="mr-1" />{as.reqDate}</span>}
+                                  {as.visit && <span className="inline-flex items-center bg-slate-50 text-slate-700 border border-slate-200 px-2 py-0.5 rounded font-bold"><MapPin size={10} className="mr-1" />{as.visit}</span>}
+                                  {as.part && <span className="inline-flex items-center bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded font-bold"><Package size={10} className="mr-1" />{as.part}</span>}
+                                  {as.cost && <span className="inline-flex items-center bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded font-bold">₩ {as.cost}</span>}
+                                </div>
+                              )}
+
+                              <div className="space-y-2">
+                                <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+                                  <div className="text-[10px] font-bold text-slate-500 mb-1">{isHW ? t('증상', 'Symptoms') : t('증상 / 요청', 'Symptoms / Request')}</div>
+                                  <p className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed">{as.description}</p>
+                                </div>
+                                {as.resolution && (
+                                  <div className="p-2 bg-emerald-50 rounded-lg border border-emerald-100">
+                                    <div className="text-[10px] font-bold text-emerald-600 mb-1">{isHW ? t('조치 내용', 'Resolution') : t('분석 / 조치', 'Analysis / Resolution')}</div>
+                                    <p className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed">{as.resolution}</p>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* 첨부 파일 */}
+                              {files.length > 0 && (
+                                <div className="mt-3 space-y-1.5">
+                                  {files.map((f, fIdx) => (
+                                    <div key={fIdx} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+                                      <div className={`w-8 h-8 rounded-lg ${isHW ? 'bg-indigo-50 border-indigo-200' : 'bg-cyan-50 border-cyan-200'} border flex items-center justify-center shrink-0`}>
+                                        <Paperclip size={13} className={isHW ? 'text-indigo-600' : 'text-cyan-600'} />
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="text-xs font-bold text-slate-800 truncate" title={f.fileName}>{f.fileName}</div>
+                                        <div className="text-[10px] text-slate-500 font-mono">{fmtSize(f.size)}</div>
+                                      </div>
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        {f.viewUrl && (
+                                          <a href={f.viewUrl} target="_blank" rel="noreferrer" className="p-1.5 rounded-md text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 border border-transparent hover:border-emerald-200 transition-colors" title={t('Drive에서 열기', 'Open in Drive')}><ExternalLink size={13} /></a>
+                                        )}
+                                        {f.downloadUrl && (
+                                          <a href={f.downloadUrl} target="_blank" rel="noreferrer" className="p-1.5 rounded-md text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-200 transition-colors" title={t('다운로드', 'Download')}><Download size={13} /></a>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* 완료 보고서 — 완료된 AS만 노출 */}
+                              {as.status === '완료' && as.report && (
+                                <div className="mt-3 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
+                                  <div className="text-[10px] font-bold text-emerald-700 mb-1 flex items-center"><CheckCircle size={11} className="mr-1" />{t('완료 보고서', 'Completion Report')} {as.report.completedAt && <span className="ml-2 text-emerald-600 font-medium">· {as.report.completedAt}</span>}</div>
+                                  {as.report.naReason ? (
+                                    <div className="text-xs text-emerald-800 font-medium">{t('보고서 제출 N/A', 'No report (N/A)')}{as.report.naReason !== 'N/A' && ` — ${as.report.naReason}`}</div>
+                                  ) : (
+                                    <div className="flex items-center gap-2">
+                                      <Paperclip size={12} className="text-emerald-600 shrink-0" />
+                                      <span className="text-xs font-bold text-emerald-900 truncate flex-1">{as.report.fileName}</span>
+                                      {as.report.viewUrl && <a href={as.report.viewUrl} target="_blank" rel="noreferrer" className="text-emerald-700 hover:text-emerald-900 p-1 rounded hover:bg-emerald-100" title={t('Drive에서 열기', 'Open in Drive')}><ExternalLink size={12} /></a>}
+                                      {as.report.downloadUrl && <a href={as.report.downloadUrl} target="_blank" rel="noreferrer" className="text-emerald-700 hover:text-emerald-900 p-1 rounded hover:bg-emerald-100" title={t('다운로드', 'Download')}><Download size={12} /></a>}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* 처리 코멘트 (답글) */}
+                              {Array.isArray(as.comments) && as.comments.length > 0 && (
+                                <div className="mt-3 space-y-1.5">
+                                  <div className="text-[10px] font-bold text-slate-500 flex items-center"><MessageSquare size={10} className="mr-1" />{t('처리 이력', 'Comments')} ({as.comments.length})</div>
+                                  {as.comments.map(c => (
+                                    <div key={c.id} className="border-l-2 border-purple-300 bg-purple-50 rounded-r-md px-2 py-1.5">
+                                      <div className="text-[10px] text-slate-500 flex items-center gap-1.5"><strong className="text-slate-700">{c.author}</strong><span>·</span><span>{c.time}</span></div>
+                                      <p className="text-xs text-slate-800 whitespace-pre-wrap mt-0.5">{c.text}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* 답글 입력 — 처리 중일 때 */}
+                              {currentUser.role !== 'CUSTOMER' && as.status !== '완료' && onAddASComment && (
+                                <div className="mt-3 flex items-center gap-1.5">
+                                  <input
+                                    type="text"
+                                    value={asReplyText[as.id] || ''}
+                                    onChange={(e) => setAsReplyText({ ...asReplyText, [as.id]: e.target.value })}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        const txt = asReplyText[as.id];
+                                        if (txt && txt.trim()) {
+                                          onAddASComment(project.id, as.id, txt);
+                                          setAsReplyText({ ...asReplyText, [as.id]: '' });
+                                        }
+                                      }
+                                    }}
+                                    placeholder={t('처리 내용 답글 (Enter로 등록)', 'Reply (Enter)')}
+                                    className="flex-1 text-xs p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-purple-500"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const txt = asReplyText[as.id];
+                                      if (txt && txt.trim()) {
+                                        onAddASComment(project.id, as.id, txt);
+                                        setAsReplyText({ ...asReplyText, [as.id]: '' });
+                                      }
+                                    }}
+                                    disabled={!(asReplyText[as.id] || '').trim()}
+                                    className="px-3 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-300 text-white text-xs font-bold rounded-lg transition-colors inline-flex items-center"
+                                  >
+                                    <Send size={11} className="mr-1" />{t('답글', 'Reply')}
+                                  </button>
+                                </div>
+                              )}
+
+                              {currentUser.role !== 'CUSTOMER' && (
+                                <div className="flex flex-wrap gap-1 mt-3 items-center">
+                                  {statuses.map(s => (
+                                    <button key={s} onClick={() => {
+                                      // 완료로 가는 건 보고서 모달 거치도록 가로채기
+                                      if (s === '완료' && as.status !== '완료' && onCompleteAS) {
+                                        setAsCompleteModal({ asId: as.id, file: null, isNA: false, uploading: false });
+                                        return;
+                                      }
+                                      onUpdateAS(project.id, as.id, { status: s });
+                                    }} className={`text-[10px] px-2 py-1 rounded font-bold border transition-colors ${as.status === s ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>{s}</button>
+                                  ))}
+                                  {/* 완료 취소 (사유 입력) — 완료 상태일 때만 */}
+                                  {as.status === '완료' && onRevertCompleteAS && (currentUser.role === 'ADMIN' || currentUser.role === 'PM') && (
+                                    <button onClick={() => setAsRevertPrompt({ asId: as.id, reason: '' })} className="ml-auto text-[10px] px-2 py-1 rounded font-bold border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 transition-colors inline-flex items-center">
+                                      <ShieldOff size={10} className="mr-1" />{t('완료 취소', 'Revert')}
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* 완료 처리 모달 — 보고서 첨부 필수 또는 N/A */}
+              {asCompleteModal && (() => {
+                const m = asCompleteModal;
+                const closeModal = () => setAsCompleteModal(null);
+                const submit = async () => {
+                  if (!m.isNA && !m.file) return;
+                  setAsCompleteModal({ ...m, uploading: true });
+                  try {
+                    await onCompleteAS(project.id, m.asId, { isNA: m.isNA, file: m.file, onProgress: () => {} });
+                    setAsCompleteModal(null);
+                  } catch (e) {
+                    setAsCompleteModal({ ...m, uploading: false });
+                  }
+                };
+                return (
+                  <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40" onClick={closeModal}>
+                    <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-[440px] max-w-[calc(100vw-2rem)]" onClick={(e) => e.stopPropagation()}>
+                      <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                        <h3 className="text-sm font-black text-purple-700 flex items-center"><CheckCircle size={16} className="mr-2" />{t('완료 처리 — 보고서 첨부', 'Complete — Attach Report')}</h3>
+                        <button onClick={closeModal} disabled={m.uploading} className="text-slate-400 hover:text-slate-700 disabled:opacity-50"><X size={18} /></button>
+                      </div>
+                      <div className="p-4 space-y-3">
+                        <div className="text-xs text-slate-600 leading-relaxed">{t('완료 처리 시 보고서(작업 결과서 / 점검 보고서 / 패치 노트 등)를 첨부하거나 N/A를 명시해야 합니다.', 'Attach a report or mark N/A.')}</div>
+                        <input
+                          type="file"
+                          disabled={m.isNA || m.uploading}
+                          onChange={(e) => setAsCompleteModal({ ...m, file: e.target.files && e.target.files[0] ? e.target.files[0] : null })}
+                          className="block w-full text-xs p-2 border border-dashed border-slate-300 rounded-lg bg-slate-50 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-purple-600 file:text-white file:font-bold file:text-[11px] disabled:opacity-50"
+                        />
+                        {m.file && !m.isNA && (
+                          <div className="text-[11px] text-slate-700 bg-slate-50 border border-slate-200 rounded p-2 truncate">
+                            <Paperclip size={11} className="inline mr-1 text-purple-600" />{m.file.name}
                           </div>
                         )}
+                        <label className="flex items-center gap-2 cursor-pointer p-2 bg-red-50 border border-red-200 rounded-lg text-xs font-bold text-red-700">
+                          <input type="checkbox" checked={m.isNA} onChange={(e) => setAsCompleteModal({ ...m, isNA: e.target.checked, file: e.target.checked ? null : m.file })} className="accent-red-600" disabled={m.uploading} />
+                          {t('보고서 제출 N/A (불필요)', 'N/A — No report needed')}
+                        </label>
+                        {m.uploading && (
+                          <div className="text-xs font-bold text-purple-700 flex items-center"><Loader size={12} className="animate-spin mr-1.5" />{t('업로드 중...', 'Uploading...')}</div>
+                        )}
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                      <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2">
+                        <button type="button" onClick={closeModal} disabled={m.uploading} className="px-3 py-1.5 text-xs font-bold rounded border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50">{t('취소', 'Cancel')}</button>
+                        <button type="button" onClick={submit} disabled={m.uploading || (!m.isNA && !m.file)} className="px-3 py-1.5 text-xs font-bold rounded bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center disabled:bg-slate-300"><CheckCircle size={12} className="mr-1" />{t('완료 확정', 'Confirm')}</button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* 완료 취소 사유 입력 모달 */}
+              {asRevertPrompt && (() => {
+                const r = asRevertPrompt;
+                const close = () => setAsRevertPrompt(null);
+                const submit = () => {
+                  if (!r.reason.trim()) return;
+                  onRevertCompleteAS(project.id, r.asId, r.reason);
+                  setAsRevertPrompt(null);
+                };
+                return (
+                  <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40" onClick={close}>
+                    <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-[420px] max-w-[calc(100vw-2rem)]" onClick={(e) => e.stopPropagation()}>
+                      <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                        <h3 className="text-sm font-black text-red-700 flex items-center"><ShieldOff size={16} className="mr-2" />{t('완료 취소 — 사유 입력', 'Revert — Reason')}</h3>
+                        <button onClick={close} className="text-slate-400 hover:text-slate-700"><X size={18} /></button>
+                      </div>
+                      <div className="p-4 space-y-2">
+                        <div className="text-xs text-slate-600">{t('완료 상태를 직전 단계로 되돌립니다. 사유는 처리 이력에 기록됩니다.', 'Revert to previous step. Reason will be logged.')}</div>
+                        <textarea rows="3" autoFocus value={r.reason} onChange={(e) => setAsRevertPrompt({ ...r, reason: e.target.value })} placeholder={t('예: 고객 추가 확인 필요 / 재발 발견', 'e.g. Customer requested re-check / regression')} className="w-full text-sm p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-red-500"></textarea>
+                      </div>
+                      <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2">
+                        <button type="button" onClick={close} className="px-3 py-1.5 text-xs font-bold rounded border border-slate-300 text-slate-700 hover:bg-slate-50">{t('취소', 'Cancel')}</button>
+                        <button type="button" onClick={submit} disabled={!r.reason.trim()} className="px-3 py-1.5 text-xs font-bold rounded bg-red-600 hover:bg-red-700 text-white inline-flex items-center disabled:bg-slate-300"><ShieldOff size={12} className="mr-1" />{t('취소 확정', 'Confirm')}</button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
-          )}
+            );
+          })()}
           {activeModalTab === 'extras' && (
             <div className="space-y-4">
               <div className="bg-pink-50 text-pink-800 p-3 rounded-lg text-xs font-medium border border-pink-200 flex items-start">

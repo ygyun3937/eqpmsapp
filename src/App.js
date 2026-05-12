@@ -1280,10 +1280,108 @@ export default function App() {
   };
 
   // === AS 핸들러 ===
-  const handleAddAS = (projectId, data) => {
+  const handleAddAS = async (projectId, data) => {
     const category = data.category === 'SW' ? 'SW' : 'HW';
-    const record = { id: Date.now(), category, type: data.type, engineer: data.engineer, description: data.description, resolution: data.resolution || '', status: '접수', date: new Date().toLocaleString() };
-    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, asRecords: [...(p.asRecords || []), record] }, 'AS_ADD', `AS 등록 [${category}] (${data.type}): ${data.description.substring(0, 30)}${data.description.length > 30 ? '...' : ''}`)));
+    // 파일 첨부 (선택, 다중) — 회의록과 동일 패턴, Drive 카테고리 'AS'로 분류
+    const filesIn = Array.isArray(data.files) ? data.files : [];
+    const onProgress = data.onProgress;
+    const filesMeta = [];
+    for (let i = 0; i < filesIn.length; i++) {
+      const meta = await handleUploadAttachment(
+        projectId,
+        filesIn[i],
+        (p) => onProgress && onProgress({ percent: p && p.percent, index: i }),
+        'AS'
+      );
+      if (!meta) return; // 한 개라도 실패하면 중단 (이미 올라간 건 Drive에 남음 — 레코드 미생성)
+      filesMeta.push({
+        fileId: meta.fileId, fileName: meta.fileName, mimeType: meta.mimeType, size: meta.size,
+        viewUrl: meta.viewUrl, downloadUrl: meta.downloadUrl
+      });
+    }
+    const record = {
+      id: Date.now(),
+      category, type: data.type, engineer: data.engineer,
+      description: data.description, resolution: data.resolution || '',
+      // V3 흡수 — 풍부 필드 (모두 선택 입력)
+      priority: data.priority === '긴급' ? '긴급' : '보통',
+      manager: data.manager || '',
+      contact: data.contact || '',
+      serial: data.serial || '',
+      part: data.part || '',
+      cost: data.cost || '',
+      reqDate: data.reqDate || '', // 희망 처리일정
+      visit: data.visit || '',     // 방문 시 필요사항
+      // 처리 코멘트(답글) 누적
+      comments: [],
+      // 완료 시 보고서 메타 (보고서 첨부 또는 N/A)
+      report: null,
+      status: '접수',
+      date: new Date().toLocaleString(),
+      files: filesMeta
+    };
+    setProjects(prev => {
+      const next = prev.map(p => p.id !== projectId ? p : addLog({ ...p, asRecords: [...(p.asRecords || []), record] }, 'AS_ADD', `AS 등록 [${category}] (${data.type})${record.priority === '긴급' ? ' [긴급]' : ''}: ${data.description.substring(0, 30)}${data.description.length > 30 ? '...' : ''}`));
+      saveToGoogleDB('UPDATE_PROJECTS', next);
+      return next;
+    });
+  };
+
+  // 답글/처리 코멘트 추가 — 작성자/시각/내용
+  const handleAddASComment = (projectId, asId, text) => {
+    const trimmed = (text || '').trim();
+    if (!trimmed) return;
+    setProjects(prev => {
+      const next = prev.map(p => {
+        if (p.id !== projectId) return p;
+        const comment = { id: Date.now(), author: currentUser.name, text: trimmed, time: new Date().toLocaleString() };
+        return { ...p, asRecords: (p.asRecords || []).map(a => a.id === asId ? { ...a, comments: [...(a.comments || []), comment] } : a) };
+      });
+      saveToGoogleDB('UPDATE_PROJECTS', next);
+      return next;
+    });
+  };
+
+  // 완료 처리 (보고서 첨부 필수 또는 N/A 명시) — Drive 업로드 후 메타 저장
+  const handleCompleteAS = async (projectId, asId, opts) => {
+    const isNA = !!(opts && opts.isNA);
+    const file = opts && opts.file;
+    let reportMeta = null;
+    if (!isNA && file) {
+      reportMeta = await handleUploadAttachment(projectId, file, opts.onProgress, 'AS');
+      if (!reportMeta) return;
+      reportMeta = { fileId: reportMeta.fileId, fileName: reportMeta.fileName, mimeType: reportMeta.mimeType, size: reportMeta.size, viewUrl: reportMeta.viewUrl, downloadUrl: reportMeta.downloadUrl };
+    }
+    setProjects(prev => {
+      const next = prev.map(p => {
+        if (p.id !== projectId) return p;
+        const asRec = (p.asRecords || []).find(a => a.id === asId);
+        const updated = { ...p, asRecords: (p.asRecords || []).map(a => a.id === asId ? { ...a, status: '완료', report: isNA ? { naReason: (opts && opts.naReason) || 'N/A', completedAt: new Date().toLocaleString() } : { ...reportMeta, completedAt: new Date().toLocaleString() } } : a) };
+        return addLog(updated, 'AS_UPDATE', `AS 완료: ${asRec?.type || ''}${isNA ? ' (보고서 N/A)' : reportMeta ? ` (보고서: ${reportMeta.fileName})` : ''}`);
+      });
+      saveToGoogleDB('UPDATE_PROJECTS', next);
+      return next;
+    });
+  };
+
+  // 완료 취소 (사유 입력 필수) — 상태를 직전 단계로 되돌리고 코멘트에 사유 기록
+  const handleRevertCompleteAS = (projectId, asId, reason) => {
+    const r = (reason || '').trim();
+    if (!r) return;
+    setProjects(prev => {
+      const next = prev.map(p => {
+        if (p.id !== projectId) return p;
+        const asRec = (p.asRecords || []).find(a => a.id === asId);
+        if (!asRec) return p;
+        // HW면 '조치', SW면 '검증'으로 되돌림 (직전 단계)
+        const prevStatus = (asRec.category || 'HW') === 'SW' ? '검증' : '조치';
+        const comment = { id: Date.now(), author: currentUser.name, text: `[완료 취소] ${r}`, time: new Date().toLocaleString() };
+        const updated = { ...p, asRecords: (p.asRecords || []).map(a => a.id === asId ? { ...a, status: prevStatus, comments: [...(a.comments || []), comment] } : a) };
+        return addLog(updated, 'AS_UPDATE', `AS 완료 취소: ${asRec.type} → ${prevStatus} (사유: ${r.substring(0, 40)})`);
+      });
+      saveToGoogleDB('UPDATE_PROJECTS', next);
+      return next;
+    });
   };
 
   const handleUpdateAS = (projectId, asId, updates) => {
@@ -1406,8 +1504,8 @@ export default function App() {
       uploadedBy: currentUser.name,
       uploadedAt: new Date().toLocaleString()
     };
-    // 회의록 카테고리는 별도 흐름이 부르므로 attachments에 넣지 않고 그대로 반환
-    if (cat === '회의록') {
+    // 회의록/노트/AS 카테고리는 별도 흐름이 부르므로 attachments에 넣지 않고 그대로 반환
+    if (cat === '회의록' || cat === '노트' || cat === 'AS') {
       if (onProgress) onProgress({ stage: 'done', percent: 100 });
       return attachment;
     }
@@ -1452,12 +1550,13 @@ export default function App() {
       : (opts && opts.file) ? [opts.file] : [];
     const onProgress = opts && opts.onProgress;
     const filesMeta = [];
+    const driveCategory = kind === 'note' ? '노트' : '회의록';
     for (let i = 0; i < filesIn.length; i++) {
       const meta = await handleUploadAttachment(
         projectId,
         filesIn[i],
         (p) => onProgress && onProgress({ percent: p && p.percent, index: i }),
-        '회의록'
+        driveCategory
       );
       if (!meta) return; // 한 개라도 실패하면 중단 (이미 올라간 건 Drive에 남음 — 노트는 미생성)
       filesMeta.push({
@@ -1486,8 +1585,86 @@ export default function App() {
     const firstName = filesMeta[0] && filesMeta[0].fileName;
     const kindLabel = kind === 'note' ? '노트' : '회의록';
     const headline = text ? text.substring(0, 30) + (text.length > 30 ? '...' : '') : (firstName ? `${firstName}${filesMeta.length > 1 ? ` 외 ${filesMeta.length - 1}건` : ''}` : kindLabel);
+
+    // 추가 프로젝트에도 동일 노트 등록 — 각 프로젝트의 Drive 폴더에 파일 별도 업로드해서 깔끔하게 독립 보관
+    const extraIds = Array.isArray(opts && opts.additionalProjectIds) ? opts.additionalProjectIds.filter(id => id && id !== projectId) : [];
+    const extraNotes = {}; // projectId → note
+    for (const extraId of extraIds) {
+      const extraFilesMeta = [];
+      // 같은 File 객체를 다른 프로젝트 폴더에 재업로드 (독립적인 Drive 사본)
+      for (let i = 0; i < filesIn.length; i++) {
+        const meta = await handleUploadAttachment(extraId, filesIn[i], null, driveCategory);
+        if (!meta) { /* 실패 시 그 프로젝트만 스킵하고 진행 */ continue; }
+        extraFilesMeta.push({
+          fileId: meta.fileId, fileName: meta.fileName, mimeType: meta.mimeType, size: meta.size,
+          viewUrl: meta.viewUrl, downloadUrl: meta.downloadUrl, folderUrl: meta.categoryFolderUrl || meta.folderUrl
+        });
+      }
+      extraNotes[extraId] = {
+        id: Date.now() + Math.floor(Math.random() * 1000) + extraIds.indexOf(extraId) + 1,
+        author: currentUser.name,
+        kind, text, summary, meetingDate, attendees, decisions, actions,
+        files: extraFilesMeta,
+        date: new Date().toLocaleString(),
+        broadcastFrom: projectId  // 원본 프로젝트 표시 (참고용)
+      };
+    }
+
     setProjects(prev => {
-      const next = prev.map(p => p.id !== projectId ? p : addLog({ ...p, notes: [...(p.notes || []), note] }, 'NOTE_ADD', `${kindLabel}: ${headline}`));
+      const next = prev.map(p => {
+        if (p.id === projectId) return addLog({ ...p, notes: [...(p.notes || []), note] }, 'NOTE_ADD', `${kindLabel}: ${headline}${extraIds.length > 0 ? ` (+ ${extraIds.length}개 프로젝트에 동시 등록)` : ''}`);
+        if (extraNotes[p.id]) return addLog({ ...p, notes: [...(p.notes || []), extraNotes[p.id]] }, 'NOTE_ADD', `${kindLabel} (공유): ${headline}`);
+        return p;
+      });
+      saveToGoogleDB('UPDATE_PROJECTS', next);
+      return next;
+    });
+  };
+
+  // 회의록/노트 수정 — 메타·본문·첨부(제거+신규 추가) 일괄
+  // updates: { kind, summary, text, meetingDate, attendees, decisions, actions, files (남길 기존 파일 메타 배열), newFiles (업로드할 File 객체 배열) }
+  const handleEditNote = async (projectId, noteId, updates) => {
+    const project = projects.find(p => p.id === projectId);
+    const target = project && (project.notes || []).find(n => n.id === noteId);
+    if (!target) return;
+    // 새 파일 업로드 → 메타 (수정 후 kind 기준으로 폴더 분기)
+    const kindFinal = updates.kind === 'note' ? 'note' : (updates.kind || target.kind || 'meeting');
+    const editDriveCategory = kindFinal === 'note' ? '노트' : '회의록';
+    const newFilesIn = Array.isArray(updates.newFiles) ? updates.newFiles : [];
+    const newMetas = [];
+    for (let i = 0; i < newFilesIn.length; i++) {
+      const meta = await handleUploadAttachment(projectId, newFilesIn[i], null, editDriveCategory);
+      if (!meta) return; // 업로드 실패 시 중단
+      newMetas.push({
+        fileId: meta.fileId, fileName: meta.fileName, mimeType: meta.mimeType, size: meta.size,
+        viewUrl: meta.viewUrl, downloadUrl: meta.downloadUrl, folderUrl: meta.categoryFolderUrl || meta.folderUrl
+      });
+    }
+    // 제거된 기존 파일 — Drive에서도 휴지통으로 (안전; 실패해도 메타만 갱신)
+    const keptFiles = Array.isArray(updates.files) ? updates.files : (Array.isArray(target.files) ? target.files : []);
+    const removed = (target.files || []).filter(of => !keptFiles.some(kf => kf.fileId === of.fileId));
+    for (const f of removed) {
+      if (f && f.fileId) await callGoogleAction('DELETE_FILE', { fileId: f.fileId });
+    }
+    const finalFiles = [...keptFiles, ...newMetas];
+    const kind = kindFinal;
+    setProjects(prev => {
+      const next = prev.map(p => {
+        if (p.id !== projectId) return p;
+        const updated = { ...p, notes: (p.notes || []).map(n => n.id !== noteId ? n : {
+          ...n, kind,
+          summary: updates.summary !== undefined ? updates.summary : n.summary,
+          text: updates.text !== undefined ? updates.text : n.text,
+          meetingDate: kind === 'meeting' ? (updates.meetingDate !== undefined ? updates.meetingDate : n.meetingDate) : '',
+          attendees: kind === 'meeting' ? (updates.attendees !== undefined ? updates.attendees : n.attendees) : '',
+          decisions: kind === 'meeting' ? (updates.decisions !== undefined ? updates.decisions : n.decisions) : '',
+          actions: kind === 'meeting' ? (updates.actions !== undefined ? updates.actions : n.actions) : '',
+          files: finalFiles,
+          editedAt: new Date().toLocaleString()
+        }) };
+        const headline = (updates.text || target.text || '').substring(0, 30);
+        return addLog(updated, 'NOTE_ADD', `${kind === 'note' ? '노트' : '회의록'} 수정: ${headline}${(updates.text || target.text || '').length > 30 ? '...' : ''}`);
+      });
       saveToGoogleDB('UPDATE_PROJECTS', next);
       return next;
     });
@@ -1532,6 +1709,7 @@ export default function App() {
   // Shared modal props
   const taskModalProps = {
     project: projects.find(p => p.id === selectedProjectId),
+    allProjects: projects,
     projectIssues: issues.filter(i => i.projectId === selectedProjectId),
     getStatusColor, onClose: () => setIsTaskModalOpen(false),
     onToggleTask: toggleTaskCompletion, onAddTask: handleAddTask,
@@ -1549,7 +1727,7 @@ export default function App() {
     onSignOff: handleSignOff,
     onCancelSignOff: handleCancelSignOff,
     onAddExtraTask: handleAddExtraTask, onUpdateExtraTask: handleUpdateExtraTask, onDeleteExtraTask: handleDeleteExtraTask,
-    onAddNote: handleAddNote, onDeleteNote: handleDeleteNote,
+    onAddNote: handleAddNote, onDeleteNote: handleDeleteNote, onEditNote: handleEditNote,
     onAddCustomerRequest: handleAddCustomerRequest,
     onUpdateCustomerRequestStatus: handleUpdateCustomerRequestStatus,
     onAddCustomerResponse: handleAddCustomerResponse,
@@ -1557,6 +1735,9 @@ export default function App() {
     onAddAS: handleAddAS,
     onUpdateAS: handleUpdateAS,
     onDeleteAS: handleDeleteAS,
+    onAddASComment: handleAddASComment,
+    onCompleteAS: handleCompleteAS,
+    onRevertCompleteAS: handleRevertCompleteAS,
     onUploadAttachment: handleUploadAttachment,
     onDeleteAttachment: handleDeleteAttachment,
     onDeleteProject: (prj) => { setIsTaskModalOpen(false); setProjectToDelete(prj); },
@@ -1748,7 +1929,7 @@ export default function App() {
               )}
               {activeTab === 'resources' && <ResourceListView engineers={engineers} projects={projects} issues={issues} getStatusColor={getStatusColor} TODAY={TODAY} onAddClick={() => { setSelectedEngineer(null); setIsEngineerModalOpen(true); }} onEditClick={(eng) => { setSelectedEngineer(eng); setIsEngineerModalOpen(true); }} onManageCertificates={(eng) => { setCertEngineerId(eng.id); setIsCertModalOpen(true); }} onShowActivity={(eng) => { setActivityEngineerId(eng.id); setIsActivityModalOpen(true); }} onDeleteClick={(eng) => setEngineerToDelete(eng)} currentUser={currentUser} t={t} />}
               {activeTab === 'as' && currentUser.role !== 'CUSTOMER' && (
-                <ASManagementView projects={projects} onProjectClick={openProjectDetail} onUpdateAS={handleUpdateAS} currentUser={currentUser} t={t} />
+                <ASManagementView projects={projects} onProjectClick={openProjectDetail} onUpdateAS={handleUpdateAS} onAddAS={handleAddAS} onAddASComment={handleAddASComment} onCompleteAS={handleCompleteAS} onRevertCompleteAS={handleRevertCompleteAS} onUploadAttachment={handleUploadAttachment} driveConfigured={!!settings.driveRootFolderId} currentUser={currentUser} t={t} />
               )}
               {activeTab === 'weekly' && currentUser.role !== 'CUSTOMER' && (
                 (settings.weeklyReportEnabled && (currentUser.role === 'ADMIN' || currentUser.weeklyReportEnabled)) ? (

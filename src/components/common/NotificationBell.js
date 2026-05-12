@@ -34,7 +34,9 @@ function formatRelative(ts, t) {
 export default function NotificationBell({ notifications, lastSeen, onMarkAllRead, onJump, t }) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('all'); // all | unread | NOTE | ISSUE | ...
+  const [anchorRect, setAnchorRect] = useState(null);
   const ref = useRef(null);
+  const btnRef = useRef(null);
 
   // 외부 클릭 닫기
   useEffect(() => {
@@ -44,6 +46,21 @@ export default function NotificationBell({ notifications, lastSeen, onMarkAllRea
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  // 종 버튼 위치 추적 — 리사이즈/스크롤 시에도 dropdown 위치 갱신
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      if (btnRef.current) setAnchorRect(btnRef.current.getBoundingClientRect());
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
   }, [open]);
 
   const unreadCount = useMemo(
@@ -64,6 +81,7 @@ export default function NotificationBell({ notifications, lastSeen, onMarkAllRea
   return (
     <div className="relative" ref={ref}>
       <button
+        ref={btnRef}
         onClick={handleToggle}
         className="relative bg-slate-100 text-slate-600 hover:bg-slate-200 px-3 py-1.5 rounded-full text-xs font-bold transition-colors flex items-center shadow-sm border border-slate-200"
         title={t('알림', 'Notifications')}
@@ -76,8 +94,23 @@ export default function NotificationBell({ notifications, lastSeen, onMarkAllRea
         )}
       </button>
 
-      {open && (
-        <div className="absolute right-0 mt-2 w-[420px] max-w-[calc(100vw-32px)] bg-white border border-slate-200 rounded-xl shadow-2xl z-[150] overflow-hidden animate-[fadeIn_0.15s_ease-in-out]">
+      {open && (() => {
+        // 종 버튼 위치 기반으로 dropdown 우측 끝을 종 우측에 맞추고, top은 종 바로 아래
+        const DROPDOWN_WIDTH = 420;
+        const MARGIN = 8;
+        let top = 60, right = 12;
+        if (anchorRect) {
+          top = Math.round(anchorRect.bottom + 6); // 종 아래 6px
+          right = Math.max(MARGIN, Math.round(window.innerWidth - anchorRect.right)); // 종 우측 끝에 정렬
+          // viewport 왼쪽 넘어가지 않도록 보정 (창이 좁을 때)
+          const dropdownLeft = window.innerWidth - right - DROPDOWN_WIDTH;
+          if (dropdownLeft < MARGIN) right = Math.max(MARGIN, window.innerWidth - DROPDOWN_WIDTH - MARGIN);
+        }
+        return (
+        <>
+          {/* 배경 클릭으로 닫기 */}
+          <div className="fixed inset-0 z-[180]" onClick={() => setOpen(false)} />
+          <div style={{ top, right }} className="fixed w-[420px] max-w-[calc(100vw-1.5rem)] bg-white border border-slate-200 rounded-xl shadow-2xl z-[190] overflow-hidden animate-[fadeIn_0.15s_ease-in-out]">
           {/* 헤더 */}
           <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white">
             <div className="flex items-center">
@@ -177,7 +210,9 @@ export default function NotificationBell({ notifications, lastSeen, onMarkAllRea
             <span className="font-bold text-slate-600">{(notifications || []).length}{t('건', '')}</span>
           </div>
         </div>
-      )}
+        </>
+        );
+      })()}
     </div>
   );
 }

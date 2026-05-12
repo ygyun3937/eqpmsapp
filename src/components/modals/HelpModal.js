@@ -491,6 +491,69 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                   <p>· 통합 관리 페이지의 stat 카드는 HW/SW 별도 집계, 통합 진행 중(접수·완료 외) 카운트를 보여줍니다.</p>
                   <p className="mt-1 text-[11px] text-slate-500">기존 레코드는 분류 미지정이지만 자동으로 HW로 간주됩니다.</p>
                 </Section>
+                <Section title="AS 등록 UX — 작성 버튼 펼침 + 첨부 + 타임라인 (회의록과 동일 테마)">
+                  <p>회의록 탭과 동일한 흐름·스킨으로 통일했습니다.</p>
+                  <p>· <strong>평소엔 폼이 접혀 있고</strong>, 상단의 <code className="bg-slate-100 px-1 rounded text-[10px]">[새 HW AS 작성]</code> / <code className="bg-slate-100 px-1 rounded text-[10px]">[새 SW AS 작성]</code> 큰 버튼을 누르면 펼쳐집니다.</p>
+                  <p>· 펼친 폼 안에서도 HW/SW 토글이 가능 — 분류를 바꾸면 유형 select·placeholder·테마 색상이 즉시 따라옵니다.</p>
+                  <p>· <strong>첨부 파일</strong>: HW는 현장 조치 사진/보고서/부품 사진, SW는 에러 스크린샷/로그 파일/패치 스니펫 등 다중 첨부. 드래그&드롭 + 클릭 모두 지원. (Drive 연동 필수, 파일당 18MB 한도)</p>
+                  <p>· <strong>증상 칸에 Ctrl+V</strong>로 클립보드 이미지를 직접 붙여넣으면 자동으로 첨부 파일 목록에 추가됩니다 (스크린샷 캡처 워크플로 최적화).</p>
+                  <p>· 등록 완료 후 폼은 자동으로 다시 접힙니다 — 카테고리는 유지되어 연속 등록이 가능합니다.</p>
+                  <p>· <strong>리스트</strong>는 회의록과 같은 <strong>타임라인 브랜치</strong> 형태 — 좌측 보라색 세로 라인 위에 카테고리 색(HW=인디고 / SW=시안)으로 신선도가 진해지는 캘린더 노드(월/일/요일)가 박혀있고, 우측에 본문 카드가 들어옵니다.</p>
+                  <p>· 카드 헤더에 담당자 아바타 · 카테고리 배지 · 유형 · 상태 · 시각(상대시간) 한 줄로 모이고, 본문은 증상 / 조치 / 첨부 / 상태 버튼 순서로 표시됩니다.</p>
+                  <p>· 리스트 필터 칩 <code className="bg-slate-100 px-1 rounded text-[10px]">분류: 전체/HW/SW</code> + <code className="bg-slate-100 px-1 rounded text-[10px]">상태: 전체/처리중/완료</code> 두 줄로 자르기 가능.</p>
+                </Section>
+                <Section title="AS 풍부 필드 (V3 흡수) — 중요도·담당자·연락처·시리얼·부품·금액">
+                  <p>V3 운영 양식에서 검증된 필드들을 흡수해 데이터 모델을 확장했습니다.</p>
+                  <p>· <strong>중요도</strong>: 보통 / 긴급 — 긴급일 경우 카드에 빨간 ring + AlertTriangle 배지 + stat 카드(미완료 긴급) 집계</p>
+                  <p>· <strong>고객사 담당자 + 연락처</strong>: 현장 출동·콜 응대 시 즉시 연락. 카드에 인라인 칩 노출.</p>
+                  <p>· <strong>장비 시리얼 번호</strong>: 같은 장비 재발생 추적의 핵심. 검색에 포함되어 'SN-12345' 같은 코드로 빠르게 찾기.</p>
+                  <p>· <strong>사용 부품 + 금액</strong>: HW에서만 노출 (SW는 의미 없음). 정산·재고 연계 추적용.</p>
+                  <p>· 모든 필드는 <strong>선택 입력</strong> — 기존 레코드와 호환되며, 빈 값이면 카드에 칩이 안 나옵니다.</p>
+                </Section>
+                <Section title="AS 처리 코멘트 (답글) — 운영팀↔엔지니어 협업 이력">
+                  <p>각 AS 카드 하단에 <strong>답글 입력란</strong> 추가 — 처리 중인 AS에 대해 진행 상황·확인 결과·고객 회신을 누적 기록.</p>
+                  <p>· Enter 또는 [답글] 버튼으로 등록 → 자동으로 작성자/시각이 붙어 카드 안에 시간순 표시.</p>
+                  <p>· 통합 페이지에서는 <strong>"처리 이력 N건 ▼"</strong> 토글로 접고 펼칠 수 있어 화면 정리.</p>
+                  <p>· 완료된 AS에는 답글이 막힙니다 — 더 추가가 필요하면 완료 취소부터.</p>
+                </Section>
+                <Section title="완료 처리 모달 — 보고서 첨부 필수">
+                  <p>완료 상태 칩을 누르면 곧바로 끝나지 않고 <strong>보고서 첨부 모달</strong>이 뜹니다.</p>
+                  <p>· <strong>보고서 첨부</strong>: 작업 결과서 / 점검 보고서 / 패치 노트 등 (Drive 업로드)</p>
+                  <p>· <strong>N/A 체크</strong>: 보고서가 불필요한 케이스(간단 응대, 원격 답변만)일 때 명시적으로 체크 — 그 자체가 기록</p>
+                  <p>· 둘 중 하나는 반드시 선택해야 [완료 확정] 활성화 — 거버넌스 강화</p>
+                  <p>· 완료된 AS 카드에는 보고서 파일명·완료 시각 또는 'N/A' 표시가 emerald 박스로 노출됩니다.</p>
+                </Section>
+                <Section title="완료 취소 — 사유 입력">
+                  <p>실수로 완료 처리했거나 고객 재확인 요청·재발 발견 시 ADMIN/PM이 <strong>완료 취소</strong> 버튼으로 직전 단계로 되돌릴 수 있습니다.</p>
+                  <p>· HW는 '조치', SW는 '검증' 단계로 자동 복귀</p>
+                  <p>· <strong>사유 입력 필수</strong> — 사유는 처리 코멘트에 <code className="bg-slate-100 px-1 rounded text-[10px]">[완료 취소] ...</code>로 영구 기록</p>
+                </Section>
+                <Section title="AS 통합 관리 페이지 — 신규 접수 NEW 뱃지">
+                  <p>페이지 진입 시점을 기준으로 그 이후 등록된 AS에 <code className="bg-red-500 text-white px-1 rounded text-[10px]">NEW</code> 배지가 붙고, 페이지 헤더에 <strong>"NEW N"</strong> 카운트가 표시됩니다.</p>
+                  <p>· 새로고침 없이 실시간으로 새 접수 건수를 알 수 있어 운영팀이 놓치지 않습니다.</p>
+                  <p>· 페이지를 나갔다 들어오면 그 시점이 새 기준점이 됩니다.</p>
+                </Section>
+                <Section title="AS 통합 페이지 — 직접 접수 (프로젝트 모달 진입 없이)">
+                  <p>헤더 우측 <code className="bg-purple-600 text-white px-1 rounded text-[10px]">+ 새 AS 접수</code> 버튼을 누르면 프로젝트를 선택해서 곧바로 접수할 수 있는 모달이 열립니다.</p>
+                  <p>· 프로젝트 select + HW/SW 토글 + 모든 풍부 필드(중요도/담당자/연락처/시리얼/희망일/방문/부품/금액) + 다중 첨부 + Ctrl+V 이미지 paste</p>
+                  <p>· AS 부서가 프로젝트 모달까지 안 들어가도 한 화면에서 접수 → 진행 → 완료까지 처리 가능</p>
+                </Section>
+                <Section title="AS 인라인 정보 수정 (V3 흡수)">
+                  <p>각 AS 카드의 메타 칩 줄 끝에 <code className="bg-amber-50 text-amber-700 px-1 rounded text-[10px]">정보 수정</code> 버튼을 누르면 시리얼/담당자/연락처/희망일/방문/부품/금액/중요도를 카드 안에서 바로 편집할 수 있습니다.</p>
+                  <p>· 모달이나 프로젝트 상세까지 들어가지 않고 빠르게 오타·누락 정정</p>
+                  <p>· 완료된 AS는 인라인 편집이 막힘 — 완료 취소 → 수정 → 다시 완료 순서</p>
+                </Section>
+                <Section title="희망 처리일정 + 방문 필요사항 (HW 전용 추가 필드)">
+                  <p>HW AS는 현장 출동이 본질이라 두 필드를 추가했습니다.</p>
+                  <p>· <strong>희망 처리일정</strong>: 고객이 원하는 출동 일자. 카드에 amber 칩으로 노출 — 출동 일정 잡을 때 기준.</p>
+                  <p>· <strong>방문 시 필요사항</strong>: 보안 절차, 안전화/헬멧, 출입증 등. 현장 도착 전 사전 준비 체크.</p>
+                </Section>
+                <Section title="공유 노트 미니 모달 — 타임라인 브랜치화">
+                  <p>프로젝트 관리 페이지에서 "공유 노트 N건" 칩을 누르면 열리는 미니 모달도 회의록/노트 탭과 <strong>완전히 동일한 타임라인 브랜치 테마</strong>로 통일했습니다.</p>
+                  <p>· 좌측 amber 세로 라인 + 캘린더 노드(월/일/요일, 신선도 색상)</p>
+                  <p>· 회의록/노트 종류 배지, 회의 일시·참석자·결정사항·액션 아이템·첨부 모두 동일하게 표시</p>
+                  <p>· 상단 필터 칩 <code className="bg-slate-100 px-1 rounded text-[10px]">전체 / 회의록 / 노트</code></p>
+                </Section>
                 <Section title="고객 요청">
                   <p>프로젝트 상세 → 고객요청 탭. 고객사 계정도 직접 요청을 등록할 수 있고 응답 댓글이 누적됩니다.</p>
                   <p>"반영 완료/반려" 시 처리 결과(메일 회신, 차기 패치 반영 등)를 명시 입력해야 합니다.</p>

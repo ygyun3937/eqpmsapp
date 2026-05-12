@@ -20,7 +20,7 @@
  *   UPDATE_ENGINEERS, UPDATE_PARTS, UPDATE_SITES, UPDATE_CUSTOMERS,
  *   UPDATE_USERS, UPDATE_SETTINGS, UPDATE_WEEKLY_REPORTS
  *   UPLOAD_FILE       — Drive에 파일 업로드 (data: { projectId, customer, projectName, fileName, mimeType, base64, category })
- *                       category: '명세서' | '도면' | '회의록' | '기타' (생략 시 '기타')
+ *                       category: '명세서' | '도면' | '회의록' | '노트' | 'AS' | '기타' (생략 시 '기타')
  *   DELETE_FILE       — Drive 파일 휴지통 이동 (data: { fileId })
  *   VERIFY_DRIVE_FOLDER — 폴더 ID 접근 검증 (data: { folderId })
  *
@@ -225,7 +225,8 @@ function verifyDriveFolder(payload) {
 }
 
 // 카테고리 정규화 — 알 수 없는 값은 '기타' 폴더로
-var ALLOWED_CATEGORIES = ['명세서', '도면', '회의록', '기타'];
+// '노트'와 'AS'는 회의록과 별개 폴더로 분리 (운영 흐름이 다름)
+var ALLOWED_CATEGORIES = ['명세서', '도면', '회의록', '노트', 'AS', '기타'];
 function normalizeCategory(cat) {
   if (!cat) return '기타';
   var s = String(cat).trim();
