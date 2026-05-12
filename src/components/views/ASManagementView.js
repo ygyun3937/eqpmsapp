@@ -1,15 +1,18 @@
 import React, { useState, useMemo, memo } from 'react';
-import { LifeBuoy, Filter, User, Calendar, Building, Wrench, AlertTriangle, CheckCircle, Clock, Download, Search, ExternalLink } from 'lucide-react';
+import { LifeBuoy, Filter, User, Calendar, Building, Wrench, AlertTriangle, CheckCircle, Clock, Download, Search, ExternalLink, Code } from 'lucide-react';
 import StatCard from '../common/StatCard';
 import { exportToExcel } from '../../utils/export';
+import { AS_HW_TYPES, AS_SW_TYPES, AS_HW_STATUSES, AS_SW_STATUSES, AS_DEFAULT_CATEGORY, getASStatusesByCategory } from '../../constants';
 
-const AS_TYPES = ['전체', '정기점검', '긴급출동', '부품교체', '불량수리', '보증수리'];
-const AS_STATUS = ['전체', '접수', '출동', '완료'];
+const AS_TYPES = ['전체', ...AS_HW_TYPES, ...AS_SW_TYPES];
+// HW/SW 통합 상태: 중복 제거 + 표시 순서 보존
+const AS_STATUS_ALL = Array.from(new Set(['전체', ...AS_HW_STATUSES, ...AS_SW_STATUSES]));
 
 const ASManagementView = memo(function ASManagementView({ projects, onProjectClick, onUpdateAS, currentUser, t }) {
   const [filterType, setFilterType] = useState('전체');
   const [filterStatus, setFilterStatus] = useState('전체');
   const [filterProject, setFilterProject] = useState('all');
+  const [filterCategory, setFilterCategory] = useState('전체');
   const [search, setSearch] = useState('');
 
   // 모든 프로젝트의 AS 레코드를 평탄화
@@ -35,18 +38,22 @@ const ASManagementView = memo(function ASManagementView({ projects, onProjectCli
   const filtered = useMemo(() => {
     const kw = search.trim().toLowerCase();
     return allRecords.filter(r => {
+      const cat = r.category || AS_DEFAULT_CATEGORY;
+      if (filterCategory !== '전체' && cat !== filterCategory) return false;
       if (filterType !== '전체' && r.type !== filterType) return false;
       if (filterStatus !== '전체' && r.status !== filterStatus) return false;
       if (filterProject !== 'all' && r.projectId !== filterProject) return false;
       if (kw && ![r.projectName, r.customer, r.engineer, r.description, r.resolution].some(v => v && String(v).toLowerCase().includes(kw))) return false;
       return true;
     });
-  }, [allRecords, filterType, filterStatus, filterProject, search]);
+  }, [allRecords, filterType, filterStatus, filterProject, filterCategory, search]);
 
   const stats = useMemo(() => ({
     total: allRecords.length,
+    hw: allRecords.filter(r => (r.category || AS_DEFAULT_CATEGORY) === 'HW').length,
+    sw: allRecords.filter(r => r.category === 'SW').length,
     received: allRecords.filter(r => r.status === '접수').length,
-    dispatched: allRecords.filter(r => r.status === '출동').length,
+    inProgress: allRecords.filter(r => r.status !== '접수' && r.status !== '완료').length,
     completed: allRecords.filter(r => r.status === '완료').length,
     emergency: allRecords.filter(r => r.type === '긴급출동' && r.status !== '완료').length,
   }), [allRecords]);
@@ -62,34 +69,38 @@ const ASManagementView = memo(function ASManagementView({ projects, onProjectCli
       name: 'AS 내역',
       rows: filtered.map(r => ({
         date: r.date, projectName: r.projectName, customer: r.customer, site: r.site,
+        category: r.category || AS_DEFAULT_CATEGORY,
         type: r.type, status: r.status, engineer: r.engineer,
         description: r.description, resolution: r.resolution || '-'
       })),
       columns: [
         { header: '일자', key: 'date' }, { header: '프로젝트', key: 'projectName' }, { header: '고객사', key: 'customer' },
-        { header: '사이트', key: 'site' }, { header: 'AS 유형', key: 'type' }, { header: '상태', key: 'status' },
+        { header: '사이트', key: 'site' }, { header: '분류', key: 'category' }, { header: 'AS 유형', key: 'type' }, { header: '상태', key: 'status' },
         { header: '담당 엔지니어', key: 'engineer' }, { header: '증상/요청', key: 'description' }, { header: '조치 내용', key: 'resolution' }
       ]
     }]);
   };
 
-  const typeColor = (type) => {
+  const typeColor = (type, category) => {
     switch (type) {
       case '긴급출동': return 'bg-red-100 text-red-700 border-red-200';
       case '정기점검': return 'bg-blue-100 text-blue-700 border-blue-200';
       case '부품교체': return 'bg-amber-100 text-amber-700 border-amber-200';
       case '보증수리': return 'bg-indigo-100 text-indigo-700 border-indigo-200';
       case '불량수리': return 'bg-rose-100 text-rose-700 border-rose-200';
-      default: return 'bg-slate-100 text-slate-700 border-slate-200';
+      default: return category === 'SW' ? 'bg-cyan-100 text-cyan-700 border-cyan-200' : 'bg-slate-100 text-slate-700 border-slate-200';
     }
   };
   const statusColor = (status) => {
     switch (status) {
       case '완료': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      case '출동': return 'bg-blue-50 text-blue-700 border-blue-200';
+      case '출동': case '조치': return 'bg-blue-50 text-blue-700 border-blue-200';
+      case '분석': case '개발': return 'bg-violet-50 text-violet-700 border-violet-200';
+      case '적용': case '검증': return 'bg-cyan-50 text-cyan-700 border-cyan-200';
       default: return 'bg-amber-50 text-amber-700 border-amber-200';
     }
   };
+  const catBadge = (cat) => cat === 'SW' ? 'bg-cyan-600 text-white' : 'bg-indigo-600 text-white';
 
   return (
     <div className="space-y-6 animate-[fadeIn_0.3s_ease-in-out]">
@@ -103,12 +114,13 @@ const ASManagementView = memo(function ASManagementView({ projects, onProjectCli
         </button>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
         <StatCard title={t('전체 AS', 'Total')} value={stats.total} icon={<LifeBuoy size={22} className="text-purple-500" />} />
+        <StatCard title={t('HW (현장)', 'HW')} value={stats.hw} icon={<Wrench size={22} className="text-indigo-500" />} color={stats.hw > 0 ? 'border-indigo-200 bg-indigo-50' : ''} />
+        <StatCard title={t('SW (원격)', 'SW')} value={stats.sw} icon={<Code size={22} className="text-cyan-500" />} color={stats.sw > 0 ? 'border-cyan-200 bg-cyan-50' : ''} />
         <StatCard title={t('접수', 'Received')} value={stats.received} icon={<Clock size={22} className="text-amber-500" />} color={stats.received > 0 ? 'border-amber-200 bg-amber-50' : ''} />
-        <StatCard title={t('출동', 'Dispatched')} value={stats.dispatched} icon={<Wrench size={22} className="text-blue-500" />} color={stats.dispatched > 0 ? 'border-blue-200 bg-blue-50' : ''} />
+        <StatCard title={t('진행 중', 'In Progress')} value={stats.inProgress} icon={<Wrench size={22} className="text-blue-500" />} color={stats.inProgress > 0 ? 'border-blue-200 bg-blue-50' : ''} />
         <StatCard title={t('완료', 'Completed')} value={stats.completed} icon={<CheckCircle size={22} className="text-emerald-500" />} />
-        <StatCard title={t('미완료 긴급', 'Open Urgent')} value={stats.emergency} icon={<AlertTriangle size={22} className="text-red-500" />} color={stats.emergency > 0 ? 'border-red-200 bg-red-50' : ''} />
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
@@ -116,6 +128,16 @@ const ASManagementView = memo(function ASManagementView({ projects, onProjectCli
           <div className="flex items-center bg-slate-50 px-3 py-1.5 rounded-lg flex-1 min-w-[200px]">
             <Search size={16} className="text-slate-400 mr-2" />
             <input className="bg-transparent outline-none text-sm w-full" placeholder={t('프로젝트/고객사/엔지니어/증상 검색', 'Search project / customer / engineer / symptom')} value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          {/* 분류 토글 — HW/SW/전체 */}
+          <div className="flex bg-white border border-slate-200 rounded-lg overflow-hidden">
+            {['전체', 'HW', 'SW'].map(c => {
+              const active = filterCategory === c;
+              const activeCls = c === 'HW' ? 'bg-indigo-600 text-white' : c === 'SW' ? 'bg-cyan-600 text-white' : 'bg-slate-700 text-white';
+              return (
+                <button key={c} type="button" onClick={() => setFilterCategory(c)} className={`text-xs font-bold px-3 py-1.5 transition-colors ${active ? activeCls : 'text-slate-500 hover:bg-slate-50'}`}>{c}</button>
+              );
+            })}
           </div>
           <div className="flex items-center bg-white border border-slate-200 rounded-lg px-2 py-1">
             <Filter size={14} className="text-slate-400 mr-1" />
@@ -126,12 +148,12 @@ const ASManagementView = memo(function ASManagementView({ projects, onProjectCli
           </div>
           <div className="flex items-center bg-white border border-slate-200 rounded-lg px-2 py-1">
             <select className="text-sm bg-transparent outline-none" value={filterType} onChange={e => setFilterType(e.target.value)}>
-              {AS_TYPES.map(t => <option key={t} value={t}>{t === '전체' ? '전체 유형' : t}</option>)}
+              {AS_TYPES.map(ty => <option key={ty} value={ty}>{ty === '전체' ? '전체 유형' : ty}</option>)}
             </select>
           </div>
           <div className="flex items-center bg-white border border-slate-200 rounded-lg px-2 py-1">
             <select className="text-sm bg-transparent outline-none" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-              {AS_STATUS.map(t => <option key={t} value={t}>{t === '전체' ? '전체 상태' : t}</option>)}
+              {AS_STATUS_ALL.map(s => <option key={s} value={s}>{s === '전체' ? '전체 상태' : s}</option>)}
             </select>
           </div>
         </div>
@@ -144,12 +166,16 @@ const ASManagementView = memo(function ASManagementView({ projects, onProjectCli
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
-            {filtered.map(r => (
+            {filtered.map(r => {
+              const cat = r.category || AS_DEFAULT_CATEGORY;
+              const statuses = getASStatusesByCategory(cat);
+              return (
               <div key={`${r.projectId}-${r.id}`} className="p-4 hover:bg-slate-50 transition-colors">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center flex-wrap gap-1.5 mb-2">
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${typeColor(r.type)}`}>{r.type}</span>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${catBadge(cat)}`}>{cat}</span>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${typeColor(r.type, cat)}`}>{r.type}</span>
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${statusColor(r.status)}`}>{r.status}</span>
                       <span className="text-[10px] text-slate-400 ml-1 flex items-center"><Calendar size={10} className="mr-1" />{r.date}</span>
                     </div>
@@ -176,14 +202,15 @@ const ASManagementView = memo(function ASManagementView({ projects, onProjectCli
 
                   {currentUser.role !== 'CUSTOMER' && (
                     <div className="flex flex-col gap-1 shrink-0">
-                      {['접수', '출동', '완료'].map(s => (
+                      {statuses.map(s => (
                         <button key={s} onClick={() => onUpdateAS(r.projectId, r.id, { status: s })} className={`text-[10px] px-3 py-1 rounded font-bold border transition-colors ${r.status === s ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>{s}</button>
                       ))}
                     </div>
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

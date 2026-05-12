@@ -478,9 +478,18 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                 </Section>
                 <Section title="AS 통합 관리 (신규)">
                   <p>좌측 메뉴 <strong>"AS 통합 관리"</strong> — 전체 프로젝트의 AS 내역을 한 화면에서 조회 (AS 부서용).</p>
-                  <p>· 검색 + 프로젝트/유형/상태 3중 필터</p>
+                  <p>· 검색 + <strong>HW/SW 분류 토글</strong> + 프로젝트/유형/상태 4중 필터</p>
                   <p>· 카드에서 프로젝트명 클릭 시 해당 프로젝트로 점프</p>
-                  <p>· 상태(접수→출동→완료) 직접 변경</p>
+                  <p>· 상태는 분류별로 단계가 다름 (HW: 접수→출동→조치→완료 / SW: 접수→분석→개발→적용→검증→완료)</p>
+                </Section>
+                <Section title="AS 분류 — HW(현장 출동형) / SW(원격 패치형) 분리">
+                  <p>한 프로젝트에서도 <strong>장비 고장 출동</strong>과 <strong>SW 패치 요청</strong>은 처리 흐름이 완전히 다르기 때문에 분류를 나눠 단계를 분기시켰습니다.</p>
+                  <p>· <strong>HW</strong> (인디고 배지) — 현장 출동형. 유형: 정기점검 / 긴급출동 / 부품교체 / 불량수리 / 보증수리. 단계: <strong>접수 → 출동 → 조치 → 완료</strong> (4단계)</p>
+                  <p>· <strong>SW</strong> (시안 배지) — 원격 패치형. 유형: 버그 수정 / 기능 개선 / 성능 튜닝 / 설정 변경 / 데이터 복구 / 보안 패치. 단계: <strong>접수 → 분석 → 개발 → 적용 → 검증 → 완료</strong> (6단계)</p>
+                  <p>· 등록 시 분류 선택 → 그에 맞는 유형 select와 상태 칩이 자동 적용됨</p>
+                  <p>· SW는 증상 칸에 <strong>재현 절차/빈도/영향 범위/로그 위치</strong>를, 조치 칸에 <strong>원인 분석/패치 버전/적용 결과</strong>를 적도록 placeholder가 가이드합니다.</p>
+                  <p>· 통합 관리 페이지의 stat 카드는 HW/SW 별도 집계, 통합 진행 중(접수·완료 외) 카운트를 보여줍니다.</p>
+                  <p className="mt-1 text-[11px] text-slate-500">기존 레코드는 분류 미지정이지만 자동으로 HW로 간주됩니다.</p>
                 </Section>
                 <Section title="고객 요청">
                   <p>프로젝트 상세 → 고객요청 탭. 고객사 계정도 직접 요청을 등록할 수 있고 응답 댓글이 누적됩니다.</p>

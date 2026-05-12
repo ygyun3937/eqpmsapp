@@ -1,7 +1,7 @@
 import React, { useState, memo } from 'react';
 import { X, ListTodo, CheckSquare, AlertTriangle, CheckCircle, User, Edit, Trash, PenTool, Info, ShieldCheck, FileText, ImageIcon, History, GitCommit as TimelineIcon, Package, Wrench, HardDrive, MessageSquare, Send, LifeBuoy, Plus, ShieldOff, Sparkles, Paperclip, Upload, Download, ExternalLink, Loader, FolderOpen, CalendarDays, Star, Calendar, Clock, StickyNote, Building2, Database, Mail, Smartphone, Phone, MapPin, ArrowUpRight } from 'lucide-react';
 import InfoPopover from '../common/InfoPopover';
-import { PROJECT_PHASES } from '../../constants';
+import { PROJECT_PHASES, AS_HW_TYPES, AS_SW_TYPES, AS_DEFAULT_CATEGORY, getASTypesByCategory, getASStatusesByCategory } from '../../constants';
 import { calcAct as calcSetupProgress, calcPhaseProgress, calcOverallProgress } from '../../utils/calc';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
 import SetupPipelineStepper from '../common/SetupPipelineStepper';
@@ -44,7 +44,7 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
   const [responseText, setResponseText] = useState({});
   // 처리결과 입력 폼: { id: requestId, status: '반영 완료'|'반려', text: '' }
   const [resolvingRequest, setResolvingRequest] = useState(null);
-  const [newASForm, setNewASForm] = useState({ type: '정기점검', engineer: '', description: '', resolution: '' });
+  const [newASForm, setNewASForm] = useState({ category: 'HW', type: '정기점검', engineer: '', description: '', resolution: '' });
   const [historyFilter, setHistoryFilter] = useState('all');
   const [newExtraForm, setNewExtraForm] = useState({ name: '', requester: '', type: '기능 추가', startDate: '', endDate: '', note: '' });
   const [confirmCancelSignOff, setConfirmCancelSignOff] = useState(false);
@@ -1449,32 +1449,50 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
               {/* AS 등록 폼 */}
               {currentUser.role !== 'CUSTOMER' && (
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                  {/* 카테고리 라디오 — HW(현장 출동형) / SW(원격 패치형) */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">{t('분류', 'Category')}</label>
+                    <div className="flex gap-2">
+                      {['HW', 'SW'].map(cat => {
+                        const active = newASForm.category === cat;
+                        const color = cat === 'HW' ? (active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50') : (active ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-white text-cyan-700 border-cyan-200 hover:bg-cyan-50');
+                        const sublabel = cat === 'HW' ? t('현장 출동형', 'On-site') : t('원격 패치형', 'Remote patch');
+                        return (
+                          <button key={cat} type="button" onClick={() => {
+                            const defaultType = cat === 'HW' ? AS_HW_TYPES[0] : AS_SW_TYPES[0];
+                            setNewASForm({ ...newASForm, category: cat, type: defaultType });
+                          }} className={`flex-1 px-3 py-2 rounded-lg border-2 text-sm font-bold transition-colors ${color}`}>
+                            <div>{cat}</div>
+                            <div className={`text-[10px] font-normal mt-0.5 ${active ? 'opacity-80' : 'opacity-60'}`}>{sublabel}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">{t('AS 유형', 'Type')}</label>
                       <select className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newASForm.type} onChange={(e) => setNewASForm({...newASForm, type: e.target.value})}>
-                        <option value="정기점검">{t('정기점검', 'Regular')}</option>
-                        <option value="긴급출동">{t('긴급출동', 'Emergency')}</option>
-                        <option value="부품교체">{t('부품교체', 'Part Replace')}</option>
-                        <option value="불량수리">{t('불량수리', 'Defect Fix')}</option>
-                        <option value="보증수리">{t('보증수리', 'Warranty')}</option>
+                        {getASTypesByCategory(newASForm.category).map(ty => (
+                          <option key={ty} value={ty}>{ty}</option>
+                        ))}
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">{t('담당 엔지니어', 'Engineer')}</label>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">{newASForm.category === 'SW' ? t('담당자', 'Owner') : t('담당 엔지니어', 'Engineer')}</label>
                       <input type="text" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newASForm.engineer} onChange={(e) => setNewASForm({...newASForm, engineer: e.target.value})} placeholder={t('이름 입력', 'Name')} />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">{t('증상 / 요청 내용', 'Symptoms / Request')}</label>
-                    <textarea rows="2" className="w-full text-sm p-2 border border-slate-300 rounded-lg resize-none" value={newASForm.description} onChange={(e) => setNewASForm({...newASForm, description: e.target.value})} placeholder={t('고객이 신고한 증상', 'Reported symptoms')}></textarea>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">{newASForm.category === 'SW' ? t('증상 / 요청 내용 (재현 절차·로그 등)', 'Symptoms / Request (steps to reproduce, logs)') : t('증상 / 요청 내용', 'Symptoms / Request')}</label>
+                    <textarea rows="5" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newASForm.description} onChange={(e) => setNewASForm({...newASForm, description: e.target.value})} placeholder={newASForm.category === 'SW' ? t('재현 절차 / 발생 빈도 / 영향 범위 / 로그 위치 등', 'Repro steps, frequency, scope, log refs') : t('고객이 신고한 증상', 'Reported symptoms')}></textarea>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">{t('조치 내용 (선택)', 'Resolution (Optional)')}</label>
-                    <textarea rows="2" className="w-full text-sm p-2 border border-slate-300 rounded-lg resize-none" value={newASForm.resolution} onChange={(e) => setNewASForm({...newASForm, resolution: e.target.value})} placeholder={t('출동 후 작성', 'Fill after visit')}></textarea>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">{newASForm.category === 'SW' ? t('분석 / 조치 내용 (선택)', 'Analysis / Resolution (Optional)') : t('조치 내용 (선택)', 'Resolution (Optional)')}</label>
+                    <textarea rows="4" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newASForm.resolution} onChange={(e) => setNewASForm({...newASForm, resolution: e.target.value})} placeholder={newASForm.category === 'SW' ? t('원인 분석 결과 / 패치 버전 / 적용 결과 등', 'Root cause, patch version, applied result') : t('출동 후 작성', 'Fill after visit')}></textarea>
                   </div>
                   <div className="flex justify-end">
-                    <button onClick={() => { if (newASForm.description.trim() && newASForm.engineer.trim()) { onAddAS(project.id, newASForm); setNewASForm({ type: '정기점검', engineer: '', description: '', resolution: '' }); } }} disabled={!newASForm.description.trim() || !newASForm.engineer.trim()} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-300 text-white text-sm font-bold rounded-lg transition-colors flex items-center"><LifeBuoy size={14} className="mr-1.5" />{t('AS 등록', 'Add AS')}</button>
+                    <button onClick={() => { if (newASForm.description.trim() && newASForm.engineer.trim()) { onAddAS(project.id, newASForm); setNewASForm({ category: newASForm.category, type: newASForm.category === 'SW' ? AS_SW_TYPES[0] : AS_HW_TYPES[0], engineer: '', description: '', resolution: '' }); } }} disabled={!newASForm.description.trim() || !newASForm.engineer.trim()} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-300 text-white text-sm font-bold rounded-lg transition-colors flex items-center"><LifeBuoy size={14} className="mr-1.5" />{t('AS 등록', 'Add AS')}</button>
                   </div>
                 </div>
               )}
@@ -1485,12 +1503,16 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
               ) : (
                 <div className="space-y-3">
                   {[...project.asRecords].reverse().map(as => {
-                    const statusColor = as.status === '완료' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : as.status === '출동' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-amber-50 text-amber-700 border-amber-200';
-                    const typeColor = as.type === '긴급출동' ? 'bg-red-100 text-red-700' : as.type === '정기점검' ? 'bg-blue-100 text-blue-700' : as.type === '부품교체' ? 'bg-amber-100 text-amber-700' : as.type === '보증수리' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-700';
+                    const cat = as.category || AS_DEFAULT_CATEGORY;
+                    const statusColor = as.status === '완료' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : (cat === 'SW' && (as.status === '검증' || as.status === '적용')) ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : as.status === '출동' || as.status === '조치' ? 'bg-blue-50 text-blue-700 border-blue-200' : as.status === '분석' || as.status === '개발' ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-amber-50 text-amber-700 border-amber-200';
+                    const typeColor = as.type === '긴급출동' ? 'bg-red-100 text-red-700' : as.type === '정기점검' ? 'bg-blue-100 text-blue-700' : as.type === '부품교체' ? 'bg-amber-100 text-amber-700' : as.type === '보증수리' ? 'bg-indigo-100 text-indigo-700' : cat === 'SW' ? 'bg-cyan-100 text-cyan-700' : 'bg-slate-100 text-slate-700';
+                    const catBadge = cat === 'SW' ? 'bg-cyan-600 text-white' : 'bg-indigo-600 text-white';
+                    const statuses = getASStatusesByCategory(cat);
                     return (
                       <div key={as.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                         <div className="flex justify-between items-start mb-2">
                           <div className="flex items-center flex-wrap gap-1.5">
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${catBadge}`}>{cat}</span>
                             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${typeColor}`}>{as.type}</span>
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${statusColor}`}>{as.status}</span>
                             <span className="text-xs font-bold text-slate-700 ml-1"><User size={10} className="inline mr-0.5" />{as.engineer}</span>
@@ -1507,20 +1529,20 @@ const TaskModal = memo(function TaskModal({ project, projectIssues, getStatusCol
 
                         <div className="space-y-2">
                           <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
-                            <div className="text-[10px] font-bold text-slate-500 mb-1">{t('증상', 'Symptoms')}</div>
+                            <div className="text-[10px] font-bold text-slate-500 mb-1">{cat === 'SW' ? t('증상 / 요청', 'Symptoms / Request') : t('증상', 'Symptoms')}</div>
                             <p className="text-sm text-slate-800 whitespace-pre-wrap">{as.description}</p>
                           </div>
                           {as.resolution && (
                             <div className="p-2 bg-emerald-50 rounded-lg border border-emerald-100">
-                              <div className="text-[10px] font-bold text-emerald-600 mb-1">{t('조치 내용', 'Resolution')}</div>
+                              <div className="text-[10px] font-bold text-emerald-600 mb-1">{cat === 'SW' ? t('분석 / 조치', 'Analysis / Resolution') : t('조치 내용', 'Resolution')}</div>
                               <p className="text-sm text-slate-800 whitespace-pre-wrap">{as.resolution}</p>
                             </div>
                           )}
                         </div>
 
                         {currentUser.role !== 'CUSTOMER' && (
-                          <div className="flex space-x-1 mt-3">
-                            {['접수', '출동', '완료'].map(s => (
+                          <div className="flex flex-wrap gap-1 mt-3">
+                            {statuses.map(s => (
                               <button key={s} onClick={() => onUpdateAS(project.id, as.id, { status: s })} className={`text-[10px] px-2 py-1 rounded font-bold border transition-colors ${as.status === s ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>{s}</button>
                             ))}
                           </div>

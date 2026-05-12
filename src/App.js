@@ -1281,8 +1281,9 @@ export default function App() {
 
   // === AS 핸들러 ===
   const handleAddAS = (projectId, data) => {
-    const record = { id: Date.now(), type: data.type, engineer: data.engineer, description: data.description, resolution: data.resolution || '', status: '접수', date: new Date().toLocaleString() };
-    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, asRecords: [...(p.asRecords || []), record] }, 'AS_ADD', `AS 등록 (${data.type}): ${data.description.substring(0, 30)}${data.description.length > 30 ? '...' : ''}`)));
+    const category = data.category === 'SW' ? 'SW' : 'HW';
+    const record = { id: Date.now(), category, type: data.type, engineer: data.engineer, description: data.description, resolution: data.resolution || '', status: '접수', date: new Date().toLocaleString() };
+    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, asRecords: [...(p.asRecords || []), record] }, 'AS_ADD', `AS 등록 [${category}] (${data.type}): ${data.description.substring(0, 30)}${data.description.length > 30 ? '...' : ''}`)));
   };
 
   const handleUpdateAS = (projectId, asId, updates) => {

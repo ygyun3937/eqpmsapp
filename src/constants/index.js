@@ -4,6 +4,17 @@ export const PHASE_COMPLETED_INDEX = 7;
 export const PHASE_WARRANTY_INDEX = 6;
 export const ISSUE_PHASES = ['이슈 확인', '조치 진행 중', '조치 완료'];
 export const PART_PHASES = ['청구', '발주', '입고', '교체완료'];
+
+// AS 분류 — HW(현장 출동형) / SW(원격 패치형) 단계 분기
+export const AS_CATEGORIES = ['HW', 'SW'];
+export const AS_HW_TYPES = ['정기점검', '긴급출동', '부품교체', '불량수리', '보증수리'];
+export const AS_SW_TYPES = ['버그 수정', '기능 개선', '성능 튜닝', '설정 변경', '데이터 복구', '보안 패치'];
+export const AS_HW_STATUSES = ['접수', '출동', '조치', '완료'];
+export const AS_SW_STATUSES = ['접수', '분석', '개발', '적용', '검증', '완료'];
+// 기존 레코드는 category 없음 → HW로 간주 (마이그레이션)
+export const AS_DEFAULT_CATEGORY = 'HW';
+export const getASTypesByCategory = (cat) => cat === 'SW' ? AS_SW_TYPES : AS_HW_TYPES;
+export const getASStatusesByCategory = (cat) => cat === 'SW' ? AS_SW_STATUSES : AS_HW_STATUSES;
 export const DOMAINS = ['반도체', '디스플레이', '2차전지 사이클러', '2차전지 EOL'];
 // 2차전지 계열은 전압/전류/사양 등 추가 스펙 입력 가능
 export const BATTERY_DOMAINS = ['2차전지 사이클러', '2차전지 EOL'];
