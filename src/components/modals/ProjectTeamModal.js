@@ -434,11 +434,11 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
                           )}
                         </div>
                         <div className="flex flex-col gap-1 shrink-0">
-                          <button type="button" onClick={() => setEmailTrip({ kind: 'trip_request', trip: { ...tr, engineerName: eng?.name || tr.engineerName, site: project.site } })} className="inline-flex items-center px-1.5 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-bold border border-indigo-200 transition-colors" title={t('출장 신청서 메일 송부', 'Send trip request email')}>
-                            <Mail size={11} className="mr-0.5" />{t('신청', 'Request')}
+                          <button type="button" onClick={() => setEmailTrip({ kind: 'trip_request', trip: { ...tr, engineerName: eng?.name || tr.engineerName, site: project.site } })} className="inline-flex items-center px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold shadow-sm transition-colors" title={t('출장 신청서를 이메일로 발송 (수신/참조 직접 지정)', 'Email this trip request (recipients customizable)')}>
+                            <Mail size={11} className="mr-1" />{t('신청서 메일', 'Send Request')}
                           </button>
-                          <button type="button" onClick={() => setEmailTrip({ kind: 'trip_report', trip: { ...tr, engineerName: eng?.name || tr.engineerName, site: project.site } })} className="inline-flex items-center px-1.5 py-1 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-bold border border-emerald-200 transition-colors" title={t('출장 보고서 메일 송부', 'Send trip report email')}>
-                            <Mail size={11} className="mr-0.5" />{t('보고', 'Report')}
+                          <button type="button" onClick={() => setEmailTrip({ kind: 'trip_report', trip: { ...tr, engineerName: eng?.name || tr.engineerName, site: project.site } })} className="inline-flex items-center px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold shadow-sm transition-colors" title={t('출장 보고서를 이메일로 발송 (수신/참조 직접 지정)', 'Email this trip report (recipients customizable)')}>
+                            <Mail size={11} className="mr-1" />{t('보고서 메일', 'Send Report')}
                           </button>
                           <button type="button" onClick={() => handleStartEdit(tr)} className="inline-flex items-center px-1.5 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] font-bold border border-blue-200 transition-colors" title={t('수정', 'Edit')}>
                             <Pencil size={11} className="mr-0.5" />{t('수정', 'Edit')}

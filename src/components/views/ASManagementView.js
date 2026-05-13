@@ -505,16 +505,16 @@ const ASManagementView = memo(function ASManagementView({ projects, onProjectCli
                       </div>
                     )}
 
-                    {/* 메일 송부 버튼 — AS 보고서 */}
+                    {/* 메일 송부 버튼 — AS 보고서 (수신·참조 직접 지정 → HTML 양식 메일 발송) */}
                     {currentUser.role !== 'CUSTOMER' && (
                       <div className="mt-2">
                         <button
                           type="button"
                           onClick={() => setEmailTarget({ project: r._project, as: r })}
-                          className="text-[10px] font-bold px-2 py-1 rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 inline-flex items-center transition-colors"
-                          title={t('이 AS 보고서를 메일로 송부', 'Send this AS report by email')}
+                          className="text-[11px] font-bold px-2.5 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white inline-flex items-center shadow-sm transition-colors"
+                          title={t('이 AS 보고서를 이메일로 발송 — 수신/참조를 직접 지정하고 미리보기 후 발송합니다.', 'Email this AS report — pick recipients, preview, then send.')}
                         >
-                          <Mail size={10} className="mr-1" />{t('메일 송부', 'Send Email')}
+                          <Mail size={11} className="mr-1.5" />{t('AS 보고서 메일 발송', 'Send AS Report Email')}
                         </button>
                       </div>
                     )}

@@ -531,6 +531,23 @@ function sendReportEmail(payload) {
     if (cc) options.cc = cc;
     if (payload.replyTo) options.replyTo = payload.replyTo;
 
+    // HTML 파일도 첨부 — 받는 클라이언트가 인라인 스타일을 망가뜨려도 첨부 HTML은 그대로 열어볼 수 있도록.
+    // payload.attachHtml === false 인 경우만 미첨부, 기본은 첨부 ON.
+    // 한국어 파일명은 일부 메일 클라이언트에서 첨부 누락되므로 ASCII 영문 파일명을 권장 — 클라이언트가 attachmentName 명시 전달.
+    if (payload.attachHtml !== false && html) {
+      // 1) 클라이언트가 보낸 attachmentName 우선 (이미 ASCII 영문)
+      // 2) 없으면 subject에서 한글/특수문자 제거하고 영문/숫자/하이픈만 남김 → 빈 값이면 기본 이름
+      var rawName = payload.attachmentName ? String(payload.attachmentName) : String(subject);
+      var safeName = rawName.replace(/[\/\\:*?"<>|]/g, '_').replace(/[^\x20-\x7e]+/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+      if (!safeName) safeName = 'MAK-PMS-Report-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      if (!/\.html?$/i.test(safeName)) safeName += '.html';
+      if (safeName.length > 80) safeName = safeName.substring(0, 76) + '.html';
+      // BOM(U+FEFF) prefix — 다운로드한 HTML을 브라우저가 UTF-8로 확실히 인식하도록
+      // contentType은 단순히 'text/html' — charset suffix 붙이면 일부 환경에서 첨부 누락 사례
+      var blob = Utilities.newBlob(String.fromCharCode(0xFEFF) + html, 'text/html', safeName);
+      options.attachments = [blob];
+    }
+
     GmailApp.sendEmail(to, subject, plain, options);
 
     // 송신 로그 시트 기록은 메인 GAS의 LOG_MAIL 액션으로 분리됨.

@@ -837,6 +837,16 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                 <h2 className="text-base font-bold text-slate-800 mb-3">{t('업데이트 내역', "What's New")}</h2>
                 <p className="text-xs text-slate-500 mb-4">{t('v1.0 베타 출시 이후 추가/개선된 기능을 시간 역순으로 정리합니다.', 'Recent improvements since v1.0 beta release.')}</p>
 
+                <Section title={t('★ 메일 발송 — 양식 표시 정상화 + HTML 첨부 + 버튼 직관성 (NEW)', 'Email — Layout Fix + HTML Attachment + Clearer Buttons (NEW)')}>
+                  <p>· <strong>메일 양식 표시 버그 수정</strong>: 받는 사람 메일함에서 헤더 색상·표 디자인이 깨지고 단순 표만 보이던 문제 해결. Gmail/Outlook이 <code className="bg-slate-100 px-1 rounded text-[10px]">&lt;style&gt;</code> 블록을 제거하는 동작 때문이었음 → 모든 스타일을 inline으로 재작성</p>
+                  <p>· <strong>이모지 깨짐(<code className="bg-slate-100 px-1 rounded text-[10px]">������</code>) 수정</strong>: 헤더 이모지 제거하고 텍스트 뱃지로 대체 (<code className="bg-slate-100 px-1 rounded text-[10px]">[AS 보고 / SW]</code>, <code className="bg-slate-100 px-1 rounded text-[10px]">[출장 신청]</code>, <code className="bg-slate-100 px-1 rounded text-[10px]">[출장 보고]</code>)</p>
+                  <p>· <strong>HTML 파일 자동 첨부</strong>: 메일에 <code className="bg-slate-100 px-1 rounded text-[10px]">MAK-PMS-AS-Report-2026-05-13.html</code> 같은 영문 파일명으로 양식 HTML이 함께 첨부됨. 받는 사람이 다운로드 → 브라우저로 열면 시스템 내 미리보기와 100% 동일</p>
+                  <p>· <strong>발송 운영 방식 A로 확정</strong>: 시스템 설정의 "메일 발송 GAS URL" 칸은 <strong>비워두고 운영</strong>. 메인 GAS(소유자 권한)로 발송 + 답장 reply-to는 작성자 본인 메일로 자동 라우팅. 본인 Gmail 직접 발송(C안 Service Account 방식)은 추후 검토 (<code className="bg-slate-100 px-1 rounded text-[10px]">docs/메일-발송-추후계획.md</code>)</p>
+                  <p>· <strong>메일 송부 버튼 직관성 강화</strong>:</p>
+                  <p className="ml-4">└ 출장 카드: 작은 chip 2개("신청"/"보고") → 큰 컬러 버튼("신청서 메일"/"보고서 메일") indigo/emerald 구분</p>
+                  <p className="ml-4">└ AS 카드: "메일 송부" → "AS 보고서 메일 발송" + 진한 indigo 버튼으로 시각적 강조</p>
+                </Section>
+
                 <Section title={t('★ 추가 대응 — 브랜치 스타일 + 날짜순 정렬 (NEW)', 'Extras — Branch Style + Date Sort (NEW)')}>
                   <p>· 추가 대응 탭이 <strong>회의록/노트 탭과 동일한 브랜치(타임라인) 스타일</strong>로 정리됨 — 좌측에 캘린더 타일(월/일/요일) + 세로 타임라인 라인, 우측에 카드</p>
                   <p>· 캘린더 타일은 <strong>신선도별 핑크 톤</strong>: 오늘/어제는 진한 핑크, 1주 이내 중간, 1개월 이내 옅음, 그 이전은 회색</p>

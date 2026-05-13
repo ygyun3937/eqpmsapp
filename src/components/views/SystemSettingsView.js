@@ -199,19 +199,29 @@ const SystemSettingsView = memo(function SystemSettingsView({ settings, onSave, 
           {t('메일 발송 — 본인 계정 발송 (선택)', 'Email — Send-as-User (Optional)')}
         </h2>
         <p className="text-xs text-slate-500 mb-4">
-          {t('출장 신청/보고/AS 보고 메일을 작성자 본인 Gmail 계정으로 발송하려면, "사용자 권한으로 실행"으로 별도 배포된 GAS의 URL을 입력하세요. 미설정 시 시스템 계정으로 발송됩니다.',
-             'To send Trip/AS report emails from the author\'s own Gmail account, set the URL of a separately deployed GAS (Execute as: User). If empty, falls back to system account.')}
+          {t('현재 권장: 이 칸을 비워두고 시스템 계정으로 발송 (답장 reply-to는 작성자 본인 메일로 자동 설정됨). 본인 Gmail 발송은 브라우저 CORS 제한으로 정식 운영 불가 — Service Account 방식 도입 시 활성화 예정.',
+             'Recommended: leave empty and use system account (reply-to is auto-set to author). Send-as-User is blocked by browser CORS — to be enabled via Service Account in a future phase.')}
         </p>
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-900 mb-3 flex items-start">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-900 mb-3 flex items-start">
           <Info size={14} className="mr-1.5 shrink-0 mt-0.5" />
           <div>
-            <strong>{t('듀얼 배포 안내', 'Dual deployment')}:</strong>
+            <strong>{t('★ 현재 운영 방식: A — 시스템 계정 발송', '★ Current operation: A — System account')}</strong>
             <div className="mt-1 space-y-0.5">
-              <div>1. <code className="bg-white px-1 rounded">docs/gas-backend.gs</code> 와 동일한 코드를 새 Apps Script 프로젝트(또는 같은 프로젝트의 새 배포)에서 사용</div>
-              <div>2. [배포 → 새 배포] → <strong>다음 사용자로 실행: 웹 앱에 접근하는 사용자</strong> 선택</div>
-              <div>3. 생성된 URL을 아래 칸에 입력 → 저장</div>
-              <div>4. 사용자가 처음 메일 발송 시 → Google OAuth 동의 화면 1회 → "허용"</div>
-              <div>5. 이후로는 본인 Gmail 계정으로 자동 발송 + 본인 보낸편지함에 저장</div>
+              <div>· {t('이 칸 비워두면 → 메인 GAS로 발송 → 메인 GAS 소유자(시스템) 계정에서 메일 발송', 'Empty → main GAS → mail goes from main GAS owner (system) account')}</div>
+              <div>· {t('받는 이 시점에서 보이는 보낸이: "김철수 (MAK-PMS)" 형태, 답장은 작성자 본인 메일로 자동 라우팅', 'Recipient sees: "Author (MAK-PMS)", reply auto-routed to the author\'s real address')}</div>
+              <div>· {t('일반 사용자 액션 없음. 배포 없음. CORS 문제 없음.', 'No user action. No deployment. No CORS issue.')}</div>
+            </div>
+          </div>
+        </div>
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-700 mb-3 flex items-start">
+          <Info size={14} className="mr-1.5 shrink-0 mt-0.5" />
+          <div>
+            <strong>{t('이 칸은 왜 있나 — 추후 옵션(보류)', 'Why this field exists — future option (on hold)')}:</strong>
+            <div className="mt-1 space-y-0.5">
+              <div>· {t('"호출자 권한 실행" GAS 별도 배포 URL을 넣으면 본인 Gmail 발송을 시도하지만,', 'You could paste a separately deployed "Execute as user" GAS URL for send-as-user, but…')}</div>
+              <div>· {t('현재 브라우저 fetch가 도메인 제한 GAS endpoint를 호출하지 못함 (CORS + 401)', 'Browser fetch cannot reach a domain-restricted GAS endpoint (CORS + 401)')}</div>
+              <div>· {t('정식 운영하려면 Workspace 관리자가 Service Account + Domain-Wide Delegation 설정 필요 (추후 검토)', 'Requires Workspace admin to set up Service Account + Domain-Wide Delegation (future)')}</div>
+              <div>· {t('현재로선 비워두는 것을 권장 — 답장 reply-to만 잘 가면 실용상 차이 미미', 'For now keep it empty — with reply-to set correctly, practical difference is minimal')}</div>
             </div>
           </div>
         </div>

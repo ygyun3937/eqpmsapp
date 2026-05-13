@@ -34,7 +34,7 @@ const SendReportEmailModal = memo(function SendReportEmailModal({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
 
-  const { subject, htmlBody, plainFallback, title } = useMemo(() => {
+  const { subject, htmlBody, plainFallback, attachmentName, title } = useMemo(() => {
     if (kind === 'trip_request') {
       const built = buildTripRequestEmail({ project, trip, author, additionalComment });
       return { ...built, title: t('출장 신청서 메일 송부', 'Send Trip Request Email') };
@@ -47,7 +47,7 @@ const SendReportEmailModal = memo(function SendReportEmailModal({
       const built = buildASReportEmail({ project, as, author, additionalComment });
       return { ...built, title: t('AS 보고서 메일 송부', 'Send AS Report Email') };
     }
-    return { subject: '', htmlBody: '', plainFallback: '', title: '' };
+    return { subject: '', htmlBody: '', plainFallback: '', attachmentName: '', title: '' };
   }, [kind, project, trip, as, author, additionalComment, achievements, issues, nextSteps, t]);
 
   const addRecipient = (target, input, setInput, list, setList) => {
@@ -74,6 +74,8 @@ const SendReportEmailModal = memo(function SendReportEmailModal({
       replyTo: authorEmail || '',
       senderName: author ? `${author} (MAK-PMS)` : 'MAK-PMS',
       subject, htmlBody, plainFallback,
+      attachmentName: attachmentName || '',
+      attachHtml: true,
       projectId: project?.id || '',
       projectName: project?.name || '',
       author: author || ''
