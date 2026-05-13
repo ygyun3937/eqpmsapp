@@ -49,11 +49,9 @@ const UserManagementView = memo(function UserManagementView({ users, projects, c
 
   return (
     <div className="space-y-6 animate-[fadeIn_0.3s_ease-in-out]">
-      <div className="flex justify-between items-end flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">{t('사용자 관리', 'User Management')}</h1>
-          <p className="text-sm text-slate-500 mt-1">{t('계정 발급, 권한 부여, 비밀번호 관리', 'Account provisioning, role & password management')}</p>
-        </div>
+      {/* 페이지 제목은 상위 탭 헤더 → H1만 제거하고 부제목은 좌측, 액션 버튼은 우측. */}
+      <div className="flex justify-between items-center flex-wrap gap-3">
+        <p className="text-sm text-slate-500">{t('계정 발급, 권한 부여, 비밀번호 관리', 'Account provisioning, role & password management')}</p>
         <button onClick={onAdd} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm flex items-center transition-colors">
           <UserPlus className="mr-2" size={16} /> {t('사용자 추가', 'Add User')}
         </button>

@@ -113,17 +113,9 @@ const AdminMailLogView = memo(function AdminMailLogView({ currentUser, t }) {
 
   return (
     <div className="space-y-4 animate-[fadeIn_0.3s_ease-in-out]">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center">
-            <Mail size={22} className="mr-2 text-blue-500" />
-            {t('메일 발송 이력', 'Mail History')}
-            <span className="ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
-              {t('ADMIN 전용', 'ADMIN only')}
-            </span>
-          </h1>
-          <p className="text-slate-500 mt-1 text-sm">{t('출장 신청/보고 · AS 보고 메일의 발송 기록을 추적합니다.', 'Track sent Trip and AS report emails system-wide.')}</p>
-        </div>
+      {/* 페이지 제목은 상위 탭 헤더 → 부제목 좌측, 액션 우측. */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <p className="text-sm text-slate-500">{t('출장 신청/보고 · AS 보고 메일의 발송 기록을 추적합니다.', 'Track sent Trip and AS report emails system-wide.')}</p>
         <div className="flex gap-2">
           <button onClick={fetchLogs} disabled={loading} className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-50 inline-flex items-center">
             {loading ? <Loader size={13} className="animate-spin mr-1.5" /> : <RefreshCw size={13} className="mr-1.5" />}

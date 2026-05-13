@@ -77,7 +77,7 @@ export function buildTripRequestEmail({ project, trip, author, additionalComment
     subject,
     htmlBody: wrapHtml('출장 신청서', '[출장 신청]', content),
     plainFallback: `${subject}\n\n신청자: ${engineerName}\n프로젝트: ${projectName}\n기간: ${trip.departureDate} ~ ${trip.returnDate}\n출장지: ${site}\n${purpose ? '\n목적: ' + purpose : ''}`,
-    attachmentName: `MAK-PMS-Trip-Request-${new Date().toISOString().slice(0, 10)}.html`
+    attachmentName: `MAK-PMS-출장신청서-${engineerName || '담당미정'}-${new Date().toISOString().slice(0, 10)}.html`
   };
 }
 
@@ -105,7 +105,7 @@ export function buildTripReportEmail({ project, trip, author, achievements, issu
     subject,
     htmlBody: wrapHtml('출장 보고서', '[출장 보고]', content),
     plainFallback: `${subject}\n\n보고자: ${engineerName}\n프로젝트: ${projectName}\n기간: ${trip.departureDate} ~ ${trip.returnDate}\n${achievements ? '\n[성과]\n' + achievements : ''}${issues ? '\n[이슈]\n' + issues : ''}${nextSteps ? '\n[후속]\n' + nextSteps : ''}`,
-    attachmentName: `MAK-PMS-Trip-Report-${new Date().toISOString().slice(0, 10)}.html`
+    attachmentName: `MAK-PMS-출장보고서-${engineerName || '담당미정'}-${new Date().toISOString().slice(0, 10)}.html`
   };
 }
 
@@ -151,10 +151,11 @@ export function buildASReportEmail({ project, as, author, additionalComment }) {
     ${labelBlock('발송자 추가 코멘트', additionalComment)}
   `;
 
+  const asEngineer = as.engineer || author || '담당미정';
   return {
     subject,
     htmlBody: wrapHtml('AS 처리 보고서', `[AS 보고 / ${asCategory}]`, content),
     plainFallback: `${subject}\n\n프로젝트: ${projectName}\n유형: ${asCategory}/${asType}\n상태: ${as.status}\n${description ? '\n증상:\n' + description : ''}${resolution ? '\n조치:\n' + resolution : ''}`,
-    attachmentName: `MAK-PMS-AS-Report-${asCategory}-${new Date().toISOString().slice(0, 10)}.html`
+    attachmentName: `MAK-PMS-AS보고서-${asCategory}-${asEngineer}-${new Date().toISOString().slice(0, 10)}.html`
   };
 }

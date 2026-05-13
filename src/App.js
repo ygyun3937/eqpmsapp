@@ -4,7 +4,7 @@ import {
   GitCommit, Search, Globe, Smartphone, Monitor, LogOut,
   Building, Building2, Camera, CheckSquare, Package, LayoutDashboard as Home,
   KeyRound, UserCog, LifeBuoy, HelpCircle, ChevronsLeft, ChevronsRight,
-  Settings as SettingsIcon, ClipboardList, Mail as MailIcon
+  Settings as SettingsIcon, ClipboardList, Mail as MailIcon, Activity as ActivityIcon
 } from 'lucide-react';
 
 // Constants & Initial Data
@@ -41,6 +41,10 @@ const CustomerListView = lazy(() => import('./components/views/CustomerListView'
 const UserManagementView = lazy(() => import('./components/views/UserManagementView'));
 const SystemSettingsView = lazy(() => import('./components/views/SystemSettingsView'));
 const AdminMailLogView = lazy(() => import('./components/views/AdminMailLogView'));
+const AdminChangeLogView = lazy(() => import('./components/views/AdminChangeLogView'));
+const AdminLogsView = lazy(() => import('./components/views/AdminLogsView'));
+const AdminConfigView = lazy(() => import('./components/views/AdminConfigView'));
+const MasterDataView = lazy(() => import('./components/views/MasterDataView'));
 const LoginScreen = lazy(() => import('./components/views/LoginScreen'));
 
 // Lazy-loaded Modals
@@ -2029,8 +2033,8 @@ export default function App() {
             {currentUser.role !== 'CUSTOMER' && (
               <>
                 <NavItem icon={<Wrench size={20} />} label={t('자재/스페어 파트', 'Parts')} active={activeTab === 'parts'} onClick={() => setActiveTab('parts')} collapsed={sidebarCollapsed} />
-                <NavItem icon={<Building2 size={20} />} label={t('고객사 관리', 'Customers')} active={activeTab === 'customers'} onClick={() => setActiveTab('customers')} collapsed={sidebarCollapsed} />
-                <NavItem icon={<Database size={20} />} label={t('사이트/유틸 마스터', 'Site Master')} active={activeTab === 'sites'} onClick={() => setActiveTab('sites')} collapsed={sidebarCollapsed} />
+                {/* 고객사·사이트 — 고객사 + 사이트/유틸 통합 (탭) */}
+                <NavItem icon={<Building2 size={20} />} label={t('고객사·사이트', 'Customers·Sites')} active={activeTab === 'master_data'} onClick={() => setActiveTab('master_data')} collapsed={sidebarCollapsed} />
                 <NavItem icon={<Users size={20} />} label={t('인력/리소스 관리', 'Resources')} active={activeTab === 'resources'} onClick={() => setActiveTab('resources')} collapsed={sidebarCollapsed} />
                 <NavItem icon={<LifeBuoy size={20} />} label={t('AS 통합 관리', 'AS Management')} active={activeTab === 'as'} onClick={() => setActiveTab('as')} collapsed={sidebarCollapsed} />
                 {settings.weeklyReportEnabled && (currentUser.role === 'ADMIN' || currentUser.weeklyReportEnabled) && (
@@ -2041,10 +2045,8 @@ export default function App() {
             )}
             {currentUser.role === 'ADMIN' && (
               <>
-                <NavItem icon={<UserCog size={20} />} label={t('사용자 관리', 'User Management')} active={activeTab === 'users'} onClick={() => setActiveTab('users')} collapsed={sidebarCollapsed} />
-                <NavItem icon={<SettingsIcon size={20} />} label={t('시스템 설정', 'System Settings')} active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} collapsed={sidebarCollapsed} />
-                {/* 히든 메뉴 (ADMIN 전용) — 메일 발송 이력 */}
-                <NavItem icon={<MailIcon size={20} />} label={t('메일 발송 이력', 'Mail History')} active={activeTab === 'mail_log'} onClick={() => setActiveTab('mail_log')} collapsed={sidebarCollapsed} />
+                {/* 관리자 페이지 — 사용자 관리/시스템 설정/메일 이력/활동 이력 4탭 통합 */}
+                <NavItem icon={<SettingsIcon size={20} />} label={t('관리자 페이지', 'Admin Page')} active={activeTab === 'admin_page'} onClick={() => setActiveTab('admin_page')} collapsed={sidebarCollapsed} />
               </>
             )}
           </nav>
@@ -2086,17 +2088,21 @@ export default function App() {
               {activeTab === 'projects' && <ProjectListView projects={projects} issues={issues} engineers={engineers} customers={customers} sites={sites} getStatusColor={getStatusColor} onAddClick={() => setIsProjectModalOpen(true)} onManageTasks={(id) => { setSelectedProjectId(id); setIsTaskModalOpen(true); }} onEditVersion={(prj) => { setVersionEditProject(prj); setIsVersionModalOpen(true); }} onChangeManager={(prj) => { setTeamEditProjectId(prj.id); setIsTeamModalOpen(true); }} onManageTeam={(prj) => { setTeamEditProjectId(prj.id); setIsTeamModalOpen(true); }} onViewPhaseGantt={(prj) => { setPhaseGanttProject(prj); setIsPhaseGanttOpen(true); }} onEditProject={(prj) => { setProjectEditTarget(prj); setIsProjectEditOpen(true); }} onDeleteProject={(prj) => setProjectToDelete(prj)} onUpdatePhase={handleUpdatePhase} onEditPhases={(prjId) => { setPhaseEditProjectId(prjId); setIsPhaseEditOpen(true); }} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} onOpenCustomer={(c) => { setCustomerEditTarget(c); setIsCustomerModalOpen(true); }} onShowEngineer={(eid) => { setActivityEngineerId(eid); setIsActivityModalOpen(true); }} onJumpTo={(tab) => setActiveTab(tab)} calcExp={calcExp} calcAct={calcAct} currentUser={currentUser} t={t} />}
               {activeTab === 'issues' && <IssueListView issues={issues} getStatusColor={getStatusColor} onAddClick={() => setIsIssueModalOpen(true)} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} onDeleteIssue={(issue) => setIssueToDelete(issue)} currentUser={currentUser} t={t} />}
               {activeTab === 'parts' && <PartsListView parts={parts} getStatusColor={getStatusColor} onUpdateStatus={handleUpdatePartStatus} onDeletePart={(part) => setPartToDelete(part)} onAddClick={() => setIsPartModalOpen(true)} currentUser={currentUser} t={t} />}
-              {activeTab === 'sites' && <SiteListView sites={sites} customers={customers} onAddClick={() => { setSelectedSite(null); setIsSiteModalOpen(true); }} onEditClick={(site) => { setSelectedSite(site); setIsSiteModalOpen(true); }} onDeleteClick={(site) => setSiteToDelete(site)} currentUser={currentUser} t={t} />}
-              {activeTab === 'customers' && currentUser.role !== 'CUSTOMER' && (
-                <CustomerListView
+              {/* 마스터 데이터 — 고객사 + 사이트 통합 탭. legacy 'sites'/'customers' 진입 시 defaultTab 분기. */}
+              {(activeTab === 'master_data' || activeTab === 'sites' || activeTab === 'customers') && currentUser.role !== 'CUSTOMER' && (
+                <MasterDataView
                   customers={customers}
                   sites={sites}
                   projects={projects}
-                  onAddClick={() => { setCustomerEditTarget(null); setIsCustomerModalOpen(true); }}
-                  onEditClick={(c) => { setCustomerEditTarget(c); setIsCustomerModalOpen(true); }}
-                  onDeleteClick={(c) => setCustomerToDelete(c)}
+                  onCustomerAdd={() => { setCustomerEditTarget(null); setIsCustomerModalOpen(true); }}
+                  onCustomerEdit={(c) => { setCustomerEditTarget(c); setIsCustomerModalOpen(true); }}
+                  onCustomerDelete={(c) => setCustomerToDelete(c)}
                   onQuickRegister={handleQuickRegisterCustomers}
+                  onSiteAdd={() => { setSelectedSite(null); setIsSiteModalOpen(true); }}
+                  onSiteEdit={(site) => { setSelectedSite(site); setIsSiteModalOpen(true); }}
+                  onSiteDelete={(site) => setSiteToDelete(site)}
                   currentUser={currentUser}
+                  defaultTab={activeTab === 'sites' ? 'sites' : 'customers'}
                   t={t}
                 />
               )}
@@ -2125,25 +2131,23 @@ export default function App() {
                 )
               )}
               {activeTab === 'versions' && <VersionHistoryView projects={projects} releases={releases} onAddClick={() => setIsReleaseModalOpen(true)} onDeleteRelease={(release) => setReleaseToDelete(release)} currentUser={currentUser} t={t} />}
-              {activeTab === 'settings' && currentUser.role === 'ADMIN' && (
-                <SystemSettingsView settings={settings} onSave={syncSettings} currentUser={currentUser} t={t} />
-              )}
-              {activeTab === 'mail_log' && currentUser.role === 'ADMIN' && (
-                <AdminMailLogView currentUser={currentUser} t={t} />
-              )}
-              {activeTab === 'users' && currentUser.role === 'ADMIN' && (
-                <UserManagementView
+              {/* 관리자 페이지 — 4탭 통합 (사용자 관리 / 시스템 설정 / 메일 이력 / 활동 이력)
+                  legacy 라우팅(users / settings / mail_log / change_log / admin_config / admin_logs)도 호환 */}
+              {(activeTab === 'admin_page' || activeTab === 'admin_config' || activeTab === 'admin_logs' || activeTab === 'settings' || activeTab === 'users' || activeTab === 'mail_log' || activeTab === 'change_log') && currentUser.role === 'ADMIN' && (
+                <AdminConfigView
                   users={users}
                   projects={projects}
                   currentUser={currentUser}
                   settings={settings}
-                  onAdd={() => { setUserEditTarget(null); setIsUserModalOpen(true); }}
-                  onEdit={(u) => { setUserEditTarget(u); setIsUserModalOpen(true); }}
+                  onAddUser={() => { setUserEditTarget(null); setIsUserModalOpen(true); }}
+                  onEditUser={(u) => { setUserEditTarget(u); setIsUserModalOpen(true); }}
                   onResetPassword={handleResetUserPassword}
                   onToggleActive={handleToggleUserActive}
                   onToggleWeeklyReport={handleToggleUserWeeklyReport}
                   onToggleTeamLead={handleToggleUserTeamLead}
-                  onDelete={(u) => setUserToDelete(u)}
+                  onDeleteUser={(u) => setUserToDelete(u)}
+                  onSaveSettings={syncSettings}
+                  defaultTab={activeTab === 'settings' ? 'settings' : activeTab === 'mail_log' || activeTab === 'admin_logs' ? 'mail' : activeTab === 'change_log' ? 'change' : 'users'}
                   t={t}
                 />
               )}

@@ -837,6 +837,34 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                 <h2 className="text-base font-bold text-slate-800 mb-3">{t('업데이트 내역', "What's New")}</h2>
                 <p className="text-xs text-slate-500 mb-4">{t('v1.0 베타 출시 이후 추가/개선된 기능을 시간 역순으로 정리합니다.', 'Recent improvements since v1.0 beta release.')}</p>
 
+                <Section title={t('★ 메일 첨부 파일명 + 페이지 헤더 정리 (NEW)', 'Mail Attachment Name + Page Header (NEW)')}>
+                  <p>· <strong>메일 첨부 HTML 파일명에 담당 엔지니어 이름 포함</strong></p>
+                  <p className="ml-4">└ 출장 신청서: <code className="bg-slate-100 px-1 rounded text-[10px]">MAK-PMS-출장신청서-홍길동-2026-05-13.html</code></p>
+                  <p className="ml-4">└ 출장 보고서: <code className="bg-slate-100 px-1 rounded text-[10px]">MAK-PMS-출장보고서-홍길동-2026-05-13.html</code></p>
+                  <p className="ml-4">└ AS 보고서: <code className="bg-slate-100 px-1 rounded text-[10px]">MAK-PMS-AS보고서-SW-홍길동-2026-05-13.html</code></p>
+                  <p>· GAS 첨부 처리 — <strong>한국어 파일명 보존</strong>(GmailApp 자동 RFC2231 인코딩). 위험문자(<code>/\:*?"&lt;&gt;|</code>)만 제거</p>
+                  <p>· <strong>탭 wrapper sub view 헤더 정리</strong>: H1만 제거하고 부제목은 유지. 부제목 좌측 / 액션 버튼(추가·새로고침·Excel) 우측 같은 줄 정렬 → 탭 헤더와의 시각 충돌 해소</p>
+                </Section>
+
+                <Section title={t('★ 사이드바 메뉴 그룹화 — 14개 → 10개', 'Sidebar Grouping — 14 → 10')}>
+                  <p>· 관련 메뉴들을 페이지 내 탭으로 묶어 사이드바 항목 축소</p>
+                  <p>· <strong>고객사·사이트</strong> (← 고객사 관리 + 사이트/유틸 마스터) — 페이지 상단 2탭</p>
+                  <p>· <strong>관리자 페이지</strong> (← 사용자 관리 + 시스템 설정 + 메일 발송 이력 + 시스템 활동 이력) — ADMIN 전용, 페이지 상단 4탭</p>
+                  <p>· 각 통합 메뉴 클릭 시 상단에 탭 헤더가 나타남. 외부에서 직접 진입(예: 프로젝트 카드 → 고객사 클릭, 또는 알림 → 메일 이력)할 때도 해당 탭이 자동 선택됨</p>
+                  <p>· 기존 라우팅(<code className="bg-slate-100 px-1 rounded text-[10px]">customers</code> / <code className="bg-slate-100 px-1 rounded text-[10px]">sites</code> / <code className="bg-slate-100 px-1 rounded text-[10px]">settings</code> / <code className="bg-slate-100 px-1 rounded text-[10px]">users</code> / <code className="bg-slate-100 px-1 rounded text-[10px]">mail_log</code> / <code className="bg-slate-100 px-1 rounded text-[10px]">change_log</code>)은 모두 호환 유지 — 내부 점프 로직 변경 불필요</p>
+                </Section>
+
+                <Section title={t('★ 시스템 활동 이력 — 관리자 히든 메뉴 (NEW)', 'System Activity Log — Admin Hidden Menu (NEW)')}>
+                  <p>· 사이드바에 <strong>ADMIN 전용 "시스템 활동 이력"</strong> 메뉴 추가 — 메일 발송 이력과 별개로 <strong>모든 데이터 변경(저장/수정/삭제)을 사용자/시각/액션/대상/이전→이후 로 추적</strong></p>
+                  <p>· <strong>수집 대상</strong>: UPDATE_PROJECT_BY_ID, UPDATE_PROJECTS, UPDATE_ISSUES, UPDATE_ENGINEERS, UPDATE_CUSTOMERS, UPDATE_PARTS, UPDATE_SITES, UPDATE_USERS, UPDATE_SETTINGS, UPDATE_WEEKLY_REPORTS, UPDATE_RELEASES, DELETE_PROJECT — 모든 mutation</p>
+                  <p>· <strong>필터</strong>: 기간(오늘/7일/30일/90일/전체), 액션 종류(드롭다운, 각 액션별 카운트 표시), 사용자·target·내용 검색</p>
+                  <p>· <strong>통계 카드 4개</strong>: 전체 / 오늘 / 최근 7일 / 액션 종류 수</p>
+                  <p>· <strong>각 행 펼침</strong>: ▶ 클릭 시 before / after 전체 JSON 펼침 (max-height 64로 스크롤). 변경 전→후를 한눈에 비교</p>
+                  <p>· <strong>Excel 추출</strong>: 필터된 항목을 <code className="bg-slate-100 px-1 rounded text-[10px]">MAK-PMS_시스템활동이력_YYYY-MM-DD.xlsx</code>로 저장</p>
+                  <p>· <strong>저장 위치</strong>: GAS 스프레드시트의 <code className="bg-slate-100 px-1 rounded text-[10px]">CHANGE_LOG</code> 시트. 10,000행 초과 시 오래된 절반 자동 정리 (감사 추적은 그 이전 백업 .xlsx에서 조회 가능)</p>
+                  <p>· <strong>알림 센터와 다른 점</strong>: 알림 센터는 "실시간 새 이슈/AS 발생" 같은 사용자 액션 트리거. 활동 이력은 "데이터 행이 누구에 의해 어떻게 바뀌었나" 감사 추적용</p>
+                </Section>
+
                 <Section title={t('★ 메일 발송 — 양식 표시 정상화 + HTML 첨부 + 버튼 직관성 (NEW)', 'Email — Layout Fix + HTML Attachment + Clearer Buttons (NEW)')}>
                   <p>· <strong>메일 양식 표시 버그 수정</strong>: 받는 사람 메일함에서 헤더 색상·표 디자인이 깨지고 단순 표만 보이던 문제 해결. Gmail/Outlook이 <code className="bg-slate-100 px-1 rounded text-[10px]">&lt;style&gt;</code> 블록을 제거하는 동작 때문이었음 → 모든 스타일을 inline으로 재작성</p>
                   <p>· <strong>이모지 깨짐(<code className="bg-slate-100 px-1 rounded text-[10px]">������</code>) 수정</strong>: 헤더 이모지 제거하고 텍스트 뱃지로 대체 (<code className="bg-slate-100 px-1 rounded text-[10px]">[AS 보고 / SW]</code>, <code className="bg-slate-100 px-1 rounded text-[10px]">[출장 신청]</code>, <code className="bg-slate-100 px-1 rounded text-[10px]">[출장 보고]</code>)</p>

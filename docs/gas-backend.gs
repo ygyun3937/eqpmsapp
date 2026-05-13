@@ -39,6 +39,7 @@
  *   DELETE_FILE       — Drive 파일 휴지통 이동 (data: { fileId })
  *   VERIFY_DRIVE_FOLDER — 폴더 ID 접근 검증 (data: { folderId })
  *   SEND_REPORT_EMAIL, LOG_MAIL, READ_MAIL_LOG — 메일 발송/로깅 (별도 섹션)
+ *   READ_CHANGE_LOG   — CHANGE_LOG 시트 조회 (관리자 시스템 활동 이력) (data: { limit?, sinceDays?, actionFilter?, targetFilter? })
  *
  * [데이터 보호 4중 방어 — 1단계]
  *   1. CHANGE_LOG 시트 — 모든 UPDATE_* 변경을 timestamp/user/action/target/before/after 기록
@@ -172,6 +173,12 @@ function doPost(e) {
       // payload: { limit?, sinceDays? }
       var logs = readMailLog(data);
       return ContentService.createTextOutput(JSON.stringify({ status: 'success', logs: logs }))
+        .setMimeType(ContentService.MimeType.JSON);
+    } else if (action === 'READ_CHANGE_LOG') {
+      // 관리자 시스템 활동 이력 조회 — CHANGE_LOG 시트 (모든 UPDATE_* 변경 기록)
+      // payload: { limit?, sinceDays?, actionFilter?, targetFilter? }
+      var clogs = readChangeLog(data);
+      return ContentService.createTextOutput(JSON.stringify({ status: 'success', logs: clogs }))
         .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -533,15 +540,14 @@ function sendReportEmail(payload) {
 
     // HTML 파일도 첨부 — 받는 클라이언트가 인라인 스타일을 망가뜨려도 첨부 HTML은 그대로 열어볼 수 있도록.
     // payload.attachHtml === false 인 경우만 미첨부, 기본은 첨부 ON.
-    // 한국어 파일명은 일부 메일 클라이언트에서 첨부 누락되므로 ASCII 영문 파일명을 권장 — 클라이언트가 attachmentName 명시 전달.
+    // 파일명은 한국어 보존(GmailApp이 RFC2231로 자동 인코딩). 위험문자만 제거.
     if (payload.attachHtml !== false && html) {
-      // 1) 클라이언트가 보낸 attachmentName 우선 (이미 ASCII 영문)
-      // 2) 없으면 subject에서 한글/특수문자 제거하고 영문/숫자/하이픈만 남김 → 빈 값이면 기본 이름
       var rawName = payload.attachmentName ? String(payload.attachmentName) : String(subject);
-      var safeName = rawName.replace(/[\/\\:*?"<>|]/g, '_').replace(/[^\x20-\x7e]+/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-      if (!safeName) safeName = 'MAK-PMS-Report-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      // 파일시스템 위험문자(/\:*?"<>|)와 줄바꿈만 제거. 한글/공백/하이픈은 보존.
+      var safeName = rawName.replace(/[\/\\:*?"<>|\r\n\t]/g, '_').replace(/\s+/g, ' ').trim();
+      if (!safeName) safeName = 'MAK-PMS-보고서-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
       if (!/\.html?$/i.test(safeName)) safeName += '.html';
-      if (safeName.length > 80) safeName = safeName.substring(0, 76) + '.html';
+      if (safeName.length > 100) safeName = safeName.substring(0, 96) + '.html';
       // BOM(U+FEFF) prefix — 다운로드한 HTML을 브라우저가 UTF-8로 확실히 인식하도록
       // contentType은 단순히 'text/html' — charset suffix 붙이면 일부 환경에서 첨부 누락 사례
       var blob = Utilities.newBlob(String.fromCharCode(0xFEFF) + html, 'text/html', safeName);
@@ -878,6 +884,45 @@ function getOrCreateDriveFolder_(path) {
     }
   }
   return current;
+}
+
+// 시스템 활동 이력 조회 — CHANGE_LOG 시트에서 최근 변경 N건 (관리자용)
+// payload: { limit?: 500, sinceDays?: 30, actionFilter?: 'UPDATE_PROJECT_BY_ID' 등, targetFilter?: 'PRJ-xxx' 등 }
+function readChangeLog(payload) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(CHANGE_LOG_SHEET);
+  if (!sheet) return [];
+  var rng = sheet.getDataRange().getValues();
+  if (rng.length < 2) return [];
+  var headers = rng[0];
+  var limit = (payload && Number(payload.limit)) || 500;
+  var sinceDays = payload && Number(payload.sinceDays);
+  var cutoff = (sinceDays > 0) ? (Date.now() - sinceDays * 86400000) : 0;
+  var actionFilter = (payload && payload.actionFilter) ? String(payload.actionFilter) : '';
+  var targetFilter = (payload && payload.targetFilter) ? String(payload.targetFilter).toLowerCase() : '';
+  var out = [];
+  // 최신순 (역방향 순회) — limit 도달 시 조기 종료
+  for (var i = rng.length - 1; i >= 1 && out.length < limit; i--) {
+    var row = rng[i];
+    var obj = {};
+    for (var c = 0; c < headers.length; c++) {
+      var key = headers[c];
+      var v = row[c];
+      if (v instanceof Date) v = v.toISOString();
+      obj[key] = v;
+    }
+    if (cutoff > 0) {
+      var ts = new Date(obj['timestamp'] || 0).getTime();
+      if (isNaN(ts) || ts < cutoff) continue;
+    }
+    if (actionFilter && obj['action'] !== actionFilter) continue;
+    if (targetFilter) {
+      var tgt = String(obj['target'] || '').toLowerCase();
+      if (tgt.indexOf(targetFilter) < 0) continue;
+    }
+    out.push(obj);
+  }
+  return out;
 }
 
 // 테스트 — Apps Script 편집기에서 함수 선택 후 [실행]

@@ -109,11 +109,9 @@ const CustomerListView = memo(function CustomerListView({
 
   return (
     <div className="space-y-5 animate-[fadeIn_0.3s_ease-in-out]">
-      <div className="flex justify-between items-end">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">{t('고객사 정보 관리', 'Customer Management')}</h1>
-          <p className="text-slate-500 mt-1 text-sm">{t('고객사 기본 정보와 담당자(명함)를 한 곳에서 관리합니다. 한 담당자는 여러 사이트를 담당할 수 있습니다.', 'Manage customer info and contact business cards. One contact can cover multiple sites.')}</p>
-        </div>
+      {/* 페이지 제목은 상위 탭 헤더 → 부제목 좌측, 액션 우측. */}
+      <div className="flex justify-between items-center flex-wrap gap-3">
+        <p className="text-sm text-slate-500">{t('고객사 기본 정보와 담당자(명함)를 한 곳에서 관리합니다. 한 담당자는 여러 사이트를 담당할 수 있습니다.', 'Manage customer info and contact business cards. One contact can cover multiple sites.')}</p>
         <div className="flex items-center space-x-2">
           <button onClick={handleExport} className="flex items-center bg-slate-100 text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors shadow-sm">
             <Download size={16} className="mr-1.5" /> Excel

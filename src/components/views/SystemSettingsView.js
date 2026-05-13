@@ -81,10 +81,8 @@ const SystemSettingsView = memo(function SystemSettingsView({ settings, onSave, 
 
   return (
     <div className="space-y-6 animate-[fadeIn_0.3s_ease-in-out] max-w-4xl">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800 flex items-center"><SettingsIcon size={22} className="mr-2 text-indigo-500" />{t('시스템 설정', 'System Settings')}</h1>
-        <p className="text-slate-500 mt-1 text-sm">{t('Drive 연동, 알림 등 시스템 전역 설정을 관리합니다. 관리자만 접근 가능합니다.', 'System-wide settings (Drive integration, notifications). Admin only.')}</p>
-      </div>
+      {/* 페이지 제목은 상위 탭 헤더 → 부제목만 유지. */}
+      <p className="text-sm text-slate-500">{t('Drive 연동, 알림 등 시스템 전역 설정을 관리합니다. 관리자만 접근 가능합니다.', 'System-wide settings (Drive integration, notifications). Admin only.')}</p>
 
       {/* Drive 연동 */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
