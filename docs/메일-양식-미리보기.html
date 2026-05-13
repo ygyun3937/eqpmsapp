@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<title>MAK-PMS 메일 양식 미리보기</title>
+<style>
+  body { background: #f1f5f9; margin: 0; padding: 24px; font-family: 'Malgun Gothic', -apple-system, sans-serif; }
+  .tabs { max-width: 800px; margin: 0 auto 16px; display: flex; gap: 4px; }
+  .tab { flex: 1; background: white; border: 1px solid #cbd5e1; padding: 10px; text-align: center; cursor: pointer; font-weight: bold; font-size: 13px; border-radius: 8px 8px 0 0; color: #475569; }
+  .tab.active { background: #4f46e5; color: white; border-color: #4f46e5; }
+  .preview-wrap { max-width: 800px; margin: 0 auto; background: white; border-radius: 0 0 10px 10px; padding: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+  .doc { display: none; }
+  .doc.active { display: block; }
+  .label-note { max-width: 800px; margin: 0 auto 16px; text-align: center; color: #64748b; font-size: 12px; }
+
+  /* 메일 본문 공통 스타일 — reportEmailTemplates.js와 동일 */
+  .mail body { font-family: 'Malgun Gothic', -apple-system, sans-serif; color: #1e293b; max-width: 720px; margin: 0 auto; padding: 24px; }
+  .mail .hdr { background: linear-gradient(135deg, #4f46e5, #6366f1); color: white; padding: 20px 24px; border-radius: 10px 10px 0 0; }
+  .mail .hdr h1 { margin: 0 0 4px; font-size: 18px; }
+  .mail .hdr .meta { font-size: 11px; opacity: 0.9; }
+  .mail .body { background: white; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 10px 10px; padding: 20px 24px; }
+  .mail table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; font-size: 13px; }
+  .mail th { background: #f1f5f9; padding: 8px 12px; text-align: left; color: #475569; width: 130px; font-weight: 600; border-bottom: 1px solid #e2e8f0; }
+  .mail td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+  .mail .label { color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; margin: 16px 0 4px; }
+  .mail .text-block { background: #f8fafc; padding: 12px; border-left: 3px solid #6366f1; white-space: pre-wrap; font-size: 13px; line-height: 1.6; }
+  .mail .footer { text-align: center; font-size: 11px; color: #94a3b8; margin-top: 16px; padding-top: 12px; border-top: 1px solid #f1f5f9; }
+</style></head>
+<body>
+
+<h2 style="max-width:800px; margin:0 auto 12px; color:#1e293b;">📧 MAK-PMS 메일 양식 미리보기</h2>
+<p class="label-note">
+  이 메일은 GAS 시스템 계정으로 발송됩니다 ·
+  보낸이 표시: <code>김철수 (MAK-PMS)</code> ·
+  답장은 작성자 메일로 전달 (reply-to)
+</p>
+
+<div class="tabs">
+  <div class="tab active" onclick="show('trip-request', this)">✈ 출장 신청서</div>
+  <div class="tab" onclick="show('trip-report', this)">✈ 출장 보고서</div>
+  <div class="tab" onclick="show('as-report', this)">🔧 AS 보고서</div>
+</div>
+
+<div class="preview-wrap">
+
+  <!-- ===== 출장 신청서 ===== -->
+  <div id="trip-request" class="doc active mail">
+    <div style="background:#f1f5f9; padding:8px 12px; border-radius:6px; margin-bottom:8px; font-size:11px; color:#475569;">
+      <strong>제목:</strong> <code>[MAK-PMS] 출장 신청서 — 김철수 (A전자 텍사스 Fab 신규 셋업 / 2026-06-01~2026-06-15)</code>
+    </div>
+    <body>
+    <div class="hdr">
+      <div style="font-size:11px; font-weight:bold; opacity:0.85; margin-bottom:6px;">✈ 출장 신청</div>
+      <h1>출장 신청서</h1>
+      <div class="meta">MAK-PMS · 2026년 5월 13일</div>
+    </div>
+    <div class="body">
+      <table>
+        <tr><th>신청자</th><td>김철수</td></tr>
+        <tr><th>프로젝트</th><td>A전자 텍사스 Fab 신규 셋업 <span style="color:#64748b">(A전자)</span></td></tr>
+        <tr><th>출장지</th><td>US-Texas Fab2</td></tr>
+        <tr><th>기간</th><td><strong>2026-06-01 ~ 2026-06-15</strong></td></tr>
+        <tr><th>예상 비용</th><td>4,500,000원</td></tr>
+        <tr><th>신청 일시</th><td>2026. 5. 13. 오후 2:30</td></tr>
+      </table>
+      <div class="label">출장 목적 / 업무 내용</div>
+      <div class="text-block">Phase 4 셋업 작업 수행 및 시운전.
+- 웨이퍼 로봇 티칭
+- SECS/GEM 통신 안정화
+- 1차 공정 테스트 (수율 확보)</div>
+      <div class="label">신청자 추가 코멘트</div>
+      <div class="text-block">현지 호텔 직접 예약 예정. 귀국 시 부품 동반 운송 협조 요청드립니다.</div>
+      <div class="label">프로젝트 ID</div>
+      <div style="font-family: monospace; font-size:11px; color:#64748b;">PRJ-2026-001</div>
+      <div class="footer">MAK-PMS — 산업장비 셋업 관리 시스템 자동 발송 메일입니다.</div>
+    </div>
+    </body>
+  </div>
+
+  <!-- ===== 출장 보고서 ===== -->
+  <div id="trip-report" class="doc mail">
+    <div style="background:#f1f5f9; padding:8px 12px; border-radius:6px; margin-bottom:8px; font-size:11px; color:#475569;">
+      <strong>제목:</strong> <code>[MAK-PMS] 출장 보고서 — 김철수 (A전자 텍사스 Fab 신규 셋업 / 2026-06-01~2026-06-15)</code>
+    </div>
+    <body>
+    <div class="hdr">
+      <div style="font-size:11px; font-weight:bold; opacity:0.85; margin-bottom:6px;">✈ 출장 보고</div>
+      <h1>출장 보고서</h1>
+      <div class="meta">MAK-PMS · 2026년 5월 13일</div>
+    </div>
+    <div class="body">
+      <table>
+        <tr><th>보고자</th><td>김철수</td></tr>
+        <tr><th>프로젝트</th><td>A전자 텍사스 Fab 신규 셋업</td></tr>
+        <tr><th>출장지</th><td>US-Texas Fab2</td></tr>
+        <tr><th>기간</th><td><strong>2026-06-01 ~ 2026-06-15</strong></td></tr>
+        <tr><th>보고 일시</th><td>2026. 6. 16. 오전 9:00</td></tr>
+      </table>
+      <div class="label">주요 수행 내용 / 성과</div>
+      <div class="text-block">- Phase 4 셋업 90% 완료
+- 웨이퍼 로봇 티칭 완료, 간섭 0건
+- SECS/GEM 통신 안정화 (Online 연속 72시간 무에러)
+- 1차 공정 테스트: 수율 92% (목표 90% 초과)</div>
+      <div class="label">발견 이슈 / 미해결 사항</div>
+      <div class="text-block">- Chamber #3 진공 도달 시간이 사양 대비 8% 길음 (재현 중)
+- HMI 알람 메시지 일부 영문 → 한글화 요청 (고객사 박과장)</div>
+      <div class="label">후속 조치 계획</div>
+      <div class="text-block">- Chamber #3 vacuum 점검: HW팀 6/20 현장 재방문 예정
+- HMI 한글화: SW 패치 v2.2.0에 반영 (7월 첫째 주 배포 목표)</div>
+      <div class="footer">MAK-PMS — 산업장비 셋업 관리 시스템 자동 발송 메일입니다.</div>
+    </div>
+    </body>
+  </div>
+
+  <!-- ===== AS 보고서 ===== -->
+  <div id="as-report" class="doc mail">
+    <div style="background:#f1f5f9; padding:8px 12px; border-radius:6px; margin-bottom:8px; font-size:11px; color:#475569;">
+      <strong>제목:</strong> <code>[MAK-PMS] AS 보고서 — HW/긴급출동 (B사 평택 라인 장비 개조)</code>
+    </div>
+    <body>
+    <div class="hdr">
+      <div style="font-size:11px; font-weight:bold; opacity:0.85; margin-bottom:6px;">🔧 AS 보고 (HW)</div>
+      <h1>AS 처리 보고서</h1>
+      <div class="meta">MAK-PMS · 2026년 5월 13일</div>
+    </div>
+    <div class="body">
+      <table>
+        <tr><th>구분</th><td><span style="background:#fef3c7; padding:2px 8px; border-radius:4px; font-weight:bold; color:#92400e; font-size:11px;">HW</span> 긴급출동</td></tr>
+        <tr><th>프로젝트</th><td>B사 평택 라인 장비 개조 <span style="color:#64748b">(B반도체)</span></td></tr>
+        <tr><th>담당 엔지니어</th><td>이영희 책임</td></tr>
+        <tr><th>접수일</th><td>2026-05-10</td></tr>
+        <tr><th>상태</th><td><strong>완료</strong></td></tr>
+        <tr><th>중요도</th><td>긴급</td></tr>
+        <tr><th>시리얼</th><td>EQ-PT3-0042</td></tr>
+        <tr><th>발송 일시</th><td>2026. 5. 13. 오전 11:00</td></tr>
+      </table>
+      <div class="label">현장 상황 / 증상</div>
+      <div class="text-block">2026-05-10 03:30 야간 가동 중 Glass 이송 스테이지 알람 발생.
+- 알람코드: ALM-MOT-014 (서보 과부하)
+- Tact Time 정상 대비 1.4배 지연
+- 재현 빈도: 가동 4시간 후 100% 재현</div>
+      <div class="label">조치 내역</div>
+      <div class="text-block">2026-05-11 09:00 현장 도착, 즉시 조치 착수.
+- 원인: 스테이지 가이드 베어링 윤활 부족 + 미세 이물질 유입
+- 베어링 분해 청소 + 신규 그리스 도포
+- 서보 게인 재조정 (Kp 32→28)
+- 6시간 연속 가동 테스트 통과, 알람 0건
+- 부품: 그리스 키트 1세트 사용 (잔여 재고로 충당)</div>
+      <div class="label">처리 이력 (3건)</div>
+      <div style="background:#f8fafc; padding:10px; border-radius:6px; font-size:12px;">
+        <div style="padding:6px 0; border-bottom:1px solid #e2e8f0;"><strong>이영희 책임</strong> <span style="color:#94a3b8; font-size:10px;">· 2026-05-10 04:15</span><br/>야간 알람 보고 받음. 09:00 현장 출동 예정.</div>
+        <div style="padding:6px 0; border-bottom:1px solid #e2e8f0;"><strong>이영희 책임</strong> <span style="color:#94a3b8; font-size:10px;">· 2026-05-11 11:30</span><br/>분해 점검 중. 베어링 마모 확인.</div>
+        <div style="padding:6px 0;"><strong>이영희 책임</strong> <span style="color:#94a3b8; font-size:10px;">· 2026-05-11 18:00</span><br/>6시간 연속 가동 테스트 통과. 조치 완료.</div>
+      </div>
+      <div class="label">발송자 추가 코멘트</div>
+      <div class="text-block">베어링 정기 점검 주기를 6개월에서 3개월로 단축 권장드립니다. 다음 점검 일정 협의 요청.</div>
+      <div class="footer">MAK-PMS — 산업장비 셋업 관리 시스템 자동 발송 메일입니다.</div>
+    </div>
+    </body>
+  </div>
+
+</div>
+
+<script>
+function show(id, btn) {
+  document.querySelectorAll('.doc').forEach(d => d.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+}
+</script>
+</body></html>

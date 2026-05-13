@@ -4,7 +4,7 @@ import { AlertTriangle } from 'lucide-react';
 const DeleteConfirmModal = memo(function DeleteConfirmModal({ type, item, onClose, onConfirm, t }) {
   if (!item) return null;
   let title = '', itemName = '', desc = '';
-  if (type === 'project') { title = t('프로젝트 삭제', 'Delete Project'); itemName = item.name; desc = t('모든 이슈 내역이 함께 영구 삭제', 'All related issues will be permanently deleted'); }
+  if (type === 'project') { title = t('프로젝트 삭제', 'Delete Project'); itemName = item.name; desc = t('모든 이슈 내역이 함께 영구 삭제 (단, 30일간 Drive 백업/로컬 스냅샷으로 복원 가능)', 'All related issues will be permanently deleted (recoverable for 30 days via Drive backup / local snapshot)'); }
   else if (type === 'issue') { title = t('이슈 삭제', 'Delete Issue'); itemName = item.title; desc = t('코멘트가 영구 삭제', 'Comments and history will be permanently deleted'); }
   else if (type === 'release') { title = t('버전 삭제', 'Delete Release'); itemName = item.version; desc = t('릴리즈 내역이 영구 삭제', 'The release note will be permanently deleted'); }
   else if (type === 'engineer') { title = t('엔지니어 삭제', 'Delete Engineer'); itemName = item.name; desc = t('엔지니어 정보가 영구 삭제', 'Engineer information will be permanently deleted'); }

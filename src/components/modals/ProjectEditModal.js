@@ -1,6 +1,6 @@
 import React, { useState, memo } from 'react';
 import { Edit, Zap, AlertTriangle, HardDrive, Plus, Trash, Check, X } from 'lucide-react';
-import { DOMAINS, BATTERY_DOMAINS } from '../../constants';
+import { PARENT_DOMAINS, SUB_DOMAIN_PRESETS, isBatteryDomain } from '../../constants';
 import { fmtYMD } from '../../utils/calc';
 import ModalWrapper from '../common/ModalWrapper';
 
@@ -13,9 +13,10 @@ const cleanText = (v) => {
 
 const ensureArr = (v) => (Array.isArray(v) ? v : []);
 
-const ProjectEditModal = memo(function ProjectEditModal({ project, engineers, customers, currentUser, onClose, onSubmit, t }) {
+const ProjectEditModal = memo(function ProjectEditModal({ project, engineers, customers, currentUser, subDomainsBySettings, onClose, onSubmit, t }) {
   const [data, setData] = useState({
     domain: project?.domain || '반도체',
+    subDomain: project?.subDomain || '',
     name: project?.name || '',
     // 엔드유저(예: SK하이닉스 — 사이트 소유자)
     endUserId: project?.endUserId || project?.customerId || '',
@@ -75,8 +76,9 @@ const ProjectEditModal = memo(function ProjectEditModal({ project, engineers, cu
   const list = engineers || [];
   const hasCurrentInList = list.some(e => e.name === data.manager);
   const isAdmin = currentUser?.role === 'ADMIN';
-  const isBattery = BATTERY_DOMAINS.includes(data.domain);
-  const domainChanged = data.domain !== project.domain;
+  const isBattery = isBatteryDomain(data.domain);
+  const domainChanged = data.domain !== project.domain || data.subDomain !== (project.subDomain || '');
+  const subOptions = ((subDomainsBySettings && subDomainsBySettings[data.domain]) || SUB_DOMAIN_PRESETS[data.domain] || []);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -100,26 +102,41 @@ const ProjectEditModal = memo(function ProjectEditModal({ project, engineers, cu
       submitText={t('저장', 'Save')}
       t={t}
     >
-      {/* 산업군 — ADMIN만 수정 가능 */}
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center justify-between">
-          <span>{t('산업군', 'Domain')}</span>
-          {!isAdmin && <span className="text-[10px] text-slate-400 font-normal">{t('관리자만 수정 가능', 'Admin only')}</span>}
-        </label>
-        {isAdmin ? (
-          <select className="w-full p-2.5 border rounded-lg text-sm bg-indigo-50 text-indigo-700 font-bold" value={data.domain} onChange={e => setData({...data, domain: e.target.value})}>
-            {DOMAINS.map(d => <option key={d} value={d}>{d}</option>)}
-          </select>
-        ) : (
-          <input disabled className="w-full p-2.5 border rounded-lg text-sm bg-slate-100 text-slate-500 font-bold" value={data.domain} />
-        )}
-        {domainChanged && (
-          <div className="mt-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 flex items-start">
-            <AlertTriangle size={12} className="mr-1 mt-0.5 shrink-0" />
-            <span>{t('산업군 변경 시 도메인별 추천 카테고리(검수표/버전 등)가 달라질 수 있습니다. 기존 데이터는 유지됩니다.', 'Domain change updates suggested categories. Existing data is preserved.')}</span>
-          </div>
-        )}
+      {/* 산업군 — 대분류는 ADMIN만, 중분류는 자유 */}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center justify-between">
+            <span>{t('대분류', 'Domain')}</span>
+            {!isAdmin && <span className="text-[10px] text-slate-400 font-normal">{t('관리자만', 'Admin only')}</span>}
+          </label>
+          {isAdmin ? (
+            <select className="w-full p-2.5 border rounded-lg text-sm bg-indigo-50 text-indigo-700 font-bold" value={data.domain} onChange={e => setData({...data, domain: e.target.value, subDomain: ''})}>
+              {PARENT_DOMAINS.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          ) : (
+            <input disabled className="w-full p-2.5 border rounded-lg text-sm bg-slate-100 text-slate-500 font-bold" value={data.domain} />
+          )}
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">{t('중분류 (선택)', 'Sub (optional)')}</label>
+          <input
+            list={`subdomain-edit-list-${data.domain}`}
+            className="w-full p-2.5 border rounded-lg text-sm bg-indigo-50/50 text-indigo-700"
+            value={data.subDomain}
+            onChange={e=>setData({...data, subDomain:e.target.value})}
+            placeholder={subOptions.length ? t(`예: ${subOptions[0]}`, `e.g. ${subOptions[0]}`) : t('직접 입력 가능', 'Free input')}
+          />
+          <datalist id={`subdomain-edit-list-${data.domain}`}>
+            {subOptions.map(s => <option key={s} value={s} />)}
+          </datalist>
+        </div>
       </div>
+      {domainChanged && (
+        <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 flex items-start">
+          <AlertTriangle size={12} className="mr-1 mt-0.5 shrink-0" />
+          <span>{t('산업군 변경 시 도메인별 추천 카테고리(검수표/버전 등)가 달라질 수 있습니다. 기존 데이터는 유지됩니다.', 'Domain change updates suggested categories. Existing data is preserved.')}</span>
+        </div>
+      )}
 
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-1">{t('프로젝트명', 'Project Name')}</label>
@@ -237,7 +254,7 @@ const ProjectEditModal = memo(function ProjectEditModal({ project, engineers, cu
               {t('미정', 'TBD')}
             </label>
           </div>
-          <input required={!data.startTBD} type="date" className="w-full p-2.5 border rounded-lg text-sm" value={data.startDate || ''} onChange={e => setData({...data, startDate: e.target.value, startTBD: !e.target.value})} />
+          <input required={!data.startTBD} type="date" max="9999-12-31" className="w-full p-2.5 border rounded-lg text-sm" value={data.startDate || ''} onChange={e => setData({...data, startDate: e.target.value, startTBD: !e.target.value})} />
         </div>
         <div>
           <div className="flex items-center justify-between mb-1">
@@ -247,7 +264,7 @@ const ProjectEditModal = memo(function ProjectEditModal({ project, engineers, cu
               {t('미정', 'TBD')}
             </label>
           </div>
-          <input required={!data.dueTBD} type="date" className="w-full p-2.5 border rounded-lg text-sm" value={data.dueDate || ''} onChange={e => setData({...data, dueDate: e.target.value, dueTBD: !e.target.value})} />
+          <input required={!data.dueTBD} type="date" max="9999-12-31" className="w-full p-2.5 border rounded-lg text-sm" value={data.dueDate || ''} onChange={e => setData({...data, dueDate: e.target.value, dueTBD: !e.target.value})} />
         </div>
       </div>
       {/* 장비 코드 — 자유 추가/수정/삭제 */}

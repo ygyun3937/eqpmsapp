@@ -1,10 +1,11 @@
 import React, { useState, memo, useMemo } from 'react';
-import { Users, User, UserPlus, Plane, Plus, Trash, Calendar, MapPin, History, Info, AlertTriangle, Pencil, Save, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Users, User, UserPlus, Plane, Plus, Trash, Calendar, MapPin, History, Info, AlertTriangle, Pencil, Save, X, ChevronDown, ChevronUp, Mail } from 'lucide-react';
 import { fmtYMD } from '../../utils/calc';
 import ModalWrapper from '../common/ModalWrapper';
+import SendReportEmailModal from './SendReportEmailModal';
 
 const ProjectTeamModal = memo(function ProjectTeamModal({
-  project, engineers, currentUser,
+  project, engineers, currentUser, mailGasUrl,
   onClose, onChangeManager, onToggleAssignment,
   onAddTrip, onUpdateTrip, onDeleteTrip,
   t
@@ -16,6 +17,7 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
   // 출장 일정
   const [tripForm, setTripForm] = useState({ engineerId: '', departureDate: '', returnDate: '', note: '' });
   const [tripError, setTripError] = useState('');
+  const [emailTrip, setEmailTrip] = useState(null); // { kind: 'trip_request'|'trip_report', trip }
   // 출장 수정
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({ engineerId: '', departureDate: '', returnDate: '', note: '', reason: '' });
@@ -299,11 +301,11 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">{t('출발일', 'Departure')}</label>
-                <input type="date" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={tripForm.departureDate} onChange={e => setTripForm({...tripForm, departureDate: e.target.value})} />
+                <input type="date" max="9999-12-31" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={tripForm.departureDate} onChange={e => setTripForm({...tripForm, departureDate: e.target.value})} />
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">{t('복귀일', 'Return')}</label>
-                <input type="date" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={tripForm.returnDate} onChange={e => setTripForm({...tripForm, returnDate: e.target.value})} />
+                <input type="date" max="9999-12-31" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={tripForm.returnDate} onChange={e => setTripForm({...tripForm, returnDate: e.target.value})} />
               </div>
             </div>
             <div>
@@ -360,11 +362,11 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('출발일', 'Departure')}</label>
-                            <input type="date" className="w-full text-xs p-1.5 border border-slate-300 rounded" value={editForm.departureDate} onChange={e => setEditForm({...editForm, departureDate: e.target.value})} />
+                            <input type="date" max="9999-12-31" className="w-full text-xs p-1.5 border border-slate-300 rounded" value={editForm.departureDate} onChange={e => setEditForm({...editForm, departureDate: e.target.value})} />
                           </div>
                           <div>
                             <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('복귀일', 'Return')}</label>
-                            <input type="date" className="w-full text-xs p-1.5 border border-slate-300 rounded" value={editForm.returnDate} onChange={e => setEditForm({...editForm, returnDate: e.target.value})} />
+                            <input type="date" max="9999-12-31" className="w-full text-xs p-1.5 border border-slate-300 rounded" value={editForm.returnDate} onChange={e => setEditForm({...editForm, returnDate: e.target.value})} />
                           </div>
                         </div>
                         <div>
@@ -432,6 +434,12 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
                           )}
                         </div>
                         <div className="flex flex-col gap-1 shrink-0">
+                          <button type="button" onClick={() => setEmailTrip({ kind: 'trip_request', trip: { ...tr, engineerName: eng?.name || tr.engineerName, site: project.site } })} className="inline-flex items-center px-1.5 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-bold border border-indigo-200 transition-colors" title={t('출장 신청서 메일 송부', 'Send trip request email')}>
+                            <Mail size={11} className="mr-0.5" />{t('신청', 'Request')}
+                          </button>
+                          <button type="button" onClick={() => setEmailTrip({ kind: 'trip_report', trip: { ...tr, engineerName: eng?.name || tr.engineerName, site: project.site } })} className="inline-flex items-center px-1.5 py-1 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-bold border border-emerald-200 transition-colors" title={t('출장 보고서 메일 송부', 'Send trip report email')}>
+                            <Mail size={11} className="mr-0.5" />{t('보고', 'Report')}
+                          </button>
                           <button type="button" onClick={() => handleStartEdit(tr)} className="inline-flex items-center px-1.5 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] font-bold border border-blue-200 transition-colors" title={t('수정', 'Edit')}>
                             <Pencil size={11} className="mr-0.5" />{t('수정', 'Edit')}
                           </button>
@@ -447,6 +455,21 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
             )}
           </div>
         </div>
+      )}
+      {emailTrip && (
+        <SendReportEmailModal
+          kind={emailTrip.kind}
+          project={project}
+          trip={emailTrip.trip}
+          defaultTo={[]}
+          defaultCc={[]}
+          author={currentUser?.name || ''}
+          authorEmail={currentUser?.email || ''}
+          mailGasUrl={mailGasUrl}
+          onClose={() => setEmailTrip(null)}
+          onSent={() => setEmailTrip(null)}
+          t={t}
+        />
       )}
     </ModalWrapper>
   );

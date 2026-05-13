@@ -1,11 +1,12 @@
 import React, { useState, memo } from 'react';
-import { DOMAINS, BATTERY_DOMAINS } from '../../constants';
+import { PARENT_DOMAINS, SUB_DOMAIN_PRESETS, isBatteryDomain } from '../../constants';
 import { Zap } from 'lucide-react';
 import ModalWrapper from '../common/ModalWrapper';
 
-const ProjectModal = memo(function ProjectModal({ engineers, customers, prefill, onClose, onSubmit, t }) {
+const ProjectModal = memo(function ProjectModal({ engineers, customers, prefill, subDomainsBySettings, onClose, onSubmit, t }) {
   const [data, setData] = useState({
     domain: prefill?.domain || '반도체',
+    subDomain: prefill?.subDomain || '',
     name: '',
     // 엔드유저 / 설비업체 분리
     endUserId: prefill?.endUserId || prefill?.customerId || '',
@@ -23,7 +24,9 @@ const ProjectModal = memo(function ProjectModal({ engineers, customers, prefill,
   });
   const list = engineers || [];
   const customerList = customers || [];
-  const isBattery = BATTERY_DOMAINS.includes(data.domain);
+  const isBattery = isBatteryDomain(data.domain);
+  // 중분류 옵션: settings에서 등록된 목록 우선, 없으면 PRESET
+  const subOptions = ((subDomainsBySettings && subDomainsBySettings[data.domain]) || SUB_DOMAIN_PRESETS[data.domain] || []);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -40,11 +43,27 @@ const ProjectModal = memo(function ProjectModal({ engineers, customers, prefill,
 
   return (
     <ModalWrapper title={t('새 프로젝트 생성', 'New Project')} onClose={onClose} onSubmit={handleSubmit} submitText={t('생성하기', 'Create')}>
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">{t('산업군', 'Domain')}</label>
-        <select className="w-full p-2.5 border rounded-lg text-sm bg-indigo-50 text-indigo-700 font-bold" value={data.domain} onChange={e=>setData({...data, domain:e.target.value})}>
-          {DOMAINS.map(d=><option key={d} value={d}>{d}</option>)}
-        </select>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">{t('대분류', 'Domain')}</label>
+          <select className="w-full p-2.5 border rounded-lg text-sm bg-indigo-50 text-indigo-700 font-bold" value={data.domain} onChange={e=>setData({...data, domain:e.target.value, subDomain:''})}>
+            {PARENT_DOMAINS.map(d=><option key={d} value={d}>{d}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">{t('중분류 (선택)', 'Sub (optional)')}</label>
+          <input
+            list={`subdomain-list-${data.domain}`}
+            className="w-full p-2.5 border rounded-lg text-sm bg-indigo-50/50 text-indigo-700"
+            value={data.subDomain}
+            onChange={e=>setData({...data, subDomain:e.target.value})}
+            placeholder={subOptions.length ? t(`예: ${subOptions[0]}`, `e.g. ${subOptions[0]}`) : t('직접 입력 가능', 'Free input')}
+          />
+          <datalist id={`subdomain-list-${data.domain}`}>
+            {subOptions.map(s => <option key={s} value={s} />)}
+          </datalist>
+          <p className="text-[10px] text-slate-400 mt-1">{t('등록된 옵션에서 선택하거나 직접 입력 (예: EOL, ESS, 사이클러, 플라즈마)', 'Pick from preset or type freely')}</p>
+        </div>
       </div>
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-1">{t('프로젝트명', 'Project Name')}</label>
@@ -153,7 +172,7 @@ const ProjectModal = memo(function ProjectModal({ engineers, customers, prefill,
               {t('미정', 'TBD')}
             </label>
           </div>
-          <input required={!data.startTBD} type="date" className="w-full p-2.5 border rounded-lg text-sm" value={data.startDate || ''} onChange={e=>setData({...data, startDate:e.target.value, startTBD: !e.target.value})} />
+          <input required={!data.startTBD} type="date" max="9999-12-31" className="w-full p-2.5 border rounded-lg text-sm" value={data.startDate || ''} onChange={e=>setData({...data, startDate:e.target.value, startTBD: !e.target.value})} />
         </div>
         <div>
           <div className="flex items-center justify-between mb-1">
@@ -163,7 +182,7 @@ const ProjectModal = memo(function ProjectModal({ engineers, customers, prefill,
               {t('미정', 'TBD')}
             </label>
           </div>
-          <input required={!data.dueTBD} type="date" className="w-full p-2.5 border rounded-lg text-sm" value={data.dueDate || ''} onChange={e=>setData({...data, dueDate:e.target.value, dueTBD: !e.target.value})} />
+          <input required={!data.dueTBD} type="date" max="9999-12-31" className="w-full p-2.5 border rounded-lg text-sm" value={data.dueDate || ''} onChange={e=>setData({...data, dueDate:e.target.value, dueTBD: !e.target.value})} />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
@@ -174,11 +193,16 @@ const ProjectModal = memo(function ProjectModal({ engineers, customers, prefill,
           ) : (
             <select required className="w-full p-2.5 border rounded-lg text-sm" value={data.manager} onChange={e=>setData({...data, manager:e.target.value})}>
               <option value="">{t('-- 인력에서 선택 --', '-- Select engineer --')}</option>
-              {list.map(eng => (
-                <option key={eng.id} value={eng.name}>
-                  {eng.name}{eng.dept ? ` · ${eng.dept}` : ''}{eng.role ? ` · ${eng.role}` : ''}
-                </option>
-              ))}
+              {list.map(eng => {
+                const dept = eng.dept && eng.dept !== 'null' ? eng.dept : '';
+                const grade = (eng.grade && eng.grade !== 'null') ? eng.grade
+                             : (eng.role && eng.role !== 'null' ? eng.role : '');
+                return (
+                  <option key={eng.id} value={eng.name}>
+                    {eng.name}{dept ? ` · ${dept}` : ''}{grade ? ` · ${grade}` : ''}
+                  </option>
+                );
+              })}
             </select>
           )}
           <p className="text-[10px] text-slate-400 mt-1">{t('인력/리소스 관리에 등록된 엔지니어 중에서 선택하세요.', 'Pick from registered engineers.')}</p>

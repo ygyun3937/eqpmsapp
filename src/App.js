@@ -4,21 +4,24 @@ import {
   GitCommit, Search, Globe, Smartphone, Monitor, LogOut,
   Building, Building2, Camera, CheckSquare, Package, LayoutDashboard as Home,
   KeyRound, UserCog, LifeBuoy, HelpCircle, ChevronsLeft, ChevronsRight,
-  Settings as SettingsIcon, ClipboardList
+  Settings as SettingsIcon, ClipboardList, Mail as MailIcon
 } from 'lucide-react';
 
 // Constants & Initial Data
 import {
   TODAY, DOMAIN_TASKS, DOMAIN_CHECKLIST, PROJECT_PHASES,
   PHASE_COMPLETED_INDEX, PHASE_WARRANTY_INDEX,
-  SEED_ADMIN, SEED_TEST_USERS, TEST_MODE
+  SEED_ADMIN, SEED_TEST_USERS, TEST_MODE, GAS_URL,
+  getTasksForDomain, getChecklistForDomain, migrateLegacyDomain
 } from './constants';
 
 // Utils
 import { getStatusColor } from './utils/status';
 import { calcExp, calcAct } from './utils/calc';
-import { loadFromGoogleDB, saveToGoogleDB, notifyWebhook, callGoogleAction, fileToBase64 } from './utils/api';
+import { loadFromGoogleDB, saveToGoogleDB, saveProjectDelta, notifyWebhook, callGoogleAction, fileToBase64, subscribeSaveState, getPendingSaveCount } from './utils/api';
+import { saveSnapshot, loadSnapshot, saveLastKnownGood, compareWithRemote, saveDeletedItemSnapshot } from './utils/localBackup';
 import { hashPassword } from './utils/auth';
+import { nowStored } from './utils/dateUtils';
 
 // Common Components
 import NavItem from './components/common/NavItem';
@@ -37,6 +40,7 @@ const WeeklyReportView = lazy(() => import('./components/views/WeeklyReportView'
 const CustomerListView = lazy(() => import('./components/views/CustomerListView'));
 const UserManagementView = lazy(() => import('./components/views/UserManagementView'));
 const SystemSettingsView = lazy(() => import('./components/views/SystemSettingsView'));
+const AdminMailLogView = lazy(() => import('./components/views/AdminMailLogView'));
 const LoginScreen = lazy(() => import('./components/views/LoginScreen'));
 
 // Lazy-loaded Modals
@@ -136,6 +140,9 @@ export default function App() {
   const [isSetupEditOpen, setIsSetupEditOpen] = useState(false);
   const [setupEditProjectId, setSetupEditProjectId] = useState(null);
   const [taskModalInitialTab, setTaskModalInitialTab] = useState(null);
+
+  // 데이터 보호 (Track A3) — 부팅 시 로컬 백업이 원격보다 많으면 사용자에게 안내
+  const [restoreCandidates, setRestoreCandidates] = useState(null);
 
   // Delete confirm states
   const [engineerToDelete, setEngineerToDelete] = useState(null);
@@ -271,6 +278,22 @@ export default function App() {
       setIsLoading(true);
       const data = await loadFromGoogleDB();
       if (data) {
+        // 데이터 보호 — 부팅 시 로컬 스냅샷 비교 (Track A3)
+        // 원격(GAS)에 있어야 할 항목이 사라졌다면(예: 다른 사용자가 동일 시간대에 덮어쓰기) 경고
+        try {
+          const localProjects = loadSnapshot('projects');
+          if (Array.isArray(localProjects) && localProjects.length > 0) {
+            const cmp = compareWithRemote(localProjects, data.projects || [], 'id');
+            if (cmp.comparable && cmp.missingInRemote.length > 0) {
+              const names = cmp.missingInRemote.slice(0, 3).map(p => p.name || p.id).join(', ');
+              const more = cmp.missingInRemote.length > 3 ? ` 외 ${cmp.missingInRemote.length - 3}건` : '';
+              console.warn('[MAK-PMS 데이터 보호] 로컬엔 있는데 원격에 없는 프로젝트', cmp.missingInRemote.length, '건:', names);
+              setRestoreCandidates({ projects: cmp.missingInRemote, summary: `로컬 백업에 있지만 서버에는 없는 프로젝트 ${cmp.missingInRemote.length}건 (${names}${more})` });
+            }
+          }
+          // last_known_good 갱신 — 사용자가 정상적으로 본 상태
+          saveLastKnownGood('projects', data.projects || []);
+        } catch (e) { console.warn('[localBackup] 비교 실패', e.message); }
         // GAS에서 빈 셀/문자열로 와도 forEach 가능하도록 배열 필드 정규화
         const ensureArr = (v) => {
           if (Array.isArray(v)) return v;
@@ -308,6 +331,14 @@ export default function App() {
           if (!sp.currentPhaseId) {
             const idx = typeof sp.phaseIndex === 'number' ? sp.phaseIndex : 0;
             sp.currentPhaseId = (sp.phases[idx] || sp.phases[0]).id;
+          }
+          // 도메인 계층화 마이그레이션 (대분류/중분류 분리)
+          //  · 기존 단일 domain ('2차전지 EOL' 등) → domain='2차전지', subDomain='EOL'
+          //  · 이미 분리된 경우 (subDomain 존재) skip
+          if (typeof sp.subDomain === 'undefined') {
+            const m = migrateLegacyDomain(sp.domain || '');
+            sp.domain = m.domain;
+            sp.subDomain = m.subDomain;
           }
           return sp;
         });
@@ -509,6 +540,59 @@ export default function App() {
   // 뒤바뀌면 이전 변경이 덮어써져 사라지는 경합 문제 방지.
   // (Hook은 조건부 return 위에 있어야 함 — Rules of Hooks)
   const debouncedSaveRefs = useRef({});
+  const [savingCount, setSavingCount] = useState(0);
+  // 모달 표시 지연 — 빠른 save(<800ms)엔 깜빡임 방지, 진짜 오래 걸릴 때만 표시
+  const [showSyncOverlay, setShowSyncOverlay] = useState(false);
+  useEffect(() => subscribeSaveState(setSavingCount), []);
+  useEffect(() => {
+    if (savingCount === 0) { setShowSyncOverlay(false); return; }
+    const timer = setTimeout(() => setShowSyncOverlay(true), 800);
+    return () => clearTimeout(timer);
+  }, [savingCount]);
+
+  // 저장 진행 중에 새로고침/탭 닫기 시 브라우저 경고 prompt
+  // (실제 데이터는 sendBeacon으로 flush되지만, 사용자가 의도치 않게 떠나는 것 방지)
+  useEffect(() => {
+    const handler = (e) => {
+      // pending save가 있거나 debounced 큐에 대기 중인 게 있으면 경고
+      const refs = debouncedSaveRefs.current;
+      const debouncedPending = Object.values(refs).some(r => r && r.pending !== null);
+      if (getPendingSaveCount() > 0 || debouncedPending) {
+        e.preventDefault();
+        e.returnValue = '저장 중인 변경 사항이 있습니다. 잠시 후 다시 시도하세요.';
+        return e.returnValue;
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, []);
+
+  // 페이지 떠나기 직전 — 대기 중인 debounced 저장을 즉시 sendBeacon으로 발사
+  // (api.js의 unload 핸들러는 _pendingPayloads만 처리하므로, debounce 대기 중인 건 별도 처리 필요)
+  // Rules of Hooks — early return 위에 위치해야 함
+  useEffect(() => {
+    const flushDebounced = () => {
+      const refs = debouncedSaveRefs.current;
+      Object.keys(refs).forEach(k => {
+        const r = refs[k];
+        if (r && r.pending !== null && r.action) {
+          try {
+            const blob = new Blob([JSON.stringify({ action: r.action, data: r.pending })], { type: 'application/json' });
+            navigator.sendBeacon && navigator.sendBeacon(GAS_URL, blob);
+          } catch (_) {}
+          if (r.timer) clearTimeout(r.timer);
+          r.timer = null;
+          r.pending = null;
+        }
+      });
+    };
+    window.addEventListener('beforeunload', flushDebounced);
+    window.addEventListener('pagehide', flushDebounced);
+    return () => {
+      window.removeEventListener('beforeunload', flushDebounced);
+      window.removeEventListener('pagehide', flushDebounced);
+    };
+  }, []);
 
   if (!currentUser) return (
     <Suspense fallback={<Loading />}>
@@ -554,23 +638,49 @@ export default function App() {
   const showToast = (msg) => { setToastMessage(msg); setTimeout(() => setToastMessage(''), 3000); };
   const addLog = (project, type, detail) => ({
     ...project,
-    activityLog: [...(project.activityLog || []), { date: new Date().toLocaleString(), user: currentUser.name, type, detail }]
+    activityLog: [...(project.activityLog || []), { date: nowStored(), user: currentUser.name, type, detail }]
   });
 
   // === 헬퍼: state 변경 후 전체 배열을 GAS에 덮어쓰기 ===
-  const syncProjects = (updated) => { setProjects(updated); saveToGoogleDB('UPDATE_PROJECTS', updated); };
-  const syncIssues = (updated) => { setIssues(updated); saveToGoogleDB('UPDATE_ISSUES', updated); };
-  const syncReleases = (updated) => { setReleases(updated); saveToGoogleDB('UPDATE_RELEASES', updated); };
-  const syncEngineers = (updated) => { setEngineers(updated); saveToGoogleDB('UPDATE_ENGINEERS', updated); };
-  const syncParts = (updated) => { setParts(updated); saveToGoogleDB('UPDATE_PARTS', updated); };
-  const syncSites = (updated) => { setSites(updated); saveToGoogleDB('UPDATE_SITES', updated); };
-  const syncCustomers = (updated) => { setCustomers(updated); saveToGoogleDB('UPDATE_CUSTOMERS', updated); };
-  const syncWeeklyReports = (updated) => { setWeeklyReports(updated); saveToGoogleDB('UPDATE_WEEKLY_REPORTS', updated); };
+  // 모든 sync 함수는 saveSnapshot으로 localStorage에 자동 백업 (데이터 보호 1단계 - Track A)
+  const syncProjects = (updated) => { setProjects(updated); saveSnapshot('projects', updated); saveToGoogleDB('UPDATE_PROJECTS', updated); };
+
+  // === Delta 저장 (성능 개선) ===
+  const syncProject = (projectId, transformer) => {
+    setProjects(prev => {
+      const found = prev.find(p => p.id === projectId);
+      if (!found) return prev;
+      const updated = typeof transformer === 'function' ? transformer(found) : transformer;
+      const next = prev.map(p => p.id === projectId ? updated : p);
+      saveSnapshot('projects', next);
+      scheduleSave(`project:${projectId}`, 'UPDATE_PROJECT_BY_ID', { projectId, project: updated }, 1500);
+      return next;
+    });
+  };
+  // 프로젝트 삭제 — 행 삭제만 전송 (전체 배열 안 보냄) + 삭제 직전 단독 스냅샷
+  const syncProjectDelete = (projectId) => {
+    setProjects(prev => {
+      const target = prev.find(p => p.id === projectId);
+      if (target) saveDeletedItemSnapshot('projects', target);
+      const next = prev.filter(p => p.id !== projectId);
+      saveSnapshot('projects', next);
+      return next;
+    });
+    saveProjectDelta(projectId, null);
+  };
+  const syncIssues = (updated) => { setIssues(updated); saveSnapshot('issues', updated); saveToGoogleDB('UPDATE_ISSUES', updated); };
+  const syncReleases = (updated) => { setReleases(updated); saveSnapshot('releases', updated); saveToGoogleDB('UPDATE_RELEASES', updated); };
+  const syncEngineers = (updated) => { setEngineers(updated); saveSnapshot('engineers', updated); saveToGoogleDB('UPDATE_ENGINEERS', updated); };
+  const syncParts = (updated) => { setParts(updated); saveSnapshot('parts', updated); saveToGoogleDB('UPDATE_PARTS', updated); };
+  const syncSites = (updated) => { setSites(updated); saveSnapshot('sites', updated); saveToGoogleDB('UPDATE_SITES', updated); };
+  const syncCustomers = (updated) => { setCustomers(updated); saveSnapshot('customers', updated); saveToGoogleDB('UPDATE_CUSTOMERS', updated); };
+  const syncWeeklyReports = (updated) => { setWeeklyReports(updated); saveSnapshot('weeklyReports', updated); saveToGoogleDB('UPDATE_WEEKLY_REPORTS', updated); };
 
   const scheduleSave = (key, action, data, delay = 400) => {
     const refs = debouncedSaveRefs.current;
-    if (!refs[key]) refs[key] = { timer: null, pending: null };
+    if (!refs[key]) refs[key] = { timer: null, pending: null, action: null };
     refs[key].pending = data;
+    refs[key].action = action;
     if (refs[key].timer) clearTimeout(refs[key].timer);
     refs[key].timer = setTimeout(() => {
       const toSave = refs[key].pending;
@@ -661,10 +771,11 @@ export default function App() {
   // === CRUD Handlers ===
 
   const handleAddProject = (newProject) => {
-    const domainTasks = DOMAIN_TASKS[newProject.domain] || DOMAIN_TASKS['반도체'];
-    const domainChecklist = DOMAIN_CHECKLIST[newProject.domain] || DOMAIN_CHECKLIST['반도체'];
-    const tasks = JSON.parse(JSON.stringify(domainTasks));
-    const checklist = domainChecklist.map((item, idx) => ({ ...item, id: Date.now() + idx }));
+    const domainTasks = getTasksForDomain(newProject.domain, newProject.subDomain);
+    const domainChecklist = getChecklistForDomain(newProject.domain, newProject.subDomain);
+    const tasks = JSON.parse(JSON.stringify(domainTasks.length ? domainTasks : DOMAIN_TASKS['반도체']));
+    const baseChecklist = domainChecklist.length ? domainChecklist : DOMAIN_CHECKLIST['반도체'];
+    const checklist = baseChecklist.map((item, idx) => ({ ...item, id: Date.now() + idx }));
     const newData = addLog({
       ...newProject,
       id: generateUniqueId('PRJ'),
@@ -673,43 +784,41 @@ export default function App() {
       activityLog: [], managerHistory: [],
       trips: [], extraTasks: [], asRecords: [], customerRequests: [], notes: [], attachments: []
     }, 'PROJECT_CREATE', `프로젝트 생성: ${newProject.name}`);
-    syncProjects([newData, ...projects]);
+    // 신규 프로젝트 — state 즉시 반영 + delta append (UPDATE_PROJECT_BY_ID는 해당 id가 없으면 append)
+    setProjects(prev => [newData, ...prev]);
+    saveProjectDelta(newData.id, newData);
     setIsProjectModalOpen(false);
     showToast('프로젝트가 추가되었습니다.');
   };
 
   const handleUpdatePhase = (projectId, newPhaseIndex) => {
-    syncProjects(projects.map(p => {
-      if (p.id !== projectId) return p;
+    syncProject(projectId, p => {
       const phases = (p.phases && p.phases.length > 0) ? p.phases : PROJECT_PHASES.map((name, idx) => ({ id: `p${idx}`, name }));
       const targetIdx = Math.max(0, Math.min(newPhaseIndex, phases.length - 1));
       const fromIdx = typeof p.phaseIndex === 'number' ? p.phaseIndex : 0;
       const fromName = (phases[fromIdx] || phases[0]).name;
       const toName = phases[targetIdx].name;
-      // 진짜 완료 = 마지막 단계
       const isLast = targetIdx === phases.length - 1;
       const newStatus = isLast ? '완료' : '진행중';
       return addLog({ ...p, phases, phaseIndex: targetIdx, currentPhaseId: phases[targetIdx].id, status: newStatus }, 'PHASE_CHANGE', `${fromName} → ${toName}`);
-    }));
+    });
   };
 
   // 셋업 파이프라인 클릭 — 클릭한 task를 "현재(미완료)"로, 이전은 모두 완료, 이후는 모두 미완료
   const handleSetCurrentSetupTask = (projectId, taskId) => {
-    syncProjects(projects.map(p => {
-      if (p.id !== projectId) return p;
+    syncProject(projectId, p => {
       const list = p.tasks || [];
       const idx = list.findIndex(tk => tk.id === taskId);
       if (idx < 0) return p;
       const target = list[idx];
       const newTasks = list.map((tk, i) => ({ ...tk, isCompleted: i < idx }));
       return addLog({ ...p, tasks: newTasks }, 'SETUP_PROGRESS', `현재 셋업 작업: ${target.name}`);
-    }));
+    });
   };
 
   // 셋업 작업 일괄 편집 (이름·일정·마일스톤·완료·순서·추가·삭제 한번에)
   const handleSetProjectTasks = (projectId, nextTasks) => {
-    syncProjects(projects.map(p => {
-      if (p.id !== projectId) return p;
+    syncProject(projectId, p => {
       const prev = p.tasks || [];
       const prevIds = new Set(prev.map(t => t.id));
       const nextIds = new Set(nextTasks.map(t => t.id));
@@ -722,14 +831,12 @@ export default function App() {
       }).length;
       const summary = `셋업 일정 편집: 추가 ${added} · 수정 ${modified} · 삭제 ${removed}`;
       return addLog({ ...p, tasks: nextTasks }, 'SETUP_DEFINE', summary);
-    }));
+    });
   };
 
   // 프로젝트 단계 정의 자체 편집 (이름 변경/추가/삭제/순서)
   const handleSetProjectPhases = (projectId, nextPhases) => {
-    syncProjects(projects.map(p => {
-      if (p.id !== projectId) return p;
-      // currentPhaseId가 없어진 경우 안전 처리
+    syncProject(projectId, p => {
       let curIdx = nextPhases.findIndex(ph => ph.id === p.currentPhaseId);
       if (curIdx < 0) curIdx = Math.min(p.phaseIndex || 0, nextPhases.length - 1);
       const isLast = curIdx === nextPhases.length - 1;
@@ -740,61 +847,61 @@ export default function App() {
         currentPhaseId: nextPhases[curIdx]?.id || null,
         status: isLast ? '완료' : (p.status === '완료' ? '진행중' : p.status)
       }, 'PHASE_DEFINE', `단계 정의 변경: ${nextPhases.map(x => x.name).join(' → ')}`);
-    }));
+    });
   };
 
   const handleDeleteProject = () => {
     if (!projectToDelete) return;
-    syncProjects(projects.filter(p => p.id !== projectToDelete.id));
+    // 데이터 보호 (Track A4) — 삭제 직전 GAS에도 Drive 임시 백업 폴더로 복사
+    // 실패해도 localStorage 단독 스냅샷(syncProjectDelete 내부)으로 30일 복원 가능
+    const target = projectToDelete;
+    callGoogleAction('BACKUP_PROJECT', { project: target, user: currentUser ? currentUser.name : '' })
+      .catch(e => console.warn('[backup] GAS 백업 실패 (localStorage 스냅샷은 남음)', e));
+    syncProjectDelete(target.id);
     setProjectToDelete(null);
-    showToast('프로젝트가 삭제되었습니다.');
+    showToast(t(`프로젝트 [${target.name}]이(가) 삭제됐습니다. Drive 백업 + 로컬 스냅샷으로 30일간 복원 가능.`, `[${target.name}] deleted. Recoverable for 30 days via Drive backup + local snapshot.`));
   };
 
   const toggleTaskCompletion = (projectId, taskId) => {
-    syncProjects(projects.map(p => {
-      if (p.id !== projectId) return p;
+    syncProject(projectId, p => {
       const task = p.tasks.find(t => t.id === taskId);
       if (!task) return p;
       const updated = { ...p, tasks: p.tasks.map(t => t.id === taskId ? { ...t, isCompleted: !t.isCompleted } : t) };
       return !task.isCompleted ? addLog(updated, 'TASK_COMPLETE', `태스크 완료: ${task.name}`) : updated;
-    }));
+    });
   };
 
   const handleAddTask = (projectId, taskName) => {
-    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, tasks: [...p.tasks, { id: Date.now(), name: taskName, isCompleted: false, delayReason: '' }] }, 'TASK_ADD', `태스크 추가: ${taskName}`)));
+    syncProject(projectId, p => addLog({ ...p, tasks: [...p.tasks, { id: Date.now(), name: taskName, isCompleted: false, delayReason: '' }] }, 'TASK_ADD', `태스크 추가: ${taskName}`));
   };
 
   const handleEditTaskName = (projectId, taskId, newName) => {
     const trimmed = (newName || '').trim();
     if (!trimmed) return;
-    syncProjects(projects.map(p => {
-      if (p.id !== projectId) return p;
+    syncProject(projectId, p => {
       const task = (p.tasks || []).find(tk => tk.id === taskId);
       if (!task || task.name === trimmed) return p;
       const updated = { ...p, tasks: p.tasks.map(tk => tk.id === taskId ? { ...tk, name: trimmed } : tk) };
       return addLog(updated, 'TASK_RENAME', `태스크 이름 변경: ${task.name} → ${trimmed}`);
-    }));
+    });
   };
 
   const handleDeleteTask = (projectId, taskId) => {
-    syncProjects(projects.map(p => {
-      if (p.id !== projectId) return p;
+    syncProject(projectId, p => {
       const task = p.tasks.find(t => t.id === taskId);
       return addLog({ ...p, tasks: p.tasks.filter(t => t.id !== taskId) }, 'TASK_DELETE', `태스크 삭제: ${task?.name || ''}`);
-    }));
+    });
   };
 
   const handleUpdateDelayReason = (projectId, taskId, reason) => {
-    syncProjects(projects.map(p => p.id === projectId ? { ...p, tasks: p.tasks.map(t => t.id === taskId ? { ...t, delayReason: reason } : t) } : p));
+    syncProject(projectId, p => ({ ...p, tasks: p.tasks.map(t => t.id === taskId ? { ...t, delayReason: reason } : t) }));
   };
 
   const handleUpdateTaskDates = (projectId, taskId, changes) => {
-    syncProjects(projects.map(p => {
-      if (p.id !== projectId) return p;
+    syncProject(projectId, p => {
       const task = (p.tasks || []).find(tk => tk.id === taskId);
       if (!task) return p;
       const updated = { ...p, tasks: p.tasks.map(tk => tk.id === taskId ? { ...tk, ...changes } : tk) };
-      // 변경 항목만 추출
       const parts = [];
       if ('startDate' in changes && (changes.startDate || '') !== (task.startDate || '')) {
         parts.push(`시작 ${task.startDate || '미정'} → ${changes.startDate || '미정'}`);
@@ -802,7 +909,6 @@ export default function App() {
       if ('endDate' in changes && (changes.endDate || '') !== (task.endDate || '')) {
         parts.push(`종료 ${task.endDate || '미정'} → ${changes.endDate || '미정'}`);
       }
-      // 마일스톤 토글만 들어온 단일 변경은 별도 타입으로 분리해 가독성 ↑
       if ('isMilestone' in changes && Object.keys(changes).length === 1) {
         if (!!changes.isMilestone === !!task.isMilestone) return updated;
         return addLog(updated, 'TASK_MILESTONE', `마일스톤 ${changes.isMilestone ? 'ON' : 'OFF'}: ${task.name}`);
@@ -812,60 +918,55 @@ export default function App() {
       }
       if (parts.length === 0) return updated;
       return addLog(updated, 'TASK_DATES', `일정 변경 [${task.name}] · ${parts.join(' · ')}`);
-    }));
+    });
   };
 
   const handleUpdateChecklistItem = (projectId, itemId, newStatus, newNote) => {
-    syncProjects(projects.map(p => {
-      if (p.id !== projectId) return p;
+    syncProject(projectId, p => {
       const item = p.checklist.find(c => c.id === itemId);
       const updated = { ...p, checklist: p.checklist.map(c => c.id === itemId ? { ...c, status: newStatus, note: newNote !== undefined ? newNote : c.note } : c) };
       if (item && item.status !== newStatus) return addLog(updated, 'CHECKLIST_CHANGE', `${item.task}: ${item.status} → ${newStatus}`);
       return updated;
-    }));
+    });
   };
 
   const handleLoadDefaultChecklist = (projectId) => {
-    syncProjects(projects.map(p => {
-      if (p.id !== projectId) return p;
-      const domainChecklist = DOMAIN_CHECKLIST[p.domain] || DOMAIN_CHECKLIST['반도체'];
-      return addLog({ ...p, checklist: domainChecklist.map((item, idx) => ({ ...item, id: Date.now() + idx })) }, 'CHECKLIST_CHANGE', '기본 검수표 로드');
-    }));
+    syncProject(projectId, p => {
+      const domainChecklist = getChecklistForDomain(p.domain, p.subDomain);
+      const base = domainChecklist.length ? domainChecklist : DOMAIN_CHECKLIST['반도체'];
+      return addLog({ ...p, checklist: base.map((item, idx) => ({ ...item, id: Date.now() + idx })) }, 'CHECKLIST_CHANGE', '기본 검수표 로드');
+    });
     showToast('기본 검수표가 불러와졌습니다.');
   };
 
   const handleAddChecklistItem = (projectId, category, taskName) => {
     if (!taskName.trim()) return;
-    syncProjects(projects.map(p => p.id === projectId ? { ...p, checklist: [...(p.checklist || []), { id: Date.now(), category: category || '일반', task: taskName.trim(), status: 'Pending', note: '' }] } : p));
+    syncProject(projectId, p => ({ ...p, checklist: [...(p.checklist || []), { id: Date.now(), category: category || '일반', task: taskName.trim(), status: 'Pending', note: '' }] }));
   };
 
   const handleDeleteChecklistItem = (projectId, itemId) => {
-    syncProjects(projects.map(p => p.id === projectId ? { ...p, checklist: (p.checklist || []).filter(c => c.id !== itemId) } : p));
+    syncProject(projectId, p => ({ ...p, checklist: (p.checklist || []).filter(c => c.id !== itemId) }));
   };
 
   const handleSignOff = (projectId, customerName, signatureData) => {
     const todayStr = new Date().toISOString().split('T')[0];
-    syncProjects(projects.map(p => {
-      if (p.id !== projectId) return p;
+    syncProject(projectId, p => {
       const phases = (p.phases && p.phases.length > 0) ? p.phases : PROJECT_PHASES.map((name, idx) => ({ id: `p${idx}`, name }));
-      // 워런티 단계 = 마지막 직전 (없으면 마지막 -1, 그래도 없으면 마지막)
       const warrantyIdx = Math.max(0, phases.length - 2);
       return addLog({ ...p, status: '진행중', phaseIndex: warrantyIdx, currentPhaseId: phases[warrantyIdx]?.id, signOff: { signed: true, customerName, signatureData, date: todayStr } }, 'SIGN_OFF', `고객 서명 완료: ${customerName} (${phases[warrantyIdx]?.name || ''} 단계 진입)`);
-    }));
+    });
     showToast('최종 검수 서명 완료. 워런티 단계로 진입했습니다.');
   };
 
   // 사인 취소 (ADMIN 전용)
   const handleCancelSignOff = (projectId) => {
-    syncProjects(projects.map(p => {
-      if (p.id !== projectId) return p;
+    syncProject(projectId, p => {
       const prev = p.signOff;
       const phases = (p.phases && p.phases.length > 0) ? p.phases : PROJECT_PHASES.map((name, idx) => ({ id: `p${idx}`, name }));
-      // 워런티/완료 단계였다면 그 직전(현장 셋업)으로 복귀, 그 외엔 유지
       const warrantyIdx = Math.max(0, phases.length - 2);
       const rollbackIdx = (typeof p.phaseIndex === 'number' && p.phaseIndex >= warrantyIdx) ? Math.max(0, warrantyIdx - 1) : p.phaseIndex;
       return addLog({ ...p, signOff: null, status: '진행중', phaseIndex: rollbackIdx, currentPhaseId: phases[rollbackIdx]?.id }, 'SIGN_CANCEL', `검수 사인 취소 (이전 검수자: ${prev?.customerName || '-'})`);
-    }));
+    });
     showToast('검수 사인이 취소되었습니다.');
   };
 
@@ -880,37 +981,70 @@ export default function App() {
       startDate: payload.startDate || '',
       endDate: payload.endDate || '',
       note: payload.note || '',
-      createdAt: new Date().toLocaleString(),
+      createdAt: nowStored(),
       createdBy: currentUser.name
     };
-    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, extraTasks: [...(p.extraTasks || []), task] }, 'EXTRA_ADD', `추가 작업 등록: ${task.name} (${task.type})`)));
+    syncProject(projectId, p => addLog({ ...p, extraTasks: [...(p.extraTasks || []), task] }, 'EXTRA_ADD', `추가 작업 등록: ${task.name} (${task.type})`));
   };
 
   const handleUpdateExtraTask = (projectId, taskId, updates) => {
-    syncProjects(projects.map(p => {
-      if (p.id !== projectId) return p;
+    syncProject(projectId, p => {
       const updated = { ...p, extraTasks: (p.extraTasks || []).map(t => t.id === taskId ? { ...t, ...updates } : t) };
       if (updates.status) {
         const task = (p.extraTasks || []).find(t => t.id === taskId);
         return addLog(updated, 'EXTRA_UPDATE', `추가 작업 상태: ${task?.name || ''} → ${updates.status}`);
       }
       return updated;
+    });
+  };
+
+  // 추가대응 파일 임포트 (Excel/붙여넣기) — 검증 통과한 행만 일괄 등록
+  const handleImportExtraTasks = (projectId, rows) => {
+    if (!Array.isArray(rows) || rows.length === 0) return;
+    const baseTs = Date.now();
+    const newTasks = rows.map((r, i) => ({
+      id: baseTs + i,
+      name: r.name,
+      requester: r.requester || '',
+      type: r.type || '기타',
+      status: r.status || '대기',
+      startDate: r.startDate || '',
+      endDate: r.endDate || '',
+      note: r.note || '',
+      createdAt: nowStored(),
+      createdBy: `import:${currentUser.name}`,
+      comments: []
     }));
+    syncProject(projectId, p => addLog(
+      { ...p, extraTasks: [...(p.extraTasks || []), ...newTasks] },
+      'EXTRA_ADD',
+      `추가 작업 일괄 등록 (${newTasks.length}건): ${newTasks.slice(0, 3).map(t => t.name).join(', ')}${newTasks.length > 3 ? ' 등' : ''}`
+    ));
+    showToast(`추가 대응 ${newTasks.length}건 등록됨`);
+  };
+
+  // 추가대응 댓글 추가 (AS 댓글 패턴과 동일)
+  const handleAddExtraTaskComment = (projectId, taskId, text) => {
+    const trimmed = (text || '').trim();
+    if (!trimmed) return;
+    syncProject(projectId, p => {
+      const comment = { id: Date.now(), author: currentUser.name, text: trimmed, time: nowStored() };
+      return { ...p, extraTasks: (p.extraTasks || []).map(et => et.id === taskId ? { ...et, comments: [...(et.comments || []), comment] } : et) };
+    });
   };
 
   const handleDeleteExtraTask = (projectId, taskId) => {
-    syncProjects(projects.map(p => {
-      if (p.id !== projectId) return p;
+    syncProject(projectId, p => {
       const task = (p.extraTasks || []).find(t => t.id === taskId);
       return addLog({ ...p, extraTasks: (p.extraTasks || []).filter(t => t.id !== taskId) }, 'EXTRA_DELETE', `추가 작업 삭제: ${task?.name || ''}`);
-    }));
+    });
   };
 
   const handleAddIssue = (newIssue) => {
     const selectedProject = projects.find(p => p.id === newIssue.projectId);
     const issueWithDetails = { ...newIssue, id: generateUniqueId('ISS'), projectName: selectedProject ? selectedProject.name : '알 수 없는 프로젝트', date: TODAY.toISOString().split('T')[0], status: '이슈 확인', comments: [] };
     syncIssues([issueWithDetails, ...issues]);
-    syncProjects(projects.map(p => p.id !== newIssue.projectId ? p : addLog(p, 'ISSUE_ADD', `이슈 등록: ${issueWithDetails.title} (${newIssue.severity})`)));
+    syncProject(newIssue.projectId, p => addLog(p, 'ISSUE_ADD', `이슈 등록: ${issueWithDetails.title} (${newIssue.severity})`));
     setIsIssueModalOpen(false);
     const targetEmail = newIssue.alertEmail ? newIssue.alertEmail : '기본 담당자(default@company.com)';
     // 이메일 제목용 구조화된 데이터 전송
@@ -923,7 +1057,7 @@ export default function App() {
   };
 
   const handleAddComment = (issueId, text) => {
-    const commentData = { id: Date.now(), author: currentUser.name, text, date: new Date().toLocaleString() };
+    const commentData = { id: Date.now(), author: currentUser.name, text, date: nowStored() };
     syncIssues(issues.map(issue => issue.id === issueId ? { ...issue, comments: [...(issue.comments || []), commentData] } : issue));
   };
 
@@ -941,7 +1075,7 @@ export default function App() {
     if (!issue) return;
     syncIssues(issues.map(i => i.id === issueId ? { ...i, ...updates } : i));
     if (changeSummary && issue.projectId) {
-      syncProjects(projects.map(p => p.id !== issue.projectId ? p : addLog(p, 'ISSUE_UPDATE', changeSummary)));
+      syncProject(issue.projectId, p => addLog(p, 'ISSUE_UPDATE', changeSummary));
     }
   };
 
@@ -956,7 +1090,7 @@ export default function App() {
     const selectedProject = projects.find(p => p.id === newPart.projectId);
     const partWithDetails = { ...newPart, id: generateUniqueId('PRT'), projectName: selectedProject ? selectedProject.name : t('알 수 없는 프로젝트', 'Unknown Project'), date: TODAY.toISOString().split('T')[0], status: '청구' };
     syncParts([partWithDetails, ...parts]);
-    syncProjects(projects.map(p => p.id !== newPart.projectId ? p : addLog(p, 'PART_ADD', `자재 청구: ${newPart.partName} ${newPart.quantity}EA (${newPart.urgency})`)));
+    syncProject(newPart.projectId, p => addLog(p, 'PART_ADD', `자재 청구: ${newPart.partName} ${newPart.quantity}EA (${newPart.urgency})`));
     setIsPartModalOpen(false);
     showToast(t('자재 청구가 접수되었습니다.', 'Part request submitted.'));
   };
@@ -1160,26 +1294,24 @@ export default function App() {
   const handleChangeManager = (projectId, newManager, reason) => {
     if (!newManager) return;
     const todayStr = new Date().toISOString().split('T')[0];
-    syncProjects(projects.map(p => {
-      if (p.id !== projectId) return p;
+    syncProject(projectId, p => {
       const fromManager = p.manager || '미지정';
       const historyEntry = { from: fromManager, to: newManager, date: todayStr, reason, changedBy: currentUser.name };
       return addLog({ ...p, manager: newManager, managerHistory: [...(p.managerHistory || []), historyEntry] }, 'MANAGER_CHANGE', `${fromManager} → ${newManager}${reason ? ' (' + reason + ')' : ''}`);
-    }));
+    });
     setIsManagerModalOpen(false);
     showToast(t('담당자가 변경되었습니다.', 'Manager changed.'));
   };
 
   // === 고객 요청사항 핸들러 ===
   const handleAddCustomerRequest = (projectId, data) => {
-    const request = { id: Date.now(), requester: data.requester, content: data.content, urgency: data.urgency, status: '접수', date: new Date().toLocaleString(), responses: [] };
-    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, customerRequests: [...(p.customerRequests || []), request] }, 'REQUEST_ADD', `고객 요청: ${data.requester} - ${data.content.substring(0, 30)}${data.content.length > 30 ? '...' : ''}`)));
+    const request = { id: Date.now(), requester: data.requester, content: data.content, urgency: data.urgency, status: '접수', date: nowStored(), responses: [] };
+    syncProject(projectId, p => addLog({ ...p, customerRequests: [...(p.customerRequests || []), request] }, 'REQUEST_ADD', `고객 요청: ${data.requester} - ${data.content.substring(0, 30)}${data.content.length > 30 ? '...' : ''}`));
   };
 
   const handleUpdateCustomerRequestStatus = (projectId, requestId, newStatus, resolution) => {
-    const todayStr = new Date().toLocaleString();
-    syncProjects(projects.map(p => {
-      if (p.id !== projectId) return p;
+    const todayStr = nowStored();
+    syncProject(projectId, p => {
       const updated = {
         ...p,
         customerRequests: (p.customerRequests || []).map(r => {
@@ -1198,19 +1330,19 @@ export default function App() {
         ? `고객 요청 상태: ${req?.content.substring(0, 20) || ''} → ${newStatus} (처리: ${resolution})`
         : `고객 요청 상태: ${req?.content.substring(0, 20) || ''} → ${newStatus}`;
       return addLog(updated, 'REQUEST_STATUS', detail);
-    }));
+    });
   };
 
   const handleAddCustomerResponse = (projectId, requestId, text) => {
-    const response = { author: currentUser.name, text, date: new Date().toLocaleString() };
-    syncProjects(projects.map(p => p.id !== projectId ? p : {
+    const response = { author: currentUser.name, text, date: nowStored() };
+    syncProject(projectId, p => ({
       ...p,
       customerRequests: (p.customerRequests || []).map(r => r.id === requestId ? { ...r, responses: [...(r.responses || []), response] } : r)
     }));
   };
 
   const handleDeleteCustomerRequest = (projectId, requestId) => {
-    syncProjects(projects.map(p => p.id !== projectId ? p : { ...p, customerRequests: (p.customerRequests || []).filter(r => r.id !== requestId) }));
+    syncProject(projectId, p => ({ ...p, customerRequests: (p.customerRequests || []).filter(r => r.id !== requestId) }));
   };
 
   // === 엔지니어 자격(출입증/안전교육/비자) 핸들러 ===
@@ -1257,26 +1389,24 @@ export default function App() {
       departureDate: payload.departureDate,
       returnDate: payload.returnDate,
       note: payload.note || '',
-      createdAt: new Date().toLocaleString(),
+      createdAt: nowStored(),
       createdBy: currentUser.name
     };
-    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, trips: [...(p.trips || []), trip] }, 'TRIP_ADD', `출장 등록: ${trip.engineerName} (${trip.departureDate}~${trip.returnDate})`)));
+    syncProject(projectId, p => addLog({ ...p, trips: [...(p.trips || []), trip] }, 'TRIP_ADD', `출장 등록: ${trip.engineerName} (${trip.departureDate}~${trip.returnDate})`));
   };
 
   const handleUpdateTrip = (projectId, tripId, updates, changeSummary) => {
-    syncProjects(projects.map(p => {
-      if (p.id !== projectId) return p;
+    syncProject(projectId, p => {
       const next = { ...p, trips: (p.trips || []).map(tr => tr.id === tripId ? { ...tr, ...updates } : tr) };
       return changeSummary ? addLog(next, 'TRIP_UPDATE', changeSummary) : next;
-    }));
+    });
   };
 
   const handleDeleteTrip = (projectId, tripId) => {
-    syncProjects(projects.map(p => {
-      if (p.id !== projectId) return p;
+    syncProject(projectId, p => {
       const trip = (p.trips || []).find(tr => tr.id === tripId);
       return addLog({ ...p, trips: (p.trips || []).filter(tr => tr.id !== tripId) }, 'TRIP_DELETE', `출장 삭제: ${trip?.engineerName || ''} (${trip?.departureDate || ''}~${trip?.returnDate || ''})`);
-    }));
+    });
   };
 
   // === AS 핸들러 ===
@@ -1317,28 +1447,19 @@ export default function App() {
       // 완료 시 보고서 메타 (보고서 첨부 또는 N/A)
       report: null,
       status: '접수',
-      date: new Date().toLocaleString(),
+      date: nowStored(),
       files: filesMeta
     };
-    setProjects(prev => {
-      const next = prev.map(p => p.id !== projectId ? p : addLog({ ...p, asRecords: [...(p.asRecords || []), record] }, 'AS_ADD', `AS 등록 [${category}] (${data.type})${record.priority === '긴급' ? ' [긴급]' : ''}: ${data.description.substring(0, 30)}${data.description.length > 30 ? '...' : ''}`));
-      saveToGoogleDB('UPDATE_PROJECTS', next);
-      return next;
-    });
+    syncProject(projectId, p => addLog({ ...p, asRecords: [...(p.asRecords || []), record] }, 'AS_ADD', `AS 등록 [${category}] (${data.type})${record.priority === '긴급' ? ' [긴급]' : ''}: ${data.description.substring(0, 30)}${data.description.length > 30 ? '...' : ''}`));
   };
 
   // 답글/처리 코멘트 추가 — 작성자/시각/내용
   const handleAddASComment = (projectId, asId, text) => {
     const trimmed = (text || '').trim();
     if (!trimmed) return;
-    setProjects(prev => {
-      const next = prev.map(p => {
-        if (p.id !== projectId) return p;
-        const comment = { id: Date.now(), author: currentUser.name, text: trimmed, time: new Date().toLocaleString() };
-        return { ...p, asRecords: (p.asRecords || []).map(a => a.id === asId ? { ...a, comments: [...(a.comments || []), comment] } : a) };
-      });
-      saveToGoogleDB('UPDATE_PROJECTS', next);
-      return next;
+    syncProject(projectId, p => {
+      const comment = { id: Date.now(), author: currentUser.name, text: trimmed, time: nowStored() };
+      return { ...p, asRecords: (p.asRecords || []).map(a => a.id === asId ? { ...a, comments: [...(a.comments || []), comment] } : a) };
     });
   };
 
@@ -1352,15 +1473,10 @@ export default function App() {
       if (!reportMeta) return;
       reportMeta = { fileId: reportMeta.fileId, fileName: reportMeta.fileName, mimeType: reportMeta.mimeType, size: reportMeta.size, viewUrl: reportMeta.viewUrl, downloadUrl: reportMeta.downloadUrl };
     }
-    setProjects(prev => {
-      const next = prev.map(p => {
-        if (p.id !== projectId) return p;
-        const asRec = (p.asRecords || []).find(a => a.id === asId);
-        const updated = { ...p, asRecords: (p.asRecords || []).map(a => a.id === asId ? { ...a, status: '완료', report: isNA ? { naReason: (opts && opts.naReason) || 'N/A', completedAt: new Date().toLocaleString() } : { ...reportMeta, completedAt: new Date().toLocaleString() } } : a) };
-        return addLog(updated, 'AS_UPDATE', `AS 완료: ${asRec?.type || ''}${isNA ? ' (보고서 N/A)' : reportMeta ? ` (보고서: ${reportMeta.fileName})` : ''}`);
-      });
-      saveToGoogleDB('UPDATE_PROJECTS', next);
-      return next;
+    syncProject(projectId, p => {
+      const asRec = (p.asRecords || []).find(a => a.id === asId);
+      const updated = { ...p, asRecords: (p.asRecords || []).map(a => a.id === asId ? { ...a, status: '완료', report: isNA ? { naReason: (opts && opts.naReason) || 'N/A', completedAt: nowStored() } : { ...reportMeta, completedAt: nowStored() } } : a) };
+      return addLog(updated, 'AS_UPDATE', `AS 완료: ${asRec?.type || ''}${isNA ? ' (보고서 N/A)' : reportMeta ? ` (보고서: ${reportMeta.fileName})` : ''}`);
     });
   };
 
@@ -1368,48 +1484,42 @@ export default function App() {
   const handleRevertCompleteAS = (projectId, asId, reason) => {
     const r = (reason || '').trim();
     if (!r) return;
-    setProjects(prev => {
-      const next = prev.map(p => {
-        if (p.id !== projectId) return p;
-        const asRec = (p.asRecords || []).find(a => a.id === asId);
-        if (!asRec) return p;
-        // HW면 '조치', SW면 '검증'으로 되돌림 (직전 단계)
-        const prevStatus = (asRec.category || 'HW') === 'SW' ? '검증' : '조치';
-        const comment = { id: Date.now(), author: currentUser.name, text: `[완료 취소] ${r}`, time: new Date().toLocaleString() };
-        const updated = { ...p, asRecords: (p.asRecords || []).map(a => a.id === asId ? { ...a, status: prevStatus, comments: [...(a.comments || []), comment] } : a) };
-        return addLog(updated, 'AS_UPDATE', `AS 완료 취소: ${asRec.type} → ${prevStatus} (사유: ${r.substring(0, 40)})`);
-      });
-      saveToGoogleDB('UPDATE_PROJECTS', next);
-      return next;
+    syncProject(projectId, p => {
+      const asRec = (p.asRecords || []).find(a => a.id === asId);
+      if (!asRec) return p;
+      const prevStatus = (asRec.category || 'HW') === 'SW' ? '검증' : '조치';
+      const comment = { id: Date.now(), author: currentUser.name, text: `[완료 취소] ${r}`, time: nowStored() };
+      const updated = { ...p, asRecords: (p.asRecords || []).map(a => a.id === asId ? { ...a, status: prevStatus, comments: [...(a.comments || []), comment] } : a) };
+      return addLog(updated, 'AS_UPDATE', `AS 완료 취소: ${asRec.type} → ${prevStatus} (사유: ${r.substring(0, 40)})`);
     });
   };
 
   const handleUpdateAS = (projectId, asId, updates) => {
-    syncProjects(projects.map(p => {
-      if (p.id !== projectId) return p;
+    syncProject(projectId, p => {
       const updated = { ...p, asRecords: (p.asRecords || []).map(a => a.id === asId ? { ...a, ...updates } : a) };
       if (updates.status) {
         const as = p.asRecords.find(a => a.id === asId);
         return addLog(updated, 'AS_UPDATE', `AS 상태: ${as?.type || ''} → ${updates.status}`);
       }
       return updated;
-    }));
+    });
   };
 
   const handleDeleteAS = (projectId, asId) => {
-    syncProjects(projects.map(p => p.id !== projectId ? p : { ...p, asRecords: (p.asRecords || []).filter(a => a.id !== asId) }));
+    syncProject(projectId, p => ({ ...p, asRecords: (p.asRecords || []).filter(a => a.id !== asId) }));
   };
 
   const handleEditProject = (projectId, data) => {
-    syncProjects(projects.map(p => {
-      if (p.id !== projectId) return p;
+    // ADMIN 가드 — 산업군 변경은 ADMIN만. 사전 검사 후 syncProject 호출.
+    const target = projects.find(p => p.id === projectId);
+    if (target && data.domain !== undefined && target.domain !== data.domain && currentUser.role !== 'ADMIN') {
+      showToast(t('산업군은 관리자만 수정할 수 있습니다.', 'Domain can only be changed by admin.'));
+      return;
+    }
+    syncProject(projectId, p => {
       const changes = [];
       const fmtDate = (v) => v || '미정';
       if (data.domain !== undefined && p.domain !== data.domain) {
-        if (currentUser.role !== 'ADMIN') {
-          showToast(t('산업군은 관리자만 수정할 수 있습니다.', 'Domain can only be changed by admin.'));
-          return p;
-        }
         changes.push(`산업군: ${p.domain} → ${data.domain}`);
       }
       if (p.name !== data.name) changes.push(`이름: ${p.name} → ${data.name}`);
@@ -1432,7 +1542,7 @@ export default function App() {
       }
       const updated = { ...p, ...data };
       return changes.length > 0 ? addLog(updated, 'PROJECT_EDIT', `프로젝트 수정: ${changes.join(', ')}`) : updated;
-    }));
+    });
     setIsProjectEditOpen(false);
     showToast(t('프로젝트 정보가 수정되었습니다.', 'Project updated.'));
   };
@@ -1447,17 +1557,36 @@ export default function App() {
       note: payload.note || '',
       author: currentUser.name
     };
-    syncProjects(projects.map(p => p.id !== projectId ? p : addLog({ ...p, versions: [...(p.versions || []), entry] }, 'VERSION_CHANGE', `[${entry.category}] ${entry.version}${entry.note ? ` — ${entry.note}` : ''}`)));
+    syncProject(projectId, p => addLog({ ...p, versions: [...(p.versions || []), entry] }, 'VERSION_CHANGE', `[${entry.category}] ${entry.version}${entry.note ? ` — ${entry.note}` : ''}`));
   };
+  // 초기 이력 일괄 등록 — 시스템 도입 전 기존 버전 이력을 한 번에 등록
+  const handleAddVersionsBulk = (projectId, entries) => {
+    if (!Array.isArray(entries) || entries.length === 0) return;
+    const baseTs = Date.now();
+    const newOnes = entries.map((e, i) => ({
+      id: baseTs + i,
+      category: e.category,
+      version: e.version,
+      releaseDate: e.releaseDate || '',
+      note: e.note || '(초기 이력 일괄 등록)',
+      author: `${currentUser.name} (initial import)`
+    }));
+    syncProject(projectId, p => addLog(
+      { ...p, versions: [...(p.versions || []), ...newOnes] },
+      'VERSION_CHANGE',
+      `초기 버전 이력 일괄 등록 (${newOnes.length}건)`
+    ));
+    showToast(`버전 이력 ${newOnes.length}건 등록됨`);
+  };
+
   const handleUpdateVersion = (projectId, versionId, updates) => {
-    syncProjects(projects.map(p => p.id !== projectId ? p : { ...p, versions: (p.versions || []).map(v => v.id === versionId ? { ...v, ...updates } : v) }));
+    syncProject(projectId, p => ({ ...p, versions: (p.versions || []).map(v => v.id === versionId ? { ...v, ...updates } : v) }));
   };
   const handleDeleteVersion = (projectId, versionId) => {
-    syncProjects(projects.map(p => {
-      if (p.id !== projectId) return p;
+    syncProject(projectId, p => {
       const v = (p.versions || []).find(x => x.id === versionId);
       return addLog({ ...p, versions: (p.versions || []).filter(x => x.id !== versionId) }, 'VERSION_DELETE', `[${v?.category || ''}] ${v?.version || ''} 삭제`);
-    }));
+    });
   };
 
   // === 참고자료(첨부) — Google Drive 업로드 ===
@@ -1502,19 +1631,15 @@ export default function App() {
       categoryFolderUrl: f.categoryFolderUrl,
       category: f.category || cat,
       uploadedBy: currentUser.name,
-      uploadedAt: new Date().toLocaleString()
+      uploadedAt: nowStored()
     };
     // 회의록/노트/AS 카테고리는 별도 흐름이 부르므로 attachments에 넣지 않고 그대로 반환
     if (cat === '회의록' || cat === '노트' || cat === 'AS') {
       if (onProgress) onProgress({ stage: 'done', percent: 100 });
       return attachment;
     }
-    // 여러 파일 연속 업로드 시 stale closure 방지 — 함수형 setState로 최신 상태 읽기
-    setProjects(prev => {
-      const next = prev.map(p => p.id !== projectId ? p : addLog({ ...p, attachments: [...(p.attachments || []), attachment] }, 'ATTACH_ADD', `${cat} 업로드: ${attachment.fileName}`));
-      saveToGoogleDB('UPDATE_PROJECTS', next);
-      return next;
-    });
+    // 여러 파일 연속 업로드 시 stale closure 방지 — syncProject가 prev 기반으로 처리
+    syncProject(projectId, p => addLog({ ...p, attachments: [...(p.attachments || []), attachment] }, 'ATTACH_ADD', `${cat} 업로드: ${attachment.fileName}`));
     if (onProgress) onProgress({ stage: 'done', percent: 100 });
     showToast(t('업로드 완료', 'Upload complete'));
     return attachment;
@@ -1529,11 +1654,7 @@ export default function App() {
     if (target.fileId) {
       await callGoogleAction('DELETE_FILE', { fileId: target.fileId });
     }
-    setProjects(prev => {
-      const next = prev.map(p => p.id !== projectId ? p : addLog({ ...p, attachments: (p.attachments || []).filter(a => a.id !== attachmentId) }, 'ATTACH_DELETE', `참고자료 삭제: ${target.fileName}`));
-      saveToGoogleDB('UPDATE_PROJECTS', next);
-      return next;
-    });
+    syncProject(projectId, p => addLog({ ...p, attachments: (p.attachments || []).filter(a => a.id !== attachmentId) }, 'ATTACH_DELETE', `참고자료 삭제: ${target.fileName}`));
     showToast(t('참고자료가 삭제되었습니다.', 'Attachment deleted.'));
   };
 
@@ -1580,7 +1701,7 @@ export default function App() {
       decisions,
       actions,
       files: filesMeta,
-      date: new Date().toLocaleString()
+      date: nowStored()
     };
     const firstName = filesMeta[0] && filesMeta[0].fileName;
     const kindLabel = kind === 'note' ? '노트' : '회의록';
@@ -1605,19 +1726,16 @@ export default function App() {
         author: currentUser.name,
         kind, text, summary, meetingDate, attendees, decisions, actions,
         files: extraFilesMeta,
-        date: new Date().toLocaleString(),
+        date: nowStored(),
         broadcastFrom: projectId  // 원본 프로젝트 표시 (참고용)
       };
     }
 
-    setProjects(prev => {
-      const next = prev.map(p => {
-        if (p.id === projectId) return addLog({ ...p, notes: [...(p.notes || []), note] }, 'NOTE_ADD', `${kindLabel}: ${headline}${extraIds.length > 0 ? ` (+ ${extraIds.length}개 프로젝트에 동시 등록)` : ''}`);
-        if (extraNotes[p.id]) return addLog({ ...p, notes: [...(p.notes || []), extraNotes[p.id]] }, 'NOTE_ADD', `${kindLabel} (공유): ${headline}`);
-        return p;
-      });
-      saveToGoogleDB('UPDATE_PROJECTS', next);
-      return next;
+    // 원본 프로젝트 — delta 저장 (단건)
+    syncProject(projectId, p => addLog({ ...p, notes: [...(p.notes || []), note] }, 'NOTE_ADD', `${kindLabel}: ${headline}${extraIds.length > 0 ? ` (+ ${extraIds.length}개 프로젝트에 동시 등록)` : ''}`));
+    // 공유 대상 프로젝트들 — 각각 delta 저장 (병렬 N건이지만 행 단위 저장이라 전체 배열 덮어쓰기보다 가벼움)
+    Object.keys(extraNotes).forEach(extraId => {
+      syncProject(extraId, p => addLog({ ...p, notes: [...(p.notes || []), extraNotes[extraId]] }, 'NOTE_ADD', `${kindLabel} (공유): ${headline}`));
     });
   };
 
@@ -1648,25 +1766,20 @@ export default function App() {
     }
     const finalFiles = [...keptFiles, ...newMetas];
     const kind = kindFinal;
-    setProjects(prev => {
-      const next = prev.map(p => {
-        if (p.id !== projectId) return p;
-        const updated = { ...p, notes: (p.notes || []).map(n => n.id !== noteId ? n : {
-          ...n, kind,
-          summary: updates.summary !== undefined ? updates.summary : n.summary,
-          text: updates.text !== undefined ? updates.text : n.text,
-          meetingDate: kind === 'meeting' ? (updates.meetingDate !== undefined ? updates.meetingDate : n.meetingDate) : '',
-          attendees: kind === 'meeting' ? (updates.attendees !== undefined ? updates.attendees : n.attendees) : '',
-          decisions: kind === 'meeting' ? (updates.decisions !== undefined ? updates.decisions : n.decisions) : '',
-          actions: kind === 'meeting' ? (updates.actions !== undefined ? updates.actions : n.actions) : '',
-          files: finalFiles,
-          editedAt: new Date().toLocaleString()
-        }) };
-        const headline = (updates.text || target.text || '').substring(0, 30);
-        return addLog(updated, 'NOTE_ADD', `${kind === 'note' ? '노트' : '회의록'} 수정: ${headline}${(updates.text || target.text || '').length > 30 ? '...' : ''}`);
-      });
-      saveToGoogleDB('UPDATE_PROJECTS', next);
-      return next;
+    syncProject(projectId, p => {
+      const updated = { ...p, notes: (p.notes || []).map(n => n.id !== noteId ? n : {
+        ...n, kind,
+        summary: updates.summary !== undefined ? updates.summary : n.summary,
+        text: updates.text !== undefined ? updates.text : n.text,
+        meetingDate: kind === 'meeting' ? (updates.meetingDate !== undefined ? updates.meetingDate : n.meetingDate) : '',
+        attendees: kind === 'meeting' ? (updates.attendees !== undefined ? updates.attendees : n.attendees) : '',
+        decisions: kind === 'meeting' ? (updates.decisions !== undefined ? updates.decisions : n.decisions) : '',
+        actions: kind === 'meeting' ? (updates.actions !== undefined ? updates.actions : n.actions) : '',
+        files: finalFiles,
+        editedAt: nowStored()
+      }) };
+      const headline = (updates.text || target.text || '').substring(0, 30);
+      return addLog(updated, 'NOTE_ADD', `${kind === 'note' ? '노트' : '회의록'} 수정: ${headline}${(updates.text || target.text || '').length > 30 ? '...' : ''}`);
     });
   };
 
@@ -1682,11 +1795,7 @@ export default function App() {
         }
       }
     }
-    setProjects(prev => {
-      const next = prev.map(p => p.id !== projectId ? p : { ...p, notes: (p.notes || []).filter(n => n.id !== noteId) });
-      saveToGoogleDB('UPDATE_PROJECTS', next);
-      return next;
-    });
+    syncProject(projectId, p => ({ ...p, notes: (p.notes || []).filter(n => n.id !== noteId) }));
   };
 
 
@@ -1702,6 +1811,58 @@ export default function App() {
     return (
       <div className="fixed top-16 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full shadow-2xl z-[300] flex items-center animate-[fadeIn_0.3s_ease-in-out] w-max font-bold text-sm">
         {toastMessage}
+      </div>
+    );
+  };
+
+  // 동기화 중 전체 화면 차단 모달 — savingCount > 0 + 800ms 이상 지연 시 자동 표시
+  // 빠른 save는 모달 없이 통과, 진짜 오래 걸릴 때만 차단.
+  // 새로고침 경고는 beforeunload에서 별도 처리.
+  // 데이터 보호 — 부팅 시 로컬 백업과 원격 불일치 안내 배너 (Track A3)
+  const renderRestoreBanner = () => {
+    if (!restoreCandidates || !restoreCandidates.projects || restoreCandidates.projects.length === 0) return null;
+    return (
+      <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[350] max-w-2xl w-[92%] bg-amber-50 border-2 border-amber-300 rounded-xl shadow-xl px-4 py-3 flex items-start gap-3">
+        <svg className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <div className="flex-1 text-xs">
+          <div className="font-bold text-amber-900 mb-1">{t('복원 가능한 변경이 발견됐습니다', 'Recoverable changes detected')}</div>
+          <div className="text-amber-800 leading-relaxed">{restoreCandidates.summary}</div>
+          <div className="mt-1 text-amber-700/80">
+            {t('다른 사용자가 덮어썼거나 일시적 동기화 오류일 수 있습니다. 콘솔(F12)에서 항목 확인 후 필요하면 재등록하세요.', 'May be overwritten by another user or transient sync error. Check console (F12) for details.')}
+          </div>
+        </div>
+        <button onClick={() => setRestoreCandidates(null)} className="text-amber-700 hover:text-amber-900 shrink-0 text-lg font-bold leading-none" title={t('닫기', 'Dismiss')}>×</button>
+      </div>
+    );
+  };
+
+  const renderSyncingOverlay = () => {
+    if (!showSyncOverlay) return null;
+    return (
+      <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-[400]" onClick={(e) => e.stopPropagation()}>
+        <div className="bg-white rounded-2xl shadow-2xl px-8 py-7 max-w-md mx-4 text-center" onClick={(e) => e.stopPropagation()}>
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-amber-100 rounded-full mb-4">
+            <svg className="animate-spin h-9 w-9 text-amber-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          </div>
+          <h2 className="text-xl font-bold text-slate-800 mb-2">
+            {t('서버에 동기화 중', 'Syncing to Server')}
+          </h2>
+          <p className="text-sm text-slate-600 leading-relaxed">
+            {t('변경 사항을 안전하게 저장하고 있습니다.', 'Saving your changes safely.')}
+            <br/>
+            <span className="font-bold text-amber-700">
+              {t('새로고침이나 페이지 이동을 잠시만 멈춰주세요.', 'Please don\'t refresh or navigate away.')}
+            </span>
+          </p>
+          <div className="mt-4 text-[11px] text-slate-400">
+            {t(`처리 중 ${savingCount}건`, `${savingCount} pending`)}
+          </div>
+        </div>
       </div>
     );
   };
@@ -1726,7 +1887,7 @@ export default function App() {
     onSetCurrentSetupTask: handleSetCurrentSetupTask,
     onSignOff: handleSignOff,
     onCancelSignOff: handleCancelSignOff,
-    onAddExtraTask: handleAddExtraTask, onUpdateExtraTask: handleUpdateExtraTask, onDeleteExtraTask: handleDeleteExtraTask,
+    onAddExtraTask: handleAddExtraTask, onUpdateExtraTask: handleUpdateExtraTask, onDeleteExtraTask: handleDeleteExtraTask, onAddExtraTaskComment: handleAddExtraTaskComment, onImportExtraTasks: handleImportExtraTasks,
     onAddNote: handleAddNote, onDeleteNote: handleDeleteNote, onEditNote: handleEditNote,
     onAddCustomerRequest: handleAddCustomerRequest,
     onUpdateCustomerRequestStatus: handleUpdateCustomerRequestStatus,
@@ -1755,6 +1916,8 @@ export default function App() {
     return (
       <div className="flex flex-col h-screen bg-slate-100 font-sans text-slate-800 animate-[fadeIn_0.3s_ease-in-out]">
         {renderToast()}
+        {renderRestoreBanner()}
+        {renderSyncingOverlay()}
         <div className="bg-slate-900 text-white p-4 shadow-md flex justify-between items-center sticky top-0 z-20 shrink-0">
           <div className="flex items-center space-x-2"><div className="w-8 h-8 bg-blue-500 rounded flex items-center justify-center font-bold text-lg">M</div><div><h1 className="font-bold text-sm leading-tight">MAK-PMS</h1><p className="text-[10px] text-blue-300">{t('모바일 모드', 'Mobile Mode')}</p></div></div>
           <div className="flex items-center gap-1.5">
@@ -1830,7 +1993,7 @@ export default function App() {
         </div>
 
         <Suspense fallback={null}>
-          {isProjectModalOpen && <ProjectModal engineers={engineers} customers={customers} onClose={() => setIsProjectModalOpen(false)} onSubmit={handleAddProject} t={t} />}
+          {isProjectModalOpen && <ProjectModal engineers={engineers} customers={customers} subDomainsBySettings={settings.subDomains} onClose={() => setIsProjectModalOpen(false)} onSubmit={handleAddProject} t={t} />}
           {isIssueModalOpen && <MobileIssueModal projects={projects} onClose={() => setIsIssueModalOpen(false)} onSubmit={handleAddIssue} t={t} />}
           {isPartModalOpen && <MobilePartModal projects={projects} onClose={() => setIsPartModalOpen(false)} onSubmit={handleAddPart} t={t} />}
           {isDailyReportOpen && <DailyReportModal projects={projects} onClose={() => setIsDailyReportOpen(false)} onSubmit={handleAddDailyReport} t={t} />}
@@ -1851,6 +2014,8 @@ export default function App() {
   return (
     <div className="flex flex-col h-screen font-sans relative animate-[fadeIn_0.3s_ease-in-out] bg-slate-50">
       {renderToast()}
+      {renderRestoreBanner()}
+      {renderSyncingOverlay()}
       <div className="flex flex-1 overflow-hidden">
         <aside className={`${sidebarCollapsed ? 'w-16' : 'w-64'} bg-slate-900 text-slate-300 flex flex-col shrink-0 transition-all duration-200`}>
           <div className={`h-16 flex items-center border-b border-slate-800 shrink-0 ${sidebarCollapsed ? 'justify-center px-2' : 'px-6'}`}>
@@ -1878,6 +2043,8 @@ export default function App() {
               <>
                 <NavItem icon={<UserCog size={20} />} label={t('사용자 관리', 'User Management')} active={activeTab === 'users'} onClick={() => setActiveTab('users')} collapsed={sidebarCollapsed} />
                 <NavItem icon={<SettingsIcon size={20} />} label={t('시스템 설정', 'System Settings')} active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} collapsed={sidebarCollapsed} />
+                {/* 히든 메뉴 (ADMIN 전용) — 메일 발송 이력 */}
+                <NavItem icon={<MailIcon size={20} />} label={t('메일 발송 이력', 'Mail History')} active={activeTab === 'mail_log'} onClick={() => setActiveTab('mail_log')} collapsed={sidebarCollapsed} />
               </>
             )}
           </nav>
@@ -1894,6 +2061,12 @@ export default function App() {
         <main className="flex-1 flex flex-col overflow-hidden relative min-w-0">
           <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-end px-3 md:px-8 z-10 shadow-sm shrink-0 overflow-x-auto">
             <div className="flex items-center gap-2 md:gap-4 shrink-0">
+              {savingCount > 0 ? null : (
+                <span className="inline-flex items-center bg-emerald-50 text-emerald-700 text-[11px] font-bold px-2 py-1 rounded-full border border-emerald-200 shadow-sm" title={t('모든 변경이 서버에 저장됨 — 새로고침해도 안전', 'All changes saved — safe to reload')}>
+                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1.5"></span>
+                  {t('저장됨', 'Saved')}
+                </span>
+              )}
               <NotificationBell notifications={notifications} lastSeen={notifLastSeen} onMarkAllRead={handleMarkAllRead} onJump={handleNotificationJump} t={t} />
               <button onClick={() => setIsHelpOpen(true)} className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-3 py-1.5 rounded-full text-xs font-bold transition-colors flex items-center shadow-sm border border-indigo-200" title={t('사용자 가이드', 'User Guide')}><HelpCircle size={14} className="mr-1.5" /> {t('도움말', 'Help')}</button>
               <button onClick={() => setLang(lang === 'ko' ? 'en' : 'ko')} className="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-full text-xs font-bold transition-colors flex items-center shadow-sm hover:bg-slate-200"><Globe size={14} className="mr-1.5" /> {lang === 'ko' ? 'EN' : 'KO'}</button>
@@ -1929,7 +2102,7 @@ export default function App() {
               )}
               {activeTab === 'resources' && <ResourceListView engineers={engineers} projects={projects} issues={issues} getStatusColor={getStatusColor} TODAY={TODAY} onAddClick={() => { setSelectedEngineer(null); setIsEngineerModalOpen(true); }} onEditClick={(eng) => { setSelectedEngineer(eng); setIsEngineerModalOpen(true); }} onManageCertificates={(eng) => { setCertEngineerId(eng.id); setIsCertModalOpen(true); }} onShowActivity={(eng) => { setActivityEngineerId(eng.id); setIsActivityModalOpen(true); }} onDeleteClick={(eng) => setEngineerToDelete(eng)} currentUser={currentUser} t={t} />}
               {activeTab === 'as' && currentUser.role !== 'CUSTOMER' && (
-                <ASManagementView projects={projects} onProjectClick={openProjectDetail} onUpdateAS={handleUpdateAS} onAddAS={handleAddAS} onAddASComment={handleAddASComment} onCompleteAS={handleCompleteAS} onRevertCompleteAS={handleRevertCompleteAS} onUploadAttachment={handleUploadAttachment} driveConfigured={!!settings.driveRootFolderId} currentUser={currentUser} t={t} />
+                <ASManagementView projects={projects} onProjectClick={openProjectDetail} onUpdateAS={handleUpdateAS} onAddAS={handleAddAS} onAddASComment={handleAddASComment} onCompleteAS={handleCompleteAS} onRevertCompleteAS={handleRevertCompleteAS} onUploadAttachment={handleUploadAttachment} driveConfigured={!!settings.driveRootFolderId} mailGasUrl={settings.mailGasUrl} currentUser={currentUser} t={t} />
               )}
               {activeTab === 'weekly' && currentUser.role !== 'CUSTOMER' && (
                 (settings.weeklyReportEnabled && (currentUser.role === 'ADMIN' || currentUser.weeklyReportEnabled)) ? (
@@ -1955,6 +2128,9 @@ export default function App() {
               {activeTab === 'settings' && currentUser.role === 'ADMIN' && (
                 <SystemSettingsView settings={settings} onSave={syncSettings} currentUser={currentUser} t={t} />
               )}
+              {activeTab === 'mail_log' && currentUser.role === 'ADMIN' && (
+                <AdminMailLogView currentUser={currentUser} t={t} />
+              )}
               {activeTab === 'users' && currentUser.role === 'ADMIN' && (
                 <UserManagementView
                   users={users}
@@ -1975,7 +2151,7 @@ export default function App() {
           </div>
 
           <Suspense fallback={null}>
-            {isProjectModalOpen && <ProjectModal engineers={engineers} customers={customers} onClose={() => setIsProjectModalOpen(false)} onSubmit={handleAddProject} t={t} />}
+            {isProjectModalOpen && <ProjectModal engineers={engineers} customers={customers} subDomainsBySettings={settings.subDomains} onClose={() => setIsProjectModalOpen(false)} onSubmit={handleAddProject} t={t} />}
             {isIssueModalOpen && <IssueModal projects={projects} onClose={() => setIsIssueModalOpen(false)} onSubmit={handleAddIssue} t={t} />}
             {isPartModalOpen && <PartModal projects={projects} onClose={() => setIsPartModalOpen(false)} onSubmit={handleAddPart} t={t} />}
             {isSiteModalOpen && <SiteModal site={selectedSite} customers={customers} onClose={() => setIsSiteModalOpen(false)} onSubmit={handleAddSite} t={t} />}
@@ -1998,10 +2174,10 @@ export default function App() {
             {isVersionModalOpen && versionEditProject && (() => {
               const liveProject = projects.find(p => p.id === versionEditProject.id);
               if (!liveProject) return null;
-              return <VersionModal project={liveProject} onClose={() => setIsVersionModalOpen(false)} onAdd={handleAddVersion} onUpdate={handleUpdateVersion} onDelete={handleDeleteVersion} t={t} />;
+              return <VersionModal project={liveProject} onClose={() => setIsVersionModalOpen(false)} onAdd={handleAddVersion} onAddBulk={handleAddVersionsBulk} onUpdate={handleUpdateVersion} onDelete={handleDeleteVersion} t={t} />;
             })()}
             {isPhaseGanttOpen && <PhaseGanttModal project={phaseGanttProject} onClose={() => setIsPhaseGanttOpen(false)} t={t} />}
-            {isProjectEditOpen && <ProjectEditModal project={projectEditTarget} engineers={engineers} customers={customers} currentUser={currentUser} onClose={() => setIsProjectEditOpen(false)} onSubmit={handleEditProject} t={t} />}
+            {isProjectEditOpen && <ProjectEditModal project={projectEditTarget} engineers={engineers} customers={customers} currentUser={currentUser} subDomainsBySettings={settings.subDomains} onClose={() => setIsProjectEditOpen(false)} onSubmit={handleEditProject} t={t} />}
             {isPhaseEditOpen && phaseEditProjectId && (() => {
               const lp = projects.find(p => p.id === phaseEditProjectId);
               if (!lp) return null;
@@ -2015,7 +2191,7 @@ export default function App() {
             {isTeamModalOpen && teamEditProjectId && (() => {
               const liveProject = projects.find(p => p.id === teamEditProjectId);
               if (!liveProject) return null;
-              return <ProjectTeamModal project={liveProject} engineers={engineers} currentUser={currentUser} onClose={() => { setIsTeamModalOpen(false); setTeamEditProjectId(null); }} onChangeManager={handleChangeManager} onToggleAssignment={handleToggleEngineerAssignment} onAddTrip={handleAddTrip} onUpdateTrip={handleUpdateTrip} onDeleteTrip={handleDeleteTrip} t={t} />;
+              return <ProjectTeamModal project={liveProject} engineers={engineers} currentUser={currentUser} mailGasUrl={settings.mailGasUrl} onClose={() => { setIsTeamModalOpen(false); setTeamEditProjectId(null); }} onChangeManager={handleChangeManager} onToggleAssignment={handleToggleEngineerAssignment} onAddTrip={handleAddTrip} onUpdateTrip={handleUpdateTrip} onDeleteTrip={handleDeleteTrip} t={t} />;
             })()}
             {isReleaseModalOpen && <ReleaseModal onClose={() => setIsReleaseModalOpen(false)} onSubmit={handleAddRelease} t={t} />}
             {isEngineerModalOpen && <EngineerModal engineer={selectedEngineer} projects={projects} onClose={() => setIsEngineerModalOpen(false)} onSubmit={handleAddEngineer} t={t} />}

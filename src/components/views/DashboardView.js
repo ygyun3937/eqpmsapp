@@ -1,12 +1,13 @@
 import React, { useMemo, memo, useState, useRef, useEffect } from 'react';
 import { Kanban, AlertCircle, CheckCircle, AlertTriangle, PieChart, BarChart3, Clock, Wrench, Download, CalendarDays, User, Building, TrendingUp, Users, MessageSquare, LifeBuoy, ExternalLink, MapPin, HardHat, ShieldAlert, Plane, UserCircle, XCircle, Calendar, Home, FileText, X, Search, Filter, ZoomIn, ZoomOut, Crosshair, Paperclip, ChevronDown, ChevronRight } from 'lucide-react';
-import { TODAY } from '../../constants';
+import { TODAY, formatDomain } from '../../constants';
 import { getCurrentTrip, fmtYMD, calcOverallProgress } from '../../utils/calc';
 import { PROJECT_PHASES } from '../../constants';
 import { Star } from 'lucide-react';
 import StatCard from '../common/StatCard';
 import SimpleBarChart from '../common/SimpleBarChart';
 import { exportToExcel, drawDonutPng, drawBarPng } from '../../utils/export';
+import { parseAnyDate } from '../../utils/dateUtils';
 
 // 사용자 정의(prj.phases) 우선, 없으면 기본 단계명
 const getCurrentPhaseName = (prj) => {
@@ -2379,7 +2380,7 @@ const DashboardView = memo(function DashboardView({ projects: rawProjects, issue
                           <div className="text-xs text-slate-500 flex items-center">
                             <User size={10} className="mr-1" />{p.manager}
                             <span className="mx-1.5 text-slate-300">·</span>
-                            <span className="text-slate-400">{p.domain}</span>
+                            <span className="text-slate-400">{formatDomain(p.domain, p.subDomain)}</span>
                           </div>
                         </div>
                         <div className="ml-3 shrink-0 w-20">

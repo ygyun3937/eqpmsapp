@@ -3,7 +3,7 @@ import {
   Building2, X, Plus, Trash, Edit, Check, Mail, Phone, Smartphone,
   MapPin, StickyNote, IdCard, Briefcase, Users, Link2
 } from 'lucide-react';
-import { DOMAINS } from '../../constants';
+import { DOMAINS, formatDomain } from '../../constants';
 
 const ensureArr = (v) => (Array.isArray(v) ? v : []);
 // 충돌 없는 contact id 생성 — Date.now() 단독은 같은 ms에 두 개 추가 시 충돌하여
@@ -197,7 +197,7 @@ const ProjectRoleSection = ({
                     {p.status && (
                       <span className={`text-[9px] font-bold px-1 py-0.5 rounded shrink-0 ${p.status === '완료' ? 'bg-emerald-50 text-emerald-700' : p.status === '이슈발생' ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'}`}>{p.status}</span>
                     )}
-                    {p.domain && <span className="text-[9px] text-slate-400 shrink-0">{p.domain}</span>}
+                    {p.domain && <span className="text-[9px] text-slate-400 shrink-0">{formatDomain(p.domain, p.subDomain)}</span>}
                   </div>
                   <div className="text-[10px] text-slate-500 truncate">
                     {p.endUser && <span>엔드유저: <strong>{p.endUser}</strong></span>}
@@ -224,7 +224,7 @@ const ProjectRoleSection = ({
             <div key={p.id} className={`relative group bg-white border ${c.cardBorder} rounded-lg p-2.5 ${c.cardHover} transition-colors`}>
               <div className="flex items-center justify-between mb-1 pr-10">
                 <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${p.status === '완료' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : p.status === '이슈발생' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>{p.status || '진행중'}</span>
-                {p.domain && <span className="text-[9px] text-slate-400">{p.domain}</span>}
+                {p.domain && <span className="text-[9px] text-slate-400">{formatDomain(p.domain, p.subDomain)}</span>}
               </div>
               <div className="text-xs font-bold text-slate-800 truncate" title={p.name}>{p.name}</div>
               {(p.site || p.manager) && (

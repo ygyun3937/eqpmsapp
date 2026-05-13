@@ -15,8 +15,39 @@ export const AS_SW_STATUSES = ['접수', '분석', '개발', '적용', '검증',
 export const AS_DEFAULT_CATEGORY = 'HW';
 export const getASTypesByCategory = (cat) => cat === 'SW' ? AS_SW_TYPES : AS_HW_TYPES;
 export const getASStatusesByCategory = (cat) => cat === 'SW' ? AS_SW_STATUSES : AS_HW_STATUSES;
+// === 도메인 계층화 (대분류 / 중분류) ===
+// 대분류 — 시스템 차원 고정 목록 (ADMIN만 수정 가능, 향후 settings로 이전 가능)
+export const PARENT_DOMAINS = ['2차전지', '반도체', '디스플레이'];
+// 중분류 기본값 — 신규 등록 시 추천. settings.subDomains로 사용자 추가/삭제 가능
+export const SUB_DOMAIN_PRESETS = {
+  '2차전지': ['EOL', 'ESS', '사이클러'],
+  '반도체': ['플라즈마'],
+  '디스플레이': []
+};
+
+// 레거시 단일 도메인 → 신 (domain, subDomain) 분리
+// 기존 데이터/시드 호환을 위한 마이그레이션 매핑
+export const migrateLegacyDomain = (legacy) => {
+  if (!legacy) return { domain: '', subDomain: '' };
+  if (legacy === '2차전지 EOL')      return { domain: '2차전지', subDomain: 'EOL' };
+  if (legacy === '2차전지 사이클러') return { domain: '2차전지', subDomain: '사이클러' };
+  if (PARENT_DOMAINS.indexOf(legacy) >= 0) return { domain: legacy, subDomain: '' };
+  return { domain: legacy, subDomain: '' };
+};
+
+export const isBatteryDomain = (domain) => domain === '2차전지';
+export const formatDomain = (domain, subDomain) =>
+  (domain && subDomain) ? `${domain} · ${subDomain}` : (domain || '');
+
+// 시드 조회 헬퍼 — '대분류/중분류' 키 우선, 없으면 '대분류' 폴백
+const lookupSeed = (table, domain, subDomain, fallback = []) => {
+  if (subDomain && table[`${domain}/${subDomain}`]) return table[`${domain}/${subDomain}`];
+  if (table[domain]) return table[domain];
+  return fallback;
+};
+
+// 레거시: 이전 코드와 호환 (기존 DOMAINS 사용처 점진 마이그레이션용)
 export const DOMAINS = ['반도체', '디스플레이', '2차전지 사이클러', '2차전지 EOL'];
-// 2차전지 계열은 전압/전류/사양 등 추가 스펙 입력 가능
 export const BATTERY_DOMAINS = ['2차전지 사이클러', '2차전지 EOL'];
 
 // 빌드 타임 환경 변수: REACT_APP_TEST_MODE
@@ -62,14 +93,20 @@ export const ENGINEER_GRADES = [
 ];
 
 // 도메인별 버전 카테고리 추천 (자유 추가 가능)
+// 키 컨벤션: '대분류' 또는 '대분류/중분류' (중분류 우선 → 대분류 폴백)
 export const DOMAIN_VERSION_CATEGORIES = {
-  '2차전지 사이클러': ['HW', 'SW', '충방전기 FW', '인터페이스 FW'],
-  '2차전지 EOL': ['HW', 'SW', '충방전기 FW', '인터페이스 FW'],
+  '2차전지': ['HW', 'SW', '충방전기 FW', '인터페이스 FW'],
+  '2차전지/사이클러': ['HW', 'SW', '충방전기 FW', '인터페이스 FW'],
+  '2차전지/EOL': ['HW', 'SW', '충방전기 FW', '인터페이스 FW'],
   '반도체': ['HW', 'SW', 'FW'],
   '디스플레이': ['HW', 'SW', 'FW']
 };
 export const DEFAULT_VERSION_CATEGORIES = ['HW', 'SW', 'FW'];
+export const getVersionCategoriesForDomain = (domain, subDomain) =>
+  lookupSeed(DOMAIN_VERSION_CATEGORIES, domain, subDomain, DEFAULT_VERSION_CATEGORIES);
 
+// 도메인별 태스크 시드 — 키: '대분류' 또는 '대분류/중분류'
+// 중분류별 특화 시드가 있으면 사용, 없으면 대분류 기본 시드 사용
 export const DOMAIN_TASKS = {
   '반도체': [
     { id: 1, name: '장비 반입, 도킹 및 Leveling', isCompleted: false, delayReason: '' },
@@ -88,7 +125,8 @@ export const DOMAIN_TASKS = {
     { id: 5, name: '진공/플라즈마 테스트 및 Tact Time 최적화', isCompleted: false, delayReason: '' },
     { id: 6, name: '최종 양산 평가 (Buy-off) 및 인수인계', isCompleted: false, delayReason: '' },
   ],
-  '2차전지 사이클러': [
+  // 2차전지 대분류 기본 — 사이클러 시드를 일반 템플릿으로 (신규 중분류는 이걸 상속)
+  '2차전지': [
     { id: 1, name: '랙(Rack) 및 채널 유닛 반입/조립', isCompleted: false, delayReason: '' },
     { id: 2, name: '대전류 케이블 및 통신 케이블 포설', isCompleted: false, delayReason: '' },
     { id: 3, name: '전원 인가 및 BMS 네트워크 훅업', isCompleted: false, delayReason: '' },
@@ -97,7 +135,16 @@ export const DOMAIN_TASKS = {
     { id: 6, name: '화재/온도 보호 인터락 동작 테스트', isCompleted: false, delayReason: '' },
     { id: 7, name: '최종 검수 (Buy-off) 및 고객 인수인계', isCompleted: false, delayReason: '' },
   ],
-  '2차전지 EOL': [
+  '2차전지/사이클러': [
+    { id: 1, name: '랙(Rack) 및 채널 유닛 반입/조립', isCompleted: false, delayReason: '' },
+    { id: 2, name: '대전류 케이블 및 통신 케이블 포설', isCompleted: false, delayReason: '' },
+    { id: 3, name: '전원 인가 및 BMS 네트워크 훅업', isCompleted: false, delayReason: '' },
+    { id: 4, name: '채널별 전압/전류(V/I) 캘리브레이션', isCompleted: false, delayReason: '' },
+    { id: 5, name: '충방전 프로파일 구동 및 발열 테스트', isCompleted: false, delayReason: '' },
+    { id: 6, name: '화재/온도 보호 인터락 동작 테스트', isCompleted: false, delayReason: '' },
+    { id: 7, name: '최종 검수 (Buy-off) 및 고객 인수인계', isCompleted: false, delayReason: '' },
+  ],
+  '2차전지/EOL': [
     { id: 1, name: '라인 반입 및 컨베이어/스토퍼 도킹', isCompleted: false, delayReason: '' },
     { id: 2, name: '전원, 공압 훅업 및 I/O 테스트', isCompleted: false, delayReason: '' },
     { id: 3, name: '계측기 (IR/OCV, 헬륨 리크 디텍터) 셋업', isCompleted: false, delayReason: '' },
@@ -106,7 +153,9 @@ export const DOMAIN_TASKS = {
     { id: 6, name: '최종 검수 (Buy-off) 및 양산 이관', isCompleted: false, delayReason: '' },
   ],
 };
+export const getTasksForDomain = (domain, subDomain) => lookupSeed(DOMAIN_TASKS, domain, subDomain);
 
+// 도메인별 체크리스트 시드 — 키 컨벤션 동일 ('대분류' 또는 '대분류/중분류')
 export const DOMAIN_CHECKLIST = {
   '반도체': [
     { category: '기구/반입', task: '장비 Leveling (±0.05도) 및 내진 고정 확인', status: 'Pending', note: '' },
@@ -122,14 +171,21 @@ export const DOMAIN_CHECKLIST = {
     { category: '공정', task: '진공 도달 시간 및 플라즈마 방전 안정성 확인', status: 'Pending', note: '' },
     { category: '안전/환경', task: '안전 펜스 센서, EMO 및 배기(Exhaust) 정상 작동', status: 'Pending', note: '' },
   ],
-  '2차전지 사이클러': [
+  '2차전지': [
     { category: '기구/전장', task: '랙(Rack) 하중 고정 및 절연/접지 저항 규격 확인', status: 'Pending', note: '' },
     { category: '전장', task: '채널별 대전류 단자 체결 토크 및 케이블 마감', status: 'Pending', note: '' },
     { category: '소프트웨어', task: '채널 인식 상태 및 BMS 연동 통신 에러 확인', status: 'Pending', note: '' },
     { category: '계측/공정', task: 'V/I Calibration 후 편차 기준치 이내 확인', status: 'Pending', note: '' },
     { category: '안전/환경', task: '과전압/과전류 알람 및 화재 감지/소화 연동 테스트', status: 'Pending', note: '' },
   ],
-  '2차전지 EOL': [
+  '2차전지/사이클러': [
+    { category: '기구/전장', task: '랙(Rack) 하중 고정 및 절연/접지 저항 규격 확인', status: 'Pending', note: '' },
+    { category: '전장', task: '채널별 대전류 단자 체결 토크 및 케이블 마감', status: 'Pending', note: '' },
+    { category: '소프트웨어', task: '채널 인식 상태 및 BMS 연동 통신 에러 확인', status: 'Pending', note: '' },
+    { category: '계측/공정', task: 'V/I Calibration 후 편차 기준치 이내 확인', status: 'Pending', note: '' },
+    { category: '안전/환경', task: '과전압/과전류 알람 및 화재 감지/소화 연동 테스트', status: 'Pending', note: '' },
+  ],
+  '2차전지/EOL': [
     { category: '기구/반입', task: '컨베이어 수평, 롤러 상태 및 스토퍼 위치 확인', status: 'Pending', note: '' },
     { category: '전장/유틸', task: 'I/O 센서 동작, 공압 실린더 구동 및 Power 확인', status: 'Pending', note: '' },
     { category: '계측', task: 'IR/OCV 측정 영점 세팅 및 리크 디텍터 감도 확인', status: 'Pending', note: '' },
@@ -137,6 +193,7 @@ export const DOMAIN_CHECKLIST = {
     { category: '안전/환경', task: 'Area Sensor(광센서) 동작 및 EMO 비상정지 확인', status: 'Pending', note: '' },
   ],
 };
+export const getChecklistForDomain = (domain, subDomain) => lookupSeed(DOMAIN_CHECKLIST, domain, subDomain);
 
 // 실시간 오늘 날짜 — 시간 부분은 0시로 정규화 (D-Day 계산 정확도)
 export const TODAY = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })();

@@ -87,11 +87,11 @@ const TripScheduleModal = memo(function TripScheduleModal({ project, engineers, 
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">{t('출발일', 'Departure')}</label>
-            <input type="date" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={form.departureDate} onChange={e => setForm({...form, departureDate: e.target.value})} />
+            <input type="date" max="9999-12-31" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={form.departureDate} onChange={e => setForm({...form, departureDate: e.target.value})} />
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">{t('도착(복귀)일', 'Return')}</label>
-            <input type="date" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={form.returnDate} onChange={e => setForm({...form, returnDate: e.target.value})} />
+            <input type="date" max="9999-12-31" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={form.returnDate} onChange={e => setForm({...form, returnDate: e.target.value})} />
           </div>
         </div>
         <div>

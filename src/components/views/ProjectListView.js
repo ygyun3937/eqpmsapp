@@ -1,6 +1,6 @@
 import React, { useState, useMemo, memo, useRef, useEffect } from 'react';
 import { Plus, Filter, AlignJustify, CalendarDays, Clock, User, HardDrive, Monitor, Cpu, Edit, ListTodo, Trash, Download, History, ChevronDown, ChevronUp, Plane, Users, ZoomIn, ZoomOut, Maximize2, Building2, IdCard, Mail, Phone, Smartphone, MapPin, Database, ArrowUpRight, Briefcase, X } from 'lucide-react';
-import { PROJECT_PHASES, BATTERY_DOMAINS, DOMAIN_VERSION_CATEGORIES, DEFAULT_VERSION_CATEGORIES } from '../../constants';
+import { PROJECT_PHASES, BATTERY_DOMAINS, DOMAIN_VERSION_CATEGORIES, DEFAULT_VERSION_CATEGORIES, formatDomain, isBatteryDomain } from '../../constants';
 import { fmtYMD, calcOverallProgress } from '../../utils/calc';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
 import ProjectIssueBadge from '../common/ProjectIssueBadge';
@@ -97,7 +97,27 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
   const [inlineGanttZoom, setInlineGanttZoom] = useState(1);
 
   const managers = ['all', ...new Set(projects.map(p => p.manager).filter(Boolean))];
-  const domains = ['all', ...new Set(projects.map(p => p.domain).filter(Boolean))];
+  // 도메인 필터 옵션 — 대분류 단독 + (대분류/중분류) 조합 모두 표시
+  // value 컨벤션: 대분류만이면 "2차전지", 중분류 포함이면 "2차전지/EOL"
+  const domainOptions = useMemo(() => {
+    const parents = new Set();
+    const combos = new Set();
+    (projects || []).forEach(p => {
+      if (!p.domain) return;
+      parents.add(p.domain);
+      if (p.subDomain) combos.add(`${p.domain}/${p.subDomain}`);
+    });
+    const parentArr = Array.from(parents).sort();
+    const out = [];
+    parentArr.forEach(pa => {
+      out.push({ value: pa, label: pa, isParent: true });
+      Array.from(combos).filter(c => c.startsWith(pa + '/')).sort().forEach(c => {
+        const sub = c.substring(pa.length + 1);
+        out.push({ value: c, label: `└ ${sub}`, isParent: false });
+      });
+    });
+    return out;
+  }, [projects]);
 
   const filteredProjects = useMemo(() => {
     let result = projects;
@@ -106,7 +126,15 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
       result = result.filter(p => allowed.includes(p.id));
     }
     if (filterManager !== 'all') result = result.filter(p => p.manager === filterManager);
-    if (filterDomain !== 'all') result = result.filter(p => p.domain === filterDomain);
+    if (filterDomain !== 'all') {
+      // 조합 필터 (대분류/중분류) vs 대분류 단독
+      if (filterDomain.indexOf('/') >= 0) {
+        const [pa, sub] = filterDomain.split('/');
+        result = result.filter(p => p.domain === pa && p.subDomain === sub);
+      } else {
+        result = result.filter(p => p.domain === filterDomain);
+      }
+    }
     const kw = searchKeyword.trim().toLowerCase();
     if (kw) {
       result = result.filter(p => {
@@ -495,7 +523,11 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                         <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">{t('산업군', 'Domain')}</label>
                         <select className="w-full text-sm p-2 border border-slate-200 rounded-lg bg-white text-slate-700 focus:outline-none focus:border-indigo-400" value={filterDomain} onChange={(e) => setFilterDomain(e.target.value)}>
                           <option value="all">{t('전체 도메인', 'All Domains')}</option>
-                          {domains.filter(d => d !== 'all').map(d => (<option key={d} value={d}>{d}</option>))}
+                          {domainOptions.map(opt => (
+                            <option key={opt.value} value={opt.value} style={{ fontWeight: opt.isParent ? 700 : 400, paddingLeft: opt.isParent ? 0 : 12 }}>
+                              {opt.label}
+                            </option>
+                          ))}
                         </select>
                       </div>
                       <div>
@@ -570,10 +602,10 @@ const ProjectListView = memo(function ProjectListView({ projects, issues, engine
                       {/* 주인공 — 프로젝트명 + 도메인 + 2차전지 스펙 */}
                     <div className="text-base font-bold text-slate-900 mt-1 flex items-center flex-wrap gap-y-1">
                       {prj.name}
-                      <span className="ml-2 bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] font-medium border border-slate-200">{prj.domain}</span>
+                      <span className="ml-2 bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] font-medium border border-slate-200">{formatDomain(prj.domain, prj.subDomain)}</span>
                       {(() => {
                         const valid = (v) => v != null && String(v).trim() !== '' && String(v).trim().toLowerCase() !== 'null' && String(v).trim().toLowerCase() !== 'undefined';
-                        if (!BATTERY_DOMAINS.includes(prj.domain)) return null;
+                        if (!isBatteryDomain(prj.domain) && !BATTERY_DOMAINS.includes(prj.domain)) return null;
                         if (!valid(prj.voltage) && !valid(prj.current) && !valid(prj.spec)) return null;
                         return (
                           <span className="ml-1 inline-flex items-center gap-1">

@@ -147,12 +147,12 @@ const SetupTaskEditModal = memo(function SetupTaskEditModal({ project, onClose, 
                       <div className="flex items-center">
                         <Calendar size={10} className="text-slate-400 mr-1 shrink-0" />
                         <span className="text-[10px] text-slate-500 mr-1 shrink-0">{t('시작', 'Start')}</span>
-                        <input type="date" className="flex-1 text-[11px] p-1 border border-slate-200 rounded focus:outline-none focus:border-blue-500" value={tk.startDate || ''} onChange={e => updateField(tk.id, 'startDate', e.target.value)} />
+                        <input type="date" max="9999-12-31" className="flex-1 text-[11px] p-1 border border-slate-200 rounded focus:outline-none focus:border-blue-500" value={tk.startDate || ''} onChange={e => updateField(tk.id, 'startDate', e.target.value)} />
                       </div>
                       <div className="flex items-center">
                         <Calendar size={10} className="text-slate-400 mr-1 shrink-0" />
                         <span className="text-[10px] text-slate-500 mr-1 shrink-0">{t('종료', 'End')}</span>
-                        <input type="date" className="flex-1 text-[11px] p-1 border border-slate-200 rounded focus:outline-none focus:border-blue-500" value={tk.endDate || ''} onChange={e => updateField(tk.id, 'endDate', e.target.value)} />
+                        <input type="date" max="9999-12-31" className="flex-1 text-[11px] p-1 border border-slate-200 rounded focus:outline-none focus:border-blue-500" value={tk.endDate || ''} onChange={e => updateField(tk.id, 'endDate', e.target.value)} />
                       </div>
                     </div>
                     {!tk.isCompleted && (

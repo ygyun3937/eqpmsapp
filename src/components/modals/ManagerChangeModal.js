@@ -34,11 +34,16 @@ const ManagerChangeModal = memo(function ManagerChangeModal({ project, engineers
         ) : (
           <select required className="w-full p-2.5 border rounded-lg text-sm focus:outline-none focus:border-blue-500" value={newManager} onChange={e => setNewManager(e.target.value)}>
             <option value="">{t('-- 인력에서 선택 --', '-- Select engineer --')}</option>
-            {list.filter(eng => eng.name !== project.manager).map(eng => (
-              <option key={eng.id} value={eng.name}>
-                {eng.name}{eng.dept ? ` · ${eng.dept}` : ''}{eng.role ? ` · ${eng.role}` : ''}
-              </option>
-            ))}
+            {list.filter(eng => eng.name !== project.manager).map(eng => {
+              const dept = eng.dept && eng.dept !== 'null' ? eng.dept : '';
+              const grade = (eng.grade && eng.grade !== 'null') ? eng.grade
+                           : (eng.role && eng.role !== 'null' ? eng.role : '');
+              return (
+                <option key={eng.id} value={eng.name}>
+                  {eng.name}{dept ? ` · ${dept}` : ''}{grade ? ` · ${grade}` : ''}
+                </option>
+              );
+            })}
           </select>
         )}
       </div>

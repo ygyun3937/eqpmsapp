@@ -1,5 +1,5 @@
 import React, { useState, memo } from 'react';
-import { HelpCircle, Kanban, Users, AlertTriangle, LifeBuoy, GitCommit, ShieldCheck, Sparkles, Plane, FileText, X, ChevronRight, Info, Bell, ClipboardList, Building2 } from 'lucide-react';
+import { HelpCircle, Kanban, Users, AlertTriangle, LifeBuoy, GitCommit, ShieldCheck, Sparkles, Plane, FileText, X, ChevronRight, Info, Bell, ClipboardList, Building2, Mail } from 'lucide-react';
 
 const Section = ({ title, children }) => (
   <div className="mb-5 last:mb-0">
@@ -33,6 +33,7 @@ const TABS = [
   { key: 'issue', label: '이슈/AS', icon: AlertTriangle },
   { key: 'version', label: '버전 관리', icon: GitCommit },
   { key: 'weekly', label: '주간 업무 보고', icon: ClipboardList },
+  { key: 'email', label: '메일 송부', icon: Mail },
   { key: 'export', label: '보고서/Excel', icon: FileText },
   { key: 'roles', label: '권한별 기능', icon: LifeBuoy },
   { key: 'changelog', label: '업데이트 내역', icon: Bell },
@@ -671,6 +672,57 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
               </>
             )}
 
+            {tab === 'email' && (
+              <>
+                <h2 className="text-base font-bold text-slate-800 mb-3">{t('메일 송부', 'Email Reports')}</h2>
+                <p className="text-xs text-slate-500 mb-4">{t('출장 신청서·보고서·AS 보고서를 HTML 양식으로 송부합니다. 본인 Gmail 계정 발송과 시스템 계정 발송 2가지 모드를 지원합니다.', 'Send Trip Request/Report and AS Report emails in HTML format. Supports both user-account and system-account sending modes.')}</p>
+
+                <Section title={t('양식 3종', 'Three Templates')}>
+                  <p>· <strong>출장 신청서</strong> — 프로젝트 팀 모달의 출장 카드에서 "신청" 버튼. 신청자/프로젝트/출장지/기간/예상비용/목적/추가코멘트 입력</p>
+                  <p>· <strong>출장 보고서</strong> — 동일 위치 "보고" 버튼. 주요 성과 / 발견 이슈 / 후속 조치 3개 텍스트 박스</p>
+                  <p>· <strong>AS 보고서</strong> — AS 통합 관리 페이지 카드의 "메일 송부" 버튼. 구분(HW/SW)/프로젝트/시리얼/증상/조치 + 처리 이력 타임라인</p>
+                  <p>· 모든 양식에 <strong>iframe 미리보기</strong> 버튼 — 발송 전 실제 메일 모양 그대로 확인 가능</p>
+                </Section>
+
+                <Section title={t('수신/참조 입력', 'Recipients')}>
+                  <p>· 이메일 입력 + <strong>Enter 또는 쉼표</strong>로 추가 (여러 명 한 번에)</p>
+                  <p>· 잘못된 이메일 형식은 자동 거부</p>
+                  <p>· 자주 쓰는 수신인 자동 추천 (defaultTo로 미리 채워짐)</p>
+                  <p>· 발송 후 시스템에 송신 기록 자동 저장</p>
+                </Section>
+
+                <Section title={t('★ 발송 모드 1 — 시스템 계정 (기본)', 'Mode 1 — System Account (default)')}>
+                  <p>· 시스템 설정에서 별다른 설정 없으면 <strong>GAS 배포자 계정</strong>으로 발송</p>
+                  <p>· 보낸이 표시: <code className="bg-slate-100 px-1 rounded text-[10px]">김철수 (MAK-PMS) &lt;mak-pms@회사.co.kr&gt;</code></p>
+                  <p>· <strong>답장(reply-to)은 작성자 본인 메일</strong>로 자동 설정 — 수신자가 답장하면 작성자에게 도착</p>
+                  <p>· 장점: 추가 설정 불필요. 단점: 보낸이가 시스템 계정으로 표시</p>
+                </Section>
+
+                <Section title={t('★ 발송 모드 2 — 본인 Gmail 계정 (권장)', 'Mode 2 — User\'s Own Gmail (recommended)')}>
+                  <p>· 작성자 본인 Gmail 계정으로 직접 발송 + <strong>본인 "보낸편지함"에 자동 저장</strong></p>
+                  <p>· 활성화 방법:</p>
+                  <Step n={1}>관리자가 메인 GAS 코드와 동일하게 <strong>새 Apps Script 프로젝트(또는 새 배포)</strong> 만들기</Step>
+                  <Step n={2}>[배포 → 새 배포] → 유형: 웹 앱 → <strong>다음 사용자로 실행: 웹 앱에 접근하는 사용자</strong> 선택 (중요)</Step>
+                  <Step n={3}>액세스 권한: Google Workspace 도메인 내 사용자 또는 모든 사용자 (정책에 맞게)</Step>
+                  <Step n={4}>생성된 URL을 시스템 설정의 <strong>"메일 발송 GAS URL"</strong> 필드에 등록 → 저장</Step>
+                  <Step n={5}>사용자가 처음 메일 발송 시도 시 → <strong>Google OAuth 동의 화면 1회</strong> → "허용" 클릭</Step>
+                  <Step n={6}>이후로는 본인 Gmail 계정으로 자동 발송 (재인증 불필요)</Step>
+                  <p className="mt-2">· 각 사용자가 <strong>1회만 권한 동의</strong>하면 영구. 재인증 X</p>
+                  <p>· 사용자가 회사 Workspace 계정에 브라우저 로그인되어 있어야 작동</p>
+                  <Note>모드 1↔2는 시스템 설정에서 자유롭게 전환 가능. URL을 비우면 즉시 시스템 계정 모드로 폴백.</Note>
+                </Section>
+
+                <Section title={t('★ 관리자 — 메일 발송 이력 (히든 메뉴)', 'Admin — Mail History (hidden menu)')}>
+                  <p>· ADMIN 사이드바에 <strong>"메일 발송 이력"</strong> 메뉴 (다른 권한자는 안 보임)</p>
+                  <p>· 전사 발송 기록 추적: <strong>발송시각 / 종류 / 수신·참조 / 제목 / 작성자 / 발송계정(실제 Gmail) / 프로젝트</strong></p>
+                  <p>· 필터: 기간(7일/30일/90일/1년/전체) · 종류(출장신청/보고·AS보고) · 검색 키워드</p>
+                  <p>· 통계 카드 6개: 전체/오늘/7일/종류별</p>
+                  <p>· <strong>Excel 추출</strong> 지원 — 감사 보관용</p>
+                  <p>· 데이터 출처: GAS 백엔드의 <code className="bg-slate-100 px-1 rounded text-[10px]">MAIL_LOG</code> 시트 (자동 생성·기록)</p>
+                </Section>
+              </>
+            )}
+
             {tab === 'export' && (
               <>
                 <h2 className="text-base font-bold text-slate-800 mb-3">{t('보고서 / Excel 추출', 'Reports & Excel')}</h2>
@@ -785,7 +837,93 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                 <h2 className="text-base font-bold text-slate-800 mb-3">{t('업데이트 내역', "What's New")}</h2>
                 <p className="text-xs text-slate-500 mb-4">{t('v1.0 베타 출시 이후 추가/개선된 기능을 시간 역순으로 정리합니다.', 'Recent improvements since v1.0 beta release.')}</p>
 
-                <Section title={t('★ 서비스명 변경 — EQ-PMS → MAK-PMS (NEW)', 'Rebrand — EQ-PMS → MAK-PMS (NEW)')}>
+                <Section title={t('★ 추가 대응 — 브랜치 스타일 + 날짜순 정렬 (NEW)', 'Extras — Branch Style + Date Sort (NEW)')}>
+                  <p>· 추가 대응 탭이 <strong>회의록/노트 탭과 동일한 브랜치(타임라인) 스타일</strong>로 정리됨 — 좌측에 캘린더 타일(월/일/요일) + 세로 타임라인 라인, 우측에 카드</p>
+                  <p>· 캘린더 타일은 <strong>신선도별 핑크 톤</strong>: 오늘/어제는 진한 핑크, 1주 이내 중간, 1개월 이내 옅음, 그 이전은 회색</p>
+                  <p>· 카드 헤더에 상대 시간 표시 — "오늘", "어제", "3일 전", "2주 전" 등</p>
+                  <p>· <strong>일괄등록(import) 항목은 Start Date 기준</strong> — 캘린더 타일과 정렬 모두 시작일로 표시 (호버 시 "시작일(일괄등록)" 안내). 일반 등록 항목은 등록 시각 기준</p>
+                  <p>· <strong>날짜 내림차순 자동 정렬</strong> — 최신/미래 일정이 위, 오래된 항목이 아래</p>
+                </Section>
+
+                <Section title={t('★ 데이터 보호 4중 방어 — 1단계 (NEW)', 'Data Protection — Layer 1 (NEW)')}>
+                  <p>· <strong>4중 방어 1단계 활성화</strong>: ① CHANGE_LOG 시트 자동 기록 ② Drive 일별 백업 (30일 일별 + 12개월 월별) ③ 삭제 단독 백업 (JSON, 30일 보관) ④ 클라이언트 localStorage 스냅샷 (부팅 시 원격 비교)</p>
+                  <p>· <strong>CHANGE_LOG 시트</strong>: 모든 데이터 변경(UPDATE_PROJECT_BY_ID/UPDATE_PROJECTS/UPDATE_ISSUES 등)이 timestamp/user/action/target/before/after 컬럼으로 자동 기록 → "누가 무엇을 언제 어떻게 바꿨는지" 추적 가능</p>
+                  <p>· <strong>일별 자동 백업</strong>: <code className="bg-slate-100 px-1 rounded text-[10px]">MAK-PMS_백업/YYYY-MM-DD_*.xlsx</code> 폴더에 매일 자정 전체 시트 백업. 30일은 일별, 매월 1일자는 12개월 월별 아카이브, 나머지는 자동 휴지통</p>
+                  <p>· <strong>삭제 단독 백업</strong>: 프로젝트 삭제 시 자동으로 <code className="bg-slate-100 px-1 rounded text-[10px]">MAK-PMS_삭제백업/YYYY-MM-DD_HHmm_PRJxxx_프로젝트명.json</code> 생성 + localStorage에도 단독 보관 (30일) → 실수 삭제도 복구 가능</p>
+                  <p>· <strong>부팅 시 비교</strong>: 페이지 진입 시 로컬 스냅샷과 GAS 데이터를 비교. 로컬엔 있는데 원격에 없는 항목이 발견되면 화면 상단에 amber 배너로 안내 ("복원 가능한 변경 N건이 있습니다")</p>
+                  <p>· <strong>설치 — 단 한 번</strong>: GAS 편집기에서 <code className="bg-slate-100 px-1 rounded text-[10px]">installDailyBackupTrigger</code> 함수 [실행] 클릭 → DriveApp/UrlFetchApp 권한 허용 → 매일 자정 자동 백업 시작</p>
+                  <p>· 신규 파일: <code className="bg-slate-100 px-1 rounded text-[10px]">src/utils/localBackup.js</code> / GAS의 <code className="bg-slate-100 px-1 rounded text-[10px]">dailyBackup</code>/<code className="bg-slate-100 px-1 rounded text-[10px]">logChange</code>/<code className="bg-slate-100 px-1 rounded text-[10px]">backupSingleProject</code> 추가</p>
+                  <p>· <strong>기존 데이터 영향 0</strong> — 모든 작업은 추가/확장만, 기존 시트·데이터 손실 없음</p>
+                </Section>
+
+                <Section title={t('★ GAS 동기화 속도 개선 — Delta 저장', 'GAS Sync Speed — Delta Save')}>
+                  <p>· <strong>단일 프로젝트 변경 → 한 행만 전송</strong> — 기존엔 모든 프로젝트 배열을 통째로 GAS에 덮어쓰기 → 50건 프로젝트일 때 50배 데이터 전송. 이제 <code className="bg-slate-100 px-1 rounded text-[10px]">UPDATE_PROJECT_BY_ID</code>로 해당 ID 행만 update/append/delete</p>
+                  <p>· <strong>1.5초 debounce 코얼레싱</strong> — 같은 프로젝트의 연속 변경(태스크 토글 여러 번, 입력 중 etc.)은 마지막 한 번으로 합쳐서 전송 → 네트워크 호출 수 대폭 감소</p>
+                  <p>· <strong>적용 핸들러</strong>: 태스크 토글/이름/일정·마일스톤/지연사유, 단계 변경·정의, 셋업 일괄편집, 검수표, 사인오프, 추가대응·댓글, 고객요청, AS·답글·완료, 출장, 담당자 변경, 회의록/노트 등록·수정·삭제, 첨부 업로드·삭제, 버전 이력, 프로젝트 수정 — 모든 단일 프로젝트 변경</p>
+                  <p>· <strong>다중 프로젝트 일괄 작업</strong>(고객사 자동 매칭/해제 등)은 기존 전체 배열 저장 유지 — 일괄 변경 시 N개의 delta 호출보다 한 번에 보내는 게 더 효율적</p>
+                  <p>· 영향 파일: <code className="bg-slate-100 px-1 rounded text-[10px]">docs/gas-backend.gs</code>(<code className="bg-slate-100 px-1 rounded text-[10px]">UPDATE_PROJECT_BY_ID</code> 추가), <code className="bg-slate-100 px-1 rounded text-[10px]">src/utils/api.js</code>(<code className="bg-slate-100 px-1 rounded text-[10px]">saveProjectDelta</code>), <code className="bg-slate-100 px-1 rounded text-[10px]">src/App.js</code> 약 25곳</p>
+                  <p>· <strong>GAS 재배포 필수</strong> — <code className="bg-slate-100 px-1 rounded text-[10px]">docs/gas-backend.gs</code>를 Apps Script에 붙여넣고 "새 버전으로 배포"해야 delta 저장이 동작. 미반영 시 자동 polyfill 없이 실패하므로 반드시 재배포</p>
+                </Section>
+
+                <Section title={t('★ 동기화 보호 + UX 안정성 강화', 'Sync Protection + UX Stability')}>
+                  <p>· <strong>서버 동기화 중 자동 차단 모달</strong>: 저장이 800ms 이상 걸리면 화면 가운데 큰 모달 "서버에 동기화 중" 자동 표시 + 뒤 화면 클릭 차단 → 사용자 실수 방지</p>
+                  <p>· <strong>새로고침/탭 닫기 경고</strong>: 저장 진행 중 새로고침 시 브라우저 prompt 자동 표시. "저장됨" 표시가 뜬 후 새로고침해야 안전</p>
+                  <p>· <strong>데이터 손실 방지 강화</strong>: 페이지 떠나도 <code className="bg-slate-100 px-1 rounded text-[10px]">sendBeacon</code> + <code className="bg-slate-100 px-1 rounded text-[10px]">keepalive: true</code>로 진행 중인 fetch 강제 완료</p>
+                  <p>· 헤더 우측 <strong>"저장됨" 인디케이터</strong> — 모든 변경이 서버에 반영됐다는 신호 (안전하게 새로고침 가능)</p>
+                </Section>
+
+                <Section title={t('★ 추가 대응 필터 + 임포트 별칭 매핑 (NEW)', 'Extras Filter + Import Alias Mapping (NEW)')}>
+                  <p>· <strong>추가 대응 탭 필터</strong>: 상태 칩(전체/대기/검토중/진행중/완료/반려 — 각 개수 표시) + 유형 드롭다운 + 작업명/요청자/메모 통합 검색 + × 초기화</p>
+                  <p>· <strong>임포트 상태 별칭 자동 매핑</strong>: <code>미진행</code>·<code>진행안함</code>·<code>시작전</code> → 대기 / <code>진행</code>·<code>inprogress</code> → 진행중 / <code>완료됨</code>·<code>done</code>·<code>끝</code> → 완료 / <code>거절</code>·<code>보류</code> → 반려</p>
+                  <p>· <strong>임포트 유형 별칭</strong>: <code>사용성 개선</code> → 기능 개선 / <code>버그</code> → 버그 수정 / <code>개발 요청</code> → 기타 등</p>
+                  <p>· 별칭 매핑 안 되는 값도 <strong>원본 그대로 보존</strong> + 경고 표시 (강제 변환 X) — 데이터 손실 방지</p>
+                  <p>· <strong>날짜 ISO 문자열 파싱</strong>: <code>"2026-03-12T14:59:08.000Z"</code> 같은 형식도 <code>2026-03-12</code>로 자동 정규화</p>
+                </Section>
+
+                <Section title={t('★ 초기 버전 이력 일괄 등록 + 날짜 입력 6자리 버그 (NEW)', 'Initial Version Bulk Import + Date 6-digit Year Fix (NEW)')}>
+                  <p>· 버전 관리 모달 헤더에 <strong>"초기 이력 일괄 등록"</strong> 버튼 — 시스템 도입 전 누적된 HW/SW/FW 이력을 한 번에 등록</p>
+                  <p>· 3가지 입력 모드: <strong>수기 입력 / 파일 업로드(.xlsx) / Excel·시트 붙여넣기</strong> + 템플릿 다운로드</p>
+                  <p>· 도메인 추천 카테고리(HW/SW/FW 등) 자동 시드, 별칭 헤더(카테고리/버전/출시일/노트) 모두 인식</p>
+                  <p>· <strong>날짜 입력 6자리 년도 버그 수정</strong>: 모든 <code>type=date</code> 입력에 <code>max="9999-12-31"</code> 적용 — 4자리 년도로 강제 제한</p>
+                </Section>
+
+                <Section title={t('★ 메일 발송 — 본인 계정 발송 + 관리자 이력', 'Email — Send-as-User + Admin History')}>
+                  <p>· <strong>본인 Gmail 계정으로 발송</strong> 가능 — 출장 신청/보고, AS 보고 메일이 "시스템 계정"이 아닌 <strong>작성자 본인 Gmail 계정으로 발송</strong>되고 본인 보낸편지함에 자동 저장</p>
+                  <p>· 활성화 방법: <strong>시스템 설정 → "메일 발송 GAS URL" 등록</strong> (별도 배포한 사용자 권한 실행 GAS의 웹앱 URL)</p>
+                  <p>· 첫 발송 시 <strong>Google OAuth 동의 화면이 1회</strong> 떠서 권한 허용 → 이후로는 자동 발송</p>
+                  <p>· 미설정 시: 기존대로 시스템 계정 발송 (보낸이 표시 "김철수 (MAK-PMS)" + reply-to)</p>
+                  <p>· <strong>관리자 메일 발송 이력 (히든 메뉴)</strong>: ADMIN 사이드바에 <strong>"메일 발송 이력"</strong> 메뉴 추가 — 전사 메일 발송 기록을 종류/기간/검색으로 추적, Excel 추출 가능</p>
+                  <p>· 기록 컬럼: 발송시각, 종류(출장신청/보고·AS보고), 수신/참조, 제목, 작성자, <strong>발송계정 (실제 Gmail)</strong>, 프로젝트</p>
+                </Section>
+
+                <Section title={t('★ 추가 기능 — 도메인 계층화 / 임포트 / 메일 양식 (NEW)', 'Features — Domain Hierarchy / Import / Email (NEW)')}>
+                  <p>· <strong>도메인 계층화</strong>: 산업군이 <strong>대분류 + 중분류</strong> 구조로. 2차전지(EOL/ESS/사이클러), 반도체(플라즈마), 디스플레이. 시스템 설정 → "도메인 관리" 패널에서 중분류 자유 추가/삭제</p>
+                  <p>· 기존 "2차전지 EOL" 같은 데이터는 부팅 시 <strong>자동 마이그레이션</strong> — 손실 없음</p>
+                  <p>· 프로젝트 리스트 필터에 대분류 + 중분류 조합 모두 표시 ("2차전지" 선택 시 EOL/ESS/사이클러 다 포함, "2차전지 · EOL" 정확히 일치 필터)</p>
+                  <p>· <strong>추가 대응 파일 임포트</strong>: 추가 대응 탭에 "파일로 일괄 등록" 버튼. <strong>Excel(.xlsx) 또는 시트 붙여넣기</strong>로 일괄 등록. 템플릿 다운로드 제공, 행별 검증/미리보기</p>
+                  <p>· <strong>메일 송부 양식 3종</strong>: 출장 신청서 / 출장 보고서 / AS 보고서. HTML 양식 자동 생성 + 미리보기 + 수신/참조 입력</p>
+                </Section>
+
+                <Section title={t('★ 주간 보고 자동 집계 버그 수정 — 날짜 파싱', 'Weekly Report Aggregation Fix — Date Parsing')}>
+                  <p>· 한국 로케일 <code className="bg-slate-100 px-1 rounded text-[10px]">toLocaleString()</code>으로 저장된 날짜(<code className="bg-slate-100 px-1 rounded text-[10px]">"2025. 5. 13. 오후 3:30:00"</code>)가 <code className="bg-slate-100 px-1 rounded text-[10px]">new Date(...)</code>로 파싱되지 않아 <strong>활동 이력/AS/회의록/노트/고객 요청 집계가 모두 0건</strong>으로 나오던 버그 수정</p>
+                  <p>· 새로 저장되는 타임스탬프는 <code className="bg-slate-100 px-1 rounded text-[10px]">sv-SE</code> 로케일 형식(<code className="bg-slate-100 px-1 rounded text-[10px]">"2025-05-13 15:30:00"</code>)으로 통일 — 사람이 읽기 좋고 어디서나 파싱됨</p>
+                  <p>· 기존 한국 로케일 데이터도 <strong>견고한 파서</strong>(<code className="bg-slate-100 px-1 rounded text-[10px]">parseAnyDate</code>)가 일자만 추출해 살림 — 기존 활동 이력 손실 없음</p>
+                  <p>· 영향 파일: <code className="bg-slate-100 px-1 rounded text-[10px]">src/utils/dateUtils.js</code> 신규, <code className="bg-slate-100 px-1 rounded text-[10px]">src/App.js</code> 15곳, <code className="bg-slate-100 px-1 rounded text-[10px]">WeeklyReportView.js</code></p>
+                </Section>
+
+                <Section title={t('★ 엔지니어 드롭다운 "null" 표시 수정 (NEW)', 'Engineer Dropdown "null" Fix (NEW)')}>
+                  <p>· 프로젝트/담당자 변경 모달의 엔지니어 드롭다운에서 일부 항목이 <code className="bg-slate-100 px-1 rounded text-[10px]">"신대선 · SW팀 · null"</code> 처럼 표시되던 문제</p>
+                  <p>· 원인: 레거시 <code className="bg-slate-100 px-1 rounded text-[10px]">eng.role</code> 필드를 참조 — 일부 데이터에 문자열 <code className="bg-slate-100 px-1 rounded text-[10px]">"null"</code>이 들어가 있었음. 새 스키마는 <code className="bg-slate-100 px-1 rounded text-[10px]">eng.grade</code>(직급) 사용</p>
+                  <p>· 해결: <code className="bg-slate-100 px-1 rounded text-[10px]">grade</code> 우선 표시 → 없으면 <code className="bg-slate-100 px-1 rounded text-[10px]">role</code> 폴백 + 문자열 <code className="bg-slate-100 px-1 rounded text-[10px]">"null"</code> 방어 필터</p>
+                </Section>
+
+                <Section title={t('★ 검토안 문서 추가 — 오프라인 큐잉 / Drive 권한 (NEW)', 'Design Docs — Offline Queue / Drive Permissions (NEW)')}>
+                  <p>· <code className="bg-slate-100 px-1 rounded text-[10px]">docs/오프라인-큐잉-검토안.md</code> — 인터넷 끊긴 환경(공장 内)에서 작성한 데이터를 IndexedDB 큐에 적재하고 온라인 복귀 시 자동 전송하는 기능 검토안. 범위 옵션(A/B/C/D), 충돌 처리, 멱등성, 구현 일정 19h 등 의사결정 항목 정리</p>
+                  <p>· <code className="bg-slate-100 px-1 rounded text-[10px]">docs/Drive-권한-협의안.md</code> — 회의록/노트/참고자료/AS 업로드 폴더의 접근 권한 정책 협의안. 접근 범위, 외부 공유, 카테고리 차등, 권한 갱신·회수, 감사 로깅 등 7개 의사결정 항목</p>
+                  <p>· 두 문서 모두 <strong>업무 협의 후 범위 확정용</strong> — 단순 구현 전 정책 합의 필요</p>
+                </Section>
+
+                <Section title={t('★ 서비스명 변경 — EQ-PMS → MAK-PMS', 'Rebrand — EQ-PMS → MAK-PMS')}>
                   <p>· 사용자 노출 텍스트 전반(사이드바·로그인·도움말·브라우저 탭·Excel 내보내기 등) <strong>EQ-PMS → MAK-PMS</strong> 일괄 변경</p>
                   <p>· 로고 글자 <code className="bg-slate-100 px-1 rounded text-[10px]">E</code> → <code className="bg-blue-100 px-1 rounded text-[10px]">M</code></p>
                   <p>· <strong>Webhook 알림 메시지 prefix</strong>도 <code className="bg-slate-100 px-1 rounded text-[10px]">[MAK-PMS 알림: …]</code>로 변경 — GAS 백엔드도 같이 재배포해야 알림 메일이 정상 발송됨</p>

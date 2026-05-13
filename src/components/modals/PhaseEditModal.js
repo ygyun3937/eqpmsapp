@@ -1,6 +1,6 @@
 import React, { useState, memo } from 'react';
 import { X, Settings, Plus, Trash, ArrowUp, ArrowDown, RotateCcw, AlertTriangle, Info, Check, Calendar, Sparkles, Star } from 'lucide-react';
-import { PROJECT_PHASES, DOMAIN_VERSION_CATEGORIES } from '../../constants';
+import { PROJECT_PHASES } from '../../constants';
 
 const PhaseEditModal = memo(function PhaseEditModal({ project, onClose, onSubmit, t }) {
   const [phases, setPhases] = useState(() => {
@@ -156,12 +156,12 @@ const PhaseEditModal = memo(function PhaseEditModal({ project, onClose, onSubmit
                       <div className="flex items-center">
                         <Calendar size={10} className="text-slate-400 mr-1 shrink-0" />
                         <span className="text-[10px] text-slate-500 mr-1 shrink-0">{t('시작', 'Start')}</span>
-                        <input type="date" className="flex-1 text-[11px] p-1 border border-slate-200 rounded focus:outline-none focus:border-indigo-500" value={p.startDate || ''} onChange={e => updateDate(p.id, 'startDate', e.target.value)} />
+                        <input type="date" max="9999-12-31" className="flex-1 text-[11px] p-1 border border-slate-200 rounded focus:outline-none focus:border-indigo-500" value={p.startDate || ''} onChange={e => updateDate(p.id, 'startDate', e.target.value)} />
                       </div>
                       <div className="flex items-center">
                         <Calendar size={10} className="text-slate-400 mr-1 shrink-0" />
                         <span className="text-[10px] text-slate-500 mr-1 shrink-0">{t('종료', 'End')}</span>
-                        <input type="date" className="flex-1 text-[11px] p-1 border border-slate-200 rounded focus:outline-none focus:border-indigo-500" value={p.endDate || ''} onChange={e => updateDate(p.id, 'endDate', e.target.value)} />
+                        <input type="date" max="9999-12-31" className="flex-1 text-[11px] p-1 border border-slate-200 rounded focus:outline-none focus:border-indigo-500" value={p.endDate || ''} onChange={e => updateDate(p.id, 'endDate', e.target.value)} />
                       </div>
                     </div>
                   </div>

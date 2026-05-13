@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, memo } from 'react';
-import { LifeBuoy, Filter, User, Calendar, CalendarDays, Building, Wrench, AlertTriangle, CheckCircle, Clock, Download, Search, ExternalLink, Code, MessageSquare, Send, Paperclip, X, ShieldOff, Phone, HardDrive, Package, Loader, Edit, MapPin, Plus, Upload } from 'lucide-react';
+import { LifeBuoy, Filter, User, Calendar, CalendarDays, Building, Wrench, AlertTriangle, CheckCircle, Clock, Download, Search, ExternalLink, Code, MessageSquare, Send, Paperclip, X, ShieldOff, Phone, HardDrive, Package, Loader, Edit, MapPin, Plus, Upload, Mail } from 'lucide-react';
 import StatCard from '../common/StatCard';
+import SendReportEmailModal from '../modals/SendReportEmailModal';
 import { exportToExcel } from '../../utils/export';
 import { AS_HW_TYPES, AS_SW_TYPES, AS_HW_STATUSES, AS_SW_STATUSES, AS_DEFAULT_CATEGORY, getASStatusesByCategory, getASTypesByCategory } from '../../constants';
 
@@ -8,7 +9,7 @@ const AS_TYPES = ['전체', ...AS_HW_TYPES, ...AS_SW_TYPES];
 // HW/SW 통합 상태: 중복 제거 + 표시 순서 보존
 const AS_STATUS_ALL = Array.from(new Set(['전체', ...AS_HW_STATUSES, ...AS_SW_STATUSES]));
 
-const ASManagementView = memo(function ASManagementView({ projects, onProjectClick, onUpdateAS, onAddAS, onAddASComment, onCompleteAS, onRevertCompleteAS, onUploadAttachment, driveConfigured, currentUser, t }) {
+const ASManagementView = memo(function ASManagementView({ projects, onProjectClick, onUpdateAS, onAddAS, onAddASComment, onCompleteAS, onRevertCompleteAS, onUploadAttachment, driveConfigured, mailGasUrl, currentUser, t }) {
   const [filterType, setFilterType] = useState('전체');
   const [filterStatus, setFilterStatus] = useState('전체');
   const [filterProject, setFilterProject] = useState('all');
@@ -19,6 +20,7 @@ const ASManagementView = memo(function ASManagementView({ projects, onProjectCli
   const [expanded, setExpanded] = useState({}); // 같은 키, 코멘트 펼침 토글
   const [completeModal, setCompleteModal] = useState(null); // { projectId, asId, file, isNA, uploading }
   const [revertPrompt, setRevertPrompt] = useState(null); // { projectId, asId, reason }
+  const [emailTarget, setEmailTarget] = useState(null); // { project, as } — 메일 발송 모달 대상
   const [editingKey, setEditingKey] = useState(null); // 인라인 편집 중인 레코드 키
   const [editDraft, setEditDraft] = useState({}); // 편집 중 값 (manager/contact/serial/part/cost/priority/reqDate/visit)
   const [createModal, setCreateModal] = useState(null); // 통합 페이지 직접 접수 모달
@@ -35,7 +37,8 @@ const ASManagementView = memo(function ASManagementView({ projects, onProjectCli
           projectName: p.name,
           customer: p.customer,
           site: p.site,
-          domain: p.domain
+          domain: p.domain,
+          _project: p
         });
       });
     });
@@ -295,7 +298,7 @@ const ASManagementView = memo(function ASManagementView({ projects, onProjectCli
                           </div>
                           <div>
                             <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('희망일', 'Desired')}</label>
-                            <input type="date" className="w-full text-xs p-1.5 border border-slate-300 rounded" value={editDraft.reqDate || ''} onChange={(e) => setEditDraft({ ...editDraft, reqDate: e.target.value })} />
+                            <input type="date" max="9999-12-31" className="w-full text-xs p-1.5 border border-slate-300 rounded" value={editDraft.reqDate || ''} onChange={(e) => setEditDraft({ ...editDraft, reqDate: e.target.value })} />
                           </div>
                           <div>
                             <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('방문 필요사항', 'Visit')}</label>
@@ -502,6 +505,20 @@ const ASManagementView = memo(function ASManagementView({ projects, onProjectCli
                       </div>
                     )}
 
+                    {/* 메일 송부 버튼 — AS 보고서 */}
+                    {currentUser.role !== 'CUSTOMER' && (
+                      <div className="mt-2">
+                        <button
+                          type="button"
+                          onClick={() => setEmailTarget({ project: r._project, as: r })}
+                          className="text-[10px] font-bold px-2 py-1 rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 inline-flex items-center transition-colors"
+                          title={t('이 AS 보고서를 메일로 송부', 'Send this AS report by email')}
+                        >
+                          <Mail size={10} className="mr-1" />{t('메일 송부', 'Send Email')}
+                        </button>
+                      </div>
+                    )}
+
                     {/* 코멘트 펼침 토글 + 답글 */}
                     {(comments.length > 0 || (currentUser.role !== 'CUSTOMER' && r.status !== '완료')) && (
                       <div className="mt-3">
@@ -705,7 +722,7 @@ const ASManagementView = memo(function ASManagementView({ projects, onProjectCli
                     <>
                       <div>
                         <label className="block text-xs font-bold text-slate-700 mb-1">{t('희망 처리일정', 'Desired Date')}</label>
-                        <input type="date" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={m.reqDate} onChange={(e) => setCreateModal({ ...m, reqDate: e.target.value })} />
+                        <input type="date" max="9999-12-31" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={m.reqDate} onChange={(e) => setCreateModal({ ...m, reqDate: e.target.value })} />
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-700 mb-1">{t('방문 필요사항', 'Visit Req.')}</label>
@@ -824,6 +841,21 @@ const ASManagementView = memo(function ASManagementView({ projects, onProjectCli
           </div>
         );
       })()}
+      {emailTarget && (
+        <SendReportEmailModal
+          kind="as_report"
+          project={emailTarget.project}
+          as={emailTarget.as}
+          defaultTo={[]}
+          defaultCc={[]}
+          author={currentUser?.name || ''}
+          authorEmail={currentUser?.email || ''}
+          mailGasUrl={mailGasUrl}
+          onClose={() => setEmailTarget(null)}
+          onSent={() => { setEmailTarget(null); }}
+          t={t}
+        />
+      )}
     </div>
   );
 });

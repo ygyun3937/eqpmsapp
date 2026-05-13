@@ -1,12 +1,39 @@
 import React, { useState, memo } from 'react';
-import { Settings as SettingsIcon, FolderOpen, CheckCircle, AlertTriangle, Loader, Save, ExternalLink, Info, ClipboardList } from 'lucide-react';
+import { Settings as SettingsIcon, FolderOpen, CheckCircle, AlertTriangle, Loader, Save, ExternalLink, Info, ClipboardList, Layers, Plus, X, Mail } from 'lucide-react';
 import { callGoogleAction } from '../../utils/api';
+import { PARENT_DOMAINS, SUB_DOMAIN_PRESETS } from '../../constants';
 
 const SystemSettingsView = memo(function SystemSettingsView({ settings, onSave, currentUser, t }) {
+  // settings.subDomains: { '2차전지': ['EOL', 'ESS', '사이클러'], ... }
+  // 초기값은 settings 값 또는 PRESET
+  const initialSubs = (() => {
+    const out = {};
+    PARENT_DOMAINS.forEach(d => {
+      const fromSettings = settings?.subDomains && Array.isArray(settings.subDomains[d]) ? settings.subDomains[d] : null;
+      out[d] = fromSettings || [...(SUB_DOMAIN_PRESETS[d] || [])];
+    });
+    return out;
+  })();
   const [form, setForm] = useState({
     driveRootFolderId: settings?.driveRootFolderId || '',
     weeklyReportEnabled: settings?.weeklyReportEnabled === true,
+    subDomains: initialSubs,
+    mailGasUrl: settings?.mailGasUrl || '',
   });
+  const [newSubInput, setNewSubInput] = useState({}); // { '2차전지': 'ESS' } — 임시 입력값
+  const addSubDomain = (parent) => {
+    const v = (newSubInput[parent] || '').trim();
+    if (!v) return;
+    if ((form.subDomains[parent] || []).includes(v)) {
+      setNewSubInput({ ...newSubInput, [parent]: '' });
+      return;
+    }
+    setForm({ ...form, subDomains: { ...form.subDomains, [parent]: [...(form.subDomains[parent] || []), v] } });
+    setNewSubInput({ ...newSubInput, [parent]: '' });
+  };
+  const removeSubDomain = (parent, sub) => {
+    setForm({ ...form, subDomains: { ...form.subDomains, [parent]: (form.subDomains[parent] || []).filter(s => s !== sub) } });
+  };
   const [verifyState, setVerifyState] = useState({ loading: false, ok: null, message: '', folderName: '', folderUrl: '' });
   const [saveState, setSaveState] = useState({ loading: false, message: '' });
 
@@ -161,6 +188,105 @@ const SystemSettingsView = memo(function SystemSettingsView({ settings, onSave, 
             {t('비활성화 시 사이드바에서 메뉴가 숨겨지고 페이지 접근도 차단됩니다.', 'When disabled, the menu hides and the page is blocked.')}
             {' '}
             {t('팀장(사용자 관리에서 지정)은 같은 부서(dept) 사용자만 조회/승인할 수 있고, ADMIN은 전체를 볼 수 있습니다.', 'Team Leads (set in User Management) see only same-dept users; ADMIN sees all.')}
+          </div>
+        </div>
+      </div>
+
+      {/* 메일 발송 — 본인 계정 발송용 GAS URL (선택) */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <h2 className="text-lg font-bold text-slate-800 mb-1 flex items-center">
+          <Mail size={18} className="mr-2 text-blue-500" />
+          {t('메일 발송 — 본인 계정 발송 (선택)', 'Email — Send-as-User (Optional)')}
+        </h2>
+        <p className="text-xs text-slate-500 mb-4">
+          {t('출장 신청/보고/AS 보고 메일을 작성자 본인 Gmail 계정으로 발송하려면, "사용자 권한으로 실행"으로 별도 배포된 GAS의 URL을 입력하세요. 미설정 시 시스템 계정으로 발송됩니다.',
+             'To send Trip/AS report emails from the author\'s own Gmail account, set the URL of a separately deployed GAS (Execute as: User). If empty, falls back to system account.')}
+        </p>
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-900 mb-3 flex items-start">
+          <Info size={14} className="mr-1.5 shrink-0 mt-0.5" />
+          <div>
+            <strong>{t('듀얼 배포 안내', 'Dual deployment')}:</strong>
+            <div className="mt-1 space-y-0.5">
+              <div>1. <code className="bg-white px-1 rounded">docs/gas-backend.gs</code> 와 동일한 코드를 새 Apps Script 프로젝트(또는 같은 프로젝트의 새 배포)에서 사용</div>
+              <div>2. [배포 → 새 배포] → <strong>다음 사용자로 실행: 웹 앱에 접근하는 사용자</strong> 선택</div>
+              <div>3. 생성된 URL을 아래 칸에 입력 → 저장</div>
+              <div>4. 사용자가 처음 메일 발송 시 → Google OAuth 동의 화면 1회 → "허용"</div>
+              <div>5. 이후로는 본인 Gmail 계정으로 자동 발송 + 본인 보낸편지함에 저장</div>
+            </div>
+          </div>
+        </div>
+        <label className="block text-sm font-bold text-slate-700 mb-1.5">{t('메일 발송 GAS URL', 'Mail GAS URL')}</label>
+        <input
+          type="text"
+          className="w-full p-2.5 border border-slate-300 rounded-lg text-sm font-mono focus:outline-none focus:border-blue-500"
+          value={form.mailGasUrl}
+          onChange={(e) => setForm({ ...form, mailGasUrl: e.target.value })}
+          placeholder="https://script.google.com/macros/s/.../exec  (비어 두면 시스템 계정 발송)"
+        />
+        <p className="text-[11px] text-slate-500 mt-1">{t('빈 값이면 모든 메일이 시스템(GAS 배포자) 계정으로 발송됩니다.', 'If empty, all mails are sent from the system (GAS owner) account.')}</p>
+      </div>
+
+      {/* 도메인 관리 (대분류 / 중분류) */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <h2 className="text-lg font-bold text-slate-800 mb-1 flex items-center">
+          <Layers size={18} className="mr-2 text-purple-500" />
+          {t('도메인 관리 (대분류 / 중분류)', 'Domain Hierarchy')}
+        </h2>
+        <p className="text-xs text-slate-500 mb-4">
+          {t('프로젝트 산업군 대분류와 중분류를 관리합니다. 대분류는 시스템 기본값으로 고정되며, 중분류는 자유롭게 추가/삭제할 수 있습니다. 신규 중분류는 대분류의 기본 시드(태스크/체크리스트)를 상속받습니다.',
+             'Manage parent and sub categories for project domains. Parents are fixed; sub-domains can be added/removed freely. New sub-domains inherit the parent\'s seed templates.')}
+        </p>
+        <div className="space-y-4">
+          {PARENT_DOMAINS.map(parent => {
+            const subs = form.subDomains[parent] || [];
+            return (
+              <div key={parent} className="border border-slate-200 rounded-lg p-3 bg-slate-50">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="font-bold text-slate-800 text-sm flex items-center">
+                    <span className="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded mr-2">{t('대분류', 'Parent')}</span>
+                    {parent}
+                  </div>
+                  <span className="text-[10px] text-slate-400">{subs.length}{t('개 중분류', ' subs')}</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {subs.length === 0 ? (
+                    <span className="text-[11px] text-slate-400 italic">{t('등록된 중분류 없음', 'No sub-domains')}</span>
+                  ) : subs.map(s => (
+                    <span key={s} className="inline-flex items-center bg-white text-slate-700 text-xs font-bold px-2 py-1 rounded border border-slate-200">
+                      {s}
+                      <button type="button" onClick={() => removeSubDomain(parent, s)} className="ml-1 text-slate-400 hover:text-red-500" title={t('제거', 'Remove')}>
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    className="flex-1 text-xs p-1.5 border border-slate-300 rounded-md bg-white focus:outline-none focus:border-purple-500"
+                    placeholder={t(`예: ${(SUB_DOMAIN_PRESETS[parent] || [])[0] || '신규 중분류'}`, `e.g. ${(SUB_DOMAIN_PRESETS[parent] || [])[0] || 'New sub'}`)}
+                    value={newSubInput[parent] || ''}
+                    onChange={e => setNewSubInput({ ...newSubInput, [parent]: e.target.value })}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addSubDomain(parent); } }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => addSubDomain(parent)}
+                    disabled={!(newSubInput[parent] || '').trim()}
+                    className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-300 text-white text-xs font-bold rounded-md inline-flex items-center"
+                  >
+                    <Plus size={11} className="mr-0.5" />{t('추가', 'Add')}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-3 bg-purple-50 text-purple-800 text-[11px] rounded p-2 flex items-start border border-purple-200">
+          <Info size={12} className="mr-1.5 mt-0.5 shrink-0" />
+          <div>
+            {t('이미 등록된 프로젝트에서 사용 중인 중분류를 제거해도 프로젝트 데이터는 그대로 유지됩니다 (드롭다운 추천에서만 제외).',
+               'Removing a sub-domain in use does NOT affect existing projects — only removes from the suggestion list.')}
           </div>
         </div>
       </div>

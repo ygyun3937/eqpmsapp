@@ -1,15 +1,16 @@
 import React, { useState, memo } from 'react';
 import { X, ListTodo, CheckSquare, AlertTriangle, CheckCircle, User, Edit, Trash, PenTool, Info, ShieldCheck, FileText, ImageIcon, History, GitCommit as TimelineIcon, Package, Wrench, HardDrive, MessageSquare, Send, LifeBuoy, Plus, ShieldOff, Sparkles, Paperclip, Upload, Download, ExternalLink, Loader, FolderOpen, CalendarDays, Star, Calendar, Clock, StickyNote, Building2, Database, Mail, Smartphone, Phone, MapPin, ArrowUpRight } from 'lucide-react';
 import InfoPopover from '../common/InfoPopover';
-import { PROJECT_PHASES, AS_HW_TYPES, AS_SW_TYPES, AS_DEFAULT_CATEGORY, getASTypesByCategory, getASStatusesByCategory } from '../../constants';
+import { PROJECT_PHASES, AS_HW_TYPES, AS_SW_TYPES, AS_DEFAULT_CATEGORY, getASTypesByCategory, getASStatusesByCategory, formatDomain } from '../../constants';
 import { calcAct as calcSetupProgress, calcPhaseProgress, calcOverallProgress } from '../../utils/calc';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
 import SetupPipelineStepper from '../common/SetupPipelineStepper';
 import SignaturePad from '../common/SignaturePad';
 import { generatePDF } from '../../utils/export';
 import { downloadICS, openGoogleCalendar } from '../../utils/calendar';
+import ExtraTaskImportModal from './ExtraTaskImportModal';
 
-const TaskModal = memo(function TaskModal({ project, allProjects, projectIssues, getStatusColor, onClose, onToggleTask, onAddTask, onEditTaskName, onDeleteTask, onUpdateDelayReason, onUpdateTaskDates, onUpdateChecklistItem, onLoadDefaultChecklist, onAddChecklistItem, onDeleteChecklistItem, onUpdatePhase, onEditPhases, onEditSetupTasks, onSetCurrentSetupTask, onSignOff, onCancelSignOff, onAddExtraTask, onUpdateExtraTask, onDeleteExtraTask, onAddNote, onDeleteNote, onEditNote, onAddCustomerRequest, onUpdateCustomerRequestStatus, onAddCustomerResponse, onDeleteCustomerRequest, onAddAS, onUpdateAS, onDeleteAS, onAddASComment, onCompleteAS, onRevertCompleteAS, onUploadAttachment, onDeleteAttachment, onDeleteProject, driveConfigured, calcAct, currentUser, t, initialTab, engineers, onShowEngineer, customers, onOpenCustomer }) {
+const TaskModal = memo(function TaskModal({ project, allProjects, projectIssues, getStatusColor, onClose, onToggleTask, onAddTask, onEditTaskName, onDeleteTask, onUpdateDelayReason, onUpdateTaskDates, onUpdateChecklistItem, onLoadDefaultChecklist, onAddChecklistItem, onDeleteChecklistItem, onUpdatePhase, onEditPhases, onEditSetupTasks, onSetCurrentSetupTask, onSignOff, onCancelSignOff, onAddExtraTask, onUpdateExtraTask, onDeleteExtraTask, onAddExtraTaskComment, onImportExtraTasks, onAddNote, onDeleteNote, onEditNote, onAddCustomerRequest, onUpdateCustomerRequestStatus, onAddCustomerResponse, onDeleteCustomerRequest, onAddAS, onUpdateAS, onDeleteAS, onAddASComment, onCompleteAS, onRevertCompleteAS, onUploadAttachment, onDeleteAttachment, onDeleteProject, driveConfigured, calcAct, currentUser, t, initialTab, engineers, onShowEngineer, customers, onOpenCustomer }) {
   const [activeModalTab, setActiveModalTab] = useState(initialTab || 'tasks');
   const [scheduleSubTab, setScheduleSubTab] = useState('phase');
   const [attachUploading, setAttachUploading] = useState(false);
@@ -59,6 +60,11 @@ const TaskModal = memo(function TaskModal({ project, allProjects, projectIssues,
   const [asListFilter, setAsListFilter] = useState('all'); // 'all' | 'HW' | 'SW'
   const [asStatusFilter, setAsStatusFilter] = useState('all'); // 'all' | 'open' | 'done'
   const [asReplyText, setAsReplyText] = useState({}); // asId → text
+  const [extraReplyText, setExtraReplyText] = useState({}); // extraTaskId → text
+  const [extraImportOpen, setExtraImportOpen] = useState(false);
+  const [extraFilterStatus, setExtraFilterStatus] = useState('all');
+  const [extraFilterType, setExtraFilterType] = useState('all');
+  const [extraSearch, setExtraSearch] = useState('');
   const [asCompleteModal, setAsCompleteModal] = useState(null); // { asId, file, isNA, uploading }
   const [asRevertPrompt, setAsRevertPrompt] = useState(null); // { asId, reason }
   const [historyFilter, setHistoryFilter] = useState('all');
@@ -204,7 +210,7 @@ const TaskModal = memo(function TaskModal({ project, allProjects, projectIssues,
                 })()}
                 {project.domain && (
                   <span className="inline-flex items-center bg-indigo-50 border border-indigo-200 text-indigo-700 px-1.5 py-0.5 rounded font-bold" title={t('산업군', 'Domain')}>
-                    {project.domain}
+                    {formatDomain(project.domain, project.subDomain)}
                   </span>
                 )}
               </div>
@@ -1797,7 +1803,7 @@ const TaskModal = memo(function TaskModal({ project, allProjects, projectIssues,
                     <div className="grid grid-cols-3 gap-3">
                       <div>
                         <label className="block text-xs font-bold text-slate-600 mb-1">{t('희망 처리일정', 'Desired Date')}</label>
-                        <input type="date" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newASForm.reqDate} onChange={(e) => setNewASForm({...newASForm, reqDate: e.target.value})} />
+                        <input type="date" max="9999-12-31" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newASForm.reqDate} onChange={(e) => setNewASForm({...newASForm, reqDate: e.target.value})} />
                       </div>
                       <div className="col-span-2">
                         <label className="block text-xs font-bold text-slate-600 mb-1">{t('방문 시 필요사항', 'Visit Requirements')}</label>
@@ -2259,9 +2265,21 @@ const TaskModal = memo(function TaskModal({ project, allProjects, projectIssues,
           })()}
           {activeModalTab === 'extras' && (
             <div className="space-y-4">
-              <div className="bg-pink-50 text-pink-800 p-3 rounded-lg text-xs font-medium border border-pink-200 flex items-start">
-                <Info size={14} className="mr-1.5 shrink-0 mt-0.5" />
-                <span>{t('검수 완료 후 고객사 요청에 의한 추가 개발/기능 추가 작업을 별도로 관리합니다. 셋업 일정과 분리되어, 워런티 단계에서 진행되는 변경 사항을 추적합니다.', 'Track post-Buy-off enhancements and customer-requested development separately from setup tasks.')}</span>
+              <div className="bg-pink-50 text-pink-800 p-3 rounded-lg text-xs font-medium border border-pink-200 flex items-start justify-between gap-3">
+                <div className="flex items-start flex-1">
+                  <Info size={14} className="mr-1.5 shrink-0 mt-0.5" />
+                  <span>{t('검수 완료 후 고객사 요청에 의한 추가 개발/기능 추가 작업을 별도로 관리합니다. 셋업 일정과 분리되어, 워런티 단계에서 진행되는 변경 사항을 추적합니다.', 'Track post-Buy-off enhancements and customer-requested development separately from setup tasks.')}</span>
+                </div>
+                {currentUser.role !== 'CUSTOMER' && onImportExtraTasks && (
+                  <button
+                    type="button"
+                    onClick={() => setExtraImportOpen(true)}
+                    className="shrink-0 px-3 py-1.5 bg-white hover:bg-pink-100 text-pink-700 text-xs font-bold rounded-md border border-pink-300 inline-flex items-center transition-colors"
+                    title={t('Excel 파일 또는 시트 붙여넣기로 일괄 등록', 'Bulk import via Excel or paste')}
+                  >
+                    <Upload size={11} className="mr-1" />{t('파일로 일괄 등록', 'Import')}
+                  </button>
+                )}
               </div>
 
               {/* 등록 폼 */}
@@ -2291,11 +2309,11 @@ const TaskModal = memo(function TaskModal({ project, allProjects, projectIssues,
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">{t('시작 예정일', 'Start')}</label>
-                      <input type="date" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newExtraForm.startDate} onChange={(e) => setNewExtraForm({...newExtraForm, startDate: e.target.value})} />
+                      <input type="date" max="9999-12-31" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newExtraForm.startDate} onChange={(e) => setNewExtraForm({...newExtraForm, startDate: e.target.value})} />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">{t('종료 예정일', 'End')}</label>
-                      <input type="date" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newExtraForm.endDate} onChange={(e) => setNewExtraForm({...newExtraForm, endDate: e.target.value})} />
+                      <input type="date" max="9999-12-31" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newExtraForm.endDate} onChange={(e) => setNewExtraForm({...newExtraForm, endDate: e.target.value})} />
                     </div>
                     <div className="flex items-end">
                       <button onClick={() => {
@@ -2309,15 +2327,112 @@ const TaskModal = memo(function TaskModal({ project, allProjects, projectIssues,
                 </div>
               )}
 
-              {/* 목록 */}
+              {/* 필터 + 검색 — 추가 대응이 1건 이상일 때만 표시 */}
+              {(project.extraTasks || []).length > 0 && (() => {
+                const all = project.extraTasks || [];
+                const statusCounts = all.reduce((acc, t) => { acc[t.status] = (acc[t.status] || 0) + 1; return acc; }, {});
+                const types = Array.from(new Set(all.map(t => t.type).filter(Boolean)));
+                return (
+                  <div className="bg-white border border-slate-200 rounded-lg p-2.5 flex flex-wrap items-center gap-2 text-xs">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t('필터', 'Filter')}</span>
+                    {/* 상태 칩 */}
+                    <div className="flex flex-wrap gap-1">
+                      {[
+                        { v: 'all', label: t('전체', 'All'), count: all.length },
+                        { v: '대기', label: t('대기', 'Pending'), count: statusCounts['대기'] || 0 },
+                        { v: '검토중', label: t('검토중', 'Review'), count: statusCounts['검토중'] || 0 },
+                        { v: '진행중', label: t('진행중', 'In Progress'), count: statusCounts['진행중'] || 0 },
+                        { v: '완료', label: t('완료', 'Done'), count: statusCounts['완료'] || 0 },
+                        { v: '반려', label: t('반려', 'Returned'), count: statusCounts['반려'] || 0 },
+                      ].map(f => (
+                        <button
+                          key={f.v}
+                          onClick={() => setExtraFilterStatus(f.v)}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-colors ${extraFilterStatus === f.v ? 'bg-pink-600 text-white border-pink-600' : 'bg-white text-slate-600 border-slate-200 hover:border-pink-300'}`}
+                        >
+                          {f.label} <span className="ml-0.5 opacity-70">{f.count}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {/* 유형 필터 */}
+                    {types.length > 1 && (
+                      <select
+                        value={extraFilterType}
+                        onChange={(e) => setExtraFilterType(e.target.value)}
+                        className="text-[11px] p-1 border border-slate-200 rounded-md focus:outline-none focus:border-pink-500"
+                      >
+                        <option value="all">{t('모든 유형', 'All Types')}</option>
+                        {types.map(ty => <option key={ty} value={ty}>{ty}</option>)}
+                      </select>
+                    )}
+                    {/* 검색 */}
+                    <div className="flex items-center gap-1 flex-1 min-w-[120px] max-w-[300px] ml-auto">
+                      <input
+                        type="text"
+                        value={extraSearch}
+                        onChange={(e) => setExtraSearch(e.target.value)}
+                        placeholder={t('작업명/요청자/메모 검색', 'Search')}
+                        className="flex-1 text-[11px] p-1 border border-slate-200 rounded-md focus:outline-none focus:border-pink-500"
+                      />
+                      {(extraFilterStatus !== 'all' || extraFilterType !== 'all' || extraSearch) && (
+                        <button
+                          onClick={() => { setExtraFilterStatus('all'); setExtraFilterType('all'); setExtraSearch(''); }}
+                          className="text-[10px] text-slate-500 hover:text-pink-700 font-bold"
+                          title={t('필터 초기화', 'Reset filter')}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* 목록 — 회의록/노트와 동일한 브랜치(타임라인) 스타일 */}
               {(!project.extraTasks || project.extraTasks.length === 0) ? (
                 <div className="text-center py-10 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl bg-white">
                   <Sparkles size={28} className="mx-auto mb-2 text-slate-300" />
                   {t('등록된 추가 대응 작업이 없습니다.', 'No extra tasks recorded.')}
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  {[...project.extraTasks].reverse().map(task => {
+              ) : (() => {
+                const kw = extraSearch.trim().toLowerCase();
+                // 정렬 기준 일치 — 캘린더 타일에 표시되는 날짜와 동일 (import면 startDate, 아니면 task.id 타임스탬프)
+                const sortKey = (task) => {
+                  const imported = typeof task.createdBy === 'string' && task.createdBy.startsWith('import:');
+                  if (imported && task.startDate) {
+                    const t = new Date(task.startDate).getTime();
+                    if (!isNaN(t)) return t;
+                  }
+                  return Number(task.id) || 0;
+                };
+                const filtered = [...project.extraTasks]
+                  .sort((a, b) => sortKey(b) - sortKey(a))
+                  .filter(t => {
+                    if (extraFilterStatus !== 'all' && t.status !== extraFilterStatus) return false;
+                    if (extraFilterType !== 'all' && t.type !== extraFilterType) return false;
+                    if (kw) {
+                      const hay = [t.name, t.requester, t.note, t.type, t.status].filter(Boolean).join(' ').toLowerCase();
+                      if (!hay.includes(kw)) return false;
+                    }
+                    return true;
+                  });
+                if (filtered.length === 0) {
+                  return (
+                    <div className="text-center py-10 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl bg-white">
+                      <Sparkles size={28} className="mx-auto mb-2 text-slate-300" />
+                      {t('필터에 해당하는 작업이 없습니다.', 'No tasks match the filter.')}
+                    </div>
+                  );
+                }
+                const today = new Date();
+                const today0 = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+                const DAY = 86400000;
+                return (
+                <div className="relative">
+                  {/* 좌측 세로 타임라인 라인 */}
+                  <div className="absolute left-7 top-2 bottom-2 w-0.5 bg-pink-200"></div>
+                  <div className="space-y-3">
+                  {filtered.map(task => {
                     const typeColor = task.type === '기능 추가' ? 'bg-pink-100 text-pink-700 border-pink-200'
                       : task.type === '기능 개선' ? 'bg-indigo-100 text-indigo-700 border-indigo-200'
                         : task.type === '버그 수정' ? 'bg-red-100 text-red-700 border-red-200'
@@ -2329,12 +2444,50 @@ const TaskModal = memo(function TaskModal({ project, allProjects, projectIssues,
                         : task.status === '검토중' ? 'bg-purple-50 text-purple-700 border-purple-200'
                           : task.status === '반려' ? 'bg-slate-50 text-slate-500 border-slate-200'
                             : 'bg-amber-50 text-amber-700 border-amber-200';
+                    // 좌측 날짜 타일 — 일괄등록(import)건은 startDate 기준, 그 외는 task.id(=등록시각 timestamp) 기준
+                    const isImported = typeof task.createdBy === 'string' && task.createdBy.startsWith('import:');
+                    let d = null;
+                    if (isImported && task.startDate) {
+                      const parsed = new Date(task.startDate);
+                      if (!isNaN(parsed)) d = parsed;
+                    }
+                    if (!d) {
+                      const ts = Number(task.id) || 0;
+                      if (ts > 0) d = new Date(ts);
+                    }
+                    const valid = d && !isNaN(d);
+                    const d0 = valid ? new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() : null;
+                    const diff = d0 !== null ? Math.floor((today0 - d0) / DAY) : null;
+                    const dow = valid ? ['일','월','화','수','목','금','토'][d.getDay()] : '';
+                    const mm = valid ? d.getMonth() + 1 : '';
+                    const dd = valid ? d.getDate() : '';
+                    let rel = '';
+                    if (diff === 0) rel = t('오늘', 'Today');
+                    else if (diff === 1) rel = t('어제', 'Yesterday');
+                    else if (diff > 1 && diff < 7) rel = t(`${diff}일 전`, `${diff}d ago`);
+                    else if (diff >= 7 && diff < 30) rel = t(`${Math.floor(diff/7)}주 전`, `${Math.floor(diff/7)}w ago`);
+                    else if (diff >= 30 && diff < 365) rel = t(`${Math.floor(diff/30)}개월 전`, `${Math.floor(diff/30)}mo ago`);
+                    else if (diff >= 365) rel = t(`${Math.floor(diff/365)}년 전`, `${Math.floor(diff/365)}y ago`);
+                    // 신선도 — pink 톤
+                    const stripCls = diff === null ? 'bg-slate-200 text-slate-700 border-slate-300'
+                      : diff <= 1 ? 'bg-pink-400 text-white border-pink-500'
+                      : diff < 7 ? 'bg-pink-300 text-pink-900 border-pink-400'
+                      : diff < 30 ? 'bg-pink-200 text-pink-800 border-pink-300'
+                      : 'bg-slate-200 text-slate-700 border-slate-300';
                     return (
-                      <div key={task.id} className={`bg-white p-3 rounded-xl border shadow-sm ${task.status === '완료' ? 'border-emerald-200 bg-emerald-50/30' : 'border-slate-200'}`}>
+                      <div key={task.id} className="relative pl-[68px]">
+                        {/* 좌측 캘린더 타일 노드 — import 건은 시작일 기준, 그 외는 등록일 기준 */}
+                        <div className={`absolute left-0 top-1 w-14 rounded-lg border-2 shadow-sm flex flex-col items-center justify-center py-1.5 z-10 ${stripCls}`} title={valid ? `${mm}/${dd} ${isImported ? '시작일(일괄등록)' : '등록일'}` : ''}>
+                          <div className="text-[9px] font-black leading-none">{valid ? `${mm}월` : '-'}</div>
+                          <div className="text-xl font-black leading-none mt-0.5 tabular-nums">{valid ? dd : '-'}</div>
+                          <div className="text-[8px] font-medium leading-none mt-0.5 opacity-70">{valid ? `${dow}요일` : ''}</div>
+                        </div>
+                      <div className={`bg-white p-3 rounded-xl border shadow-sm ${task.status === '완료' ? 'border-emerald-200 bg-emerald-50/30' : 'border-slate-200'}`}>
                         <div className="flex justify-between items-start mb-2 gap-2">
                           <div className="flex items-center flex-wrap gap-1.5 min-w-0">
                             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${typeColor}`}>{task.type}</span>
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${statusColor}`}>{task.status}</span>
+                            {rel && <span className="text-[10px] text-slate-400 font-medium">· {rel}</span>}
                           </div>
                           {(currentUser.role === 'ADMIN' || currentUser.role === 'PM') && (
                             <button onClick={() => onDeleteExtraTask(project.id, task.id)} className="inline-flex items-center px-1.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 transition-colors shrink-0" title={t('삭제', 'Delete')}>
@@ -2349,18 +2502,58 @@ const TaskModal = memo(function TaskModal({ project, allProjects, projectIssues,
                           {task.createdBy && <span>등록: {task.createdBy} · {task.createdAt}</span>}
                         </div>
 
-                        {/* 메모 입력 (진행 중 / 작업자 외에는 read-only) */}
-                        {currentUser.role !== 'CUSTOMER' && (
-                          <input
-                            type="text"
-                            placeholder={t('메모 / 진행 상황', 'Note / progress')}
-                            className="mt-2 w-full text-xs p-1.5 border border-slate-200 rounded bg-slate-50 focus:outline-none focus:bg-white focus:border-pink-400"
-                            value={task.note || ''}
-                            onChange={(e) => onUpdateExtraTask(project.id, task.id, { note: e.target.value })}
-                          />
+                        {/* 초기 요약 메모 (등록 시 작성된 한 줄 설명) — 읽기 전용 표시 */}
+                        {task.note && (
+                          <p className="mt-2 text-xs text-slate-600 bg-slate-50 p-1.5 rounded whitespace-pre-wrap">{task.note}</p>
                         )}
-                        {task.note && currentUser.role === 'CUSTOMER' && (
-                          <p className="mt-2 text-xs text-slate-600 bg-slate-50 p-1.5 rounded">{task.note}</p>
+
+                        {/* 댓글 스레드 — AS와 동일 패턴 */}
+                        {Array.isArray(task.comments) && task.comments.length > 0 && (
+                          <div className="mt-3 space-y-1.5">
+                            <div className="text-[10px] font-bold text-slate-500 flex items-center"><MessageSquare size={10} className="mr-1" />{t('진행 이력', 'Comments')} ({task.comments.length})</div>
+                            {task.comments.map(c => (
+                              <div key={c.id} className="border-l-2 border-pink-300 bg-pink-50 rounded-r-md px-2 py-1.5">
+                                <div className="text-[10px] text-slate-500 flex items-center gap-1.5"><strong className="text-slate-700">{c.author}</strong><span>·</span><span>{c.time}</span></div>
+                                <p className="text-xs text-slate-800 whitespace-pre-wrap mt-0.5">{c.text}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* 댓글 입력 */}
+                        {currentUser.role !== 'CUSTOMER' && onAddExtraTaskComment && (
+                          <div className="mt-3 flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={extraReplyText[task.id] || ''}
+                              onChange={(e) => setExtraReplyText({ ...extraReplyText, [task.id]: e.target.value })}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  const txt = extraReplyText[task.id];
+                                  if (txt && txt.trim()) {
+                                    onAddExtraTaskComment(project.id, task.id, txt);
+                                    setExtraReplyText({ ...extraReplyText, [task.id]: '' });
+                                  }
+                                }
+                              }}
+                              placeholder={t('진행 상황 / 답글 (Enter로 등록)', 'Progress / reply (Enter)')}
+                              className="flex-1 text-xs p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-pink-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const txt = extraReplyText[task.id];
+                                if (txt && txt.trim()) {
+                                  onAddExtraTaskComment(project.id, task.id, txt);
+                                  setExtraReplyText({ ...extraReplyText, [task.id]: '' });
+                                }
+                              }}
+                              disabled={!(extraReplyText[task.id] || '').trim()}
+                              className="px-3 py-2 bg-pink-600 hover:bg-pink-700 disabled:bg-slate-300 text-white text-xs font-bold rounded-lg transition-colors inline-flex items-center"
+                            >
+                              <Send size={11} className="mr-1" />{t('답글', 'Reply')}
+                            </button>
+                          </div>
                         )}
 
                         {/* 상태 변경 */}
@@ -2372,10 +2565,13 @@ const TaskModal = memo(function TaskModal({ project, allProjects, projectIssues,
                           </div>
                         )}
                       </div>
+                      </div>
                     );
                   })}
+                  </div>
                 </div>
-              )}
+                );
+              })()}
             </div>
           )}
         </div>
@@ -2383,6 +2579,15 @@ const TaskModal = memo(function TaskModal({ project, allProjects, projectIssues,
           <button onClick={onClose} className="px-5 py-2.5 text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">{t('닫기', 'Close')}</button>
         </div>
       </div>
+      {extraImportOpen && (
+        <ExtraTaskImportModal
+          projectId={project.id}
+          projectName={project.name}
+          onClose={() => setExtraImportOpen(false)}
+          onSubmit={onImportExtraTasks}
+          t={t}
+        />
+      )}
     </div>
   );
 });

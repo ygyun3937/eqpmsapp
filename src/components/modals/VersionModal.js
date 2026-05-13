@@ -1,13 +1,15 @@
 import React, { useState, memo, useMemo } from 'react';
-import { GitCommit, Plus, Trash, Calendar, User, Info, History, X, Edit, Check } from 'lucide-react';
-import { DOMAIN_VERSION_CATEGORIES, DEFAULT_VERSION_CATEGORIES } from '../../constants';
+import { GitCommit, Plus, Trash, Calendar, User, Info, History, X, Edit, Check, Upload } from 'lucide-react';
+import { DOMAIN_VERSION_CATEGORIES, DEFAULT_VERSION_CATEGORIES, formatDomain, getVersionCategoriesForDomain } from '../../constants';
+import InitialVersionsModal from './InitialVersionsModal';
 
-const VersionModal = memo(function VersionModal({ project, onClose, onAdd, onUpdate, onDelete, t }) {
+const VersionModal = memo(function VersionModal({ project, onClose, onAdd, onAddBulk, onUpdate, onDelete, t }) {
   const [form, setForm] = useState({ category: '', version: '', releaseDate: '', note: '' });
   const [filterCategory, setFilterCategory] = useState('전체');
   const [error, setError] = useState('');
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState({ category: '', version: '', releaseDate: '', note: '' });
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
 
   const versions = useMemo(() => {
     if (!project) return [];
@@ -18,7 +20,7 @@ const VersionModal = memo(function VersionModal({ project, onClose, onAdd, onUpd
 
   const suggestedCategories = useMemo(() => {
     if (!project) return [];
-    const recommended = DOMAIN_VERSION_CATEGORIES[project.domain] || DEFAULT_VERSION_CATEGORIES;
+    const recommended = getVersionCategoriesForDomain(project.domain, project.subDomain);
     const used = new Set(versions.map(v => v.category).filter(Boolean));
     return Array.from(new Set([...recommended, ...used]));
   }, [project, versions]);
@@ -39,7 +41,7 @@ const VersionModal = memo(function VersionModal({ project, onClose, onAdd, onUpd
   // 카테고리 인덱스 통일: 도메인 추천 카테고리 순서 → 그 외는 알파벳순
   const orderedCategoryEntries = useMemo(() => {
     if (!project) return [];
-    const recommended = DOMAIN_VERSION_CATEGORIES[project.domain] || DEFAULT_VERSION_CATEGORIES;
+    const recommended = getVersionCategoriesForDomain(project.domain, project.subDomain);
     const rank = new Map();
     recommended.forEach((c, i) => rank.set(c, i));
     return Object.entries(latestByCategory).sort(([a], [b]) => {
@@ -92,7 +94,19 @@ const VersionModal = memo(function VersionModal({ project, onClose, onAdd, onUpd
             <GitCommit size={20} className="mr-2 text-indigo-600" />
             {t('버전 관리', 'Version Management')}
           </h2>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-700"><X size={22} /></button>
+          <div className="flex items-center gap-2">
+            {onAddBulk && (
+              <button
+                type="button"
+                onClick={() => setBulkImportOpen(true)}
+                className="px-2.5 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-700 text-[11px] font-bold rounded-md border border-purple-300 inline-flex items-center transition-colors"
+                title={t('시스템 도입 전 버전 이력을 한 번에 등록', 'Bulk import legacy versions')}
+              >
+                <Upload size={11} className="mr-1" />{t('초기 이력 일괄 등록', 'Bulk Import')}
+              </button>
+            )}
+            <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-700"><X size={22} /></button>
+          </div>
         </div>
 
         <div className="p-6 space-y-4 overflow-y-auto flex-1">
@@ -100,7 +114,7 @@ const VersionModal = memo(function VersionModal({ project, onClose, onAdd, onUpd
           <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
             <p className="text-xs text-slate-500 mb-1">{t('프로젝트', 'Project')}</p>
             <p className="text-sm font-bold text-slate-800">{project.name}</p>
-            <p className="text-[11px] text-slate-500">{project.domain}{project.customer ? ` · ${project.customer}` : ''}</p>
+            <p className="text-[11px] text-slate-500">{formatDomain(project.domain, project.subDomain)}{project.customer ? ` · ${project.customer}` : ''}</p>
           </div>
 
           {/* 카테고리별 최신 버전 — 도메인 추천 순서로 통일 */}
@@ -157,7 +171,7 @@ const VersionModal = memo(function VersionModal({ project, onClose, onAdd, onUpd
               {/* 배포일 */}
               <div className="col-span-5 md:col-span-3">
                 <label className="block text-xs font-bold text-slate-700 mb-1">{t('배포일', 'Date')}</label>
-                <input type="date" className="w-full text-sm p-2.5 border border-slate-300 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200" value={form.releaseDate} onChange={e => setForm({...form, releaseDate: e.target.value})} onKeyDown={handleEnterAdd} />
+                <input type="date" max="9999-12-31" className="w-full text-sm p-2.5 border border-slate-300 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200" value={form.releaseDate} onChange={e => setForm({...form, releaseDate: e.target.value})} onKeyDown={handleEnterAdd} />
               </div>
             </div>
 
@@ -218,7 +232,7 @@ const VersionModal = memo(function VersionModal({ project, onClose, onAdd, onUpd
                         <div className="grid grid-cols-12 gap-2">
                           <input className="col-span-4 text-sm p-2 border border-indigo-300 rounded" value={editForm.category} onChange={e => setEditForm({...editForm, category: e.target.value})} placeholder="카테고리" />
                           <input className="col-span-4 text-sm p-2 border border-indigo-300 rounded font-mono" value={editForm.version} onChange={e => setEditForm({...editForm, version: e.target.value})} placeholder="버전" />
-                          <input type="date" className="col-span-4 text-sm p-2 border border-indigo-300 rounded" value={editForm.releaseDate} onChange={e => setEditForm({...editForm, releaseDate: e.target.value})} />
+                          <input type="date" max="9999-12-31" className="col-span-4 text-sm p-2 border border-indigo-300 rounded" value={editForm.releaseDate} onChange={e => setEditForm({...editForm, releaseDate: e.target.value})} />
                         </div>
                         <input className="w-full text-sm p-2 border border-indigo-300 rounded" value={editForm.note} onChange={e => setEditForm({...editForm, note: e.target.value})} placeholder="노트" />
                         <div className="flex justify-end gap-1.5">
@@ -263,6 +277,14 @@ const VersionModal = memo(function VersionModal({ project, onClose, onAdd, onUpd
           </button>
         </div>
       </div>
+      {bulkImportOpen && (
+        <InitialVersionsModal
+          project={project}
+          onClose={() => setBulkImportOpen(false)}
+          onSubmit={(projectId, entries) => { if (onAddBulk) onAddBulk(projectId, entries); }}
+          t={t}
+        />
+      )}
     </div>
   );
 });

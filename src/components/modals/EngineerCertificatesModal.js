@@ -139,7 +139,7 @@ const EngineerCertificatesModal = memo(function EngineerCertificatesModal({
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">{t('만료일', 'Expiry')}</label>
-                <input type="date" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={badgeForm.expiry} onChange={e => setBadgeForm({...badgeForm, expiry: e.target.value})} />
+                <input type="date" max="9999-12-31" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={badgeForm.expiry} onChange={e => setBadgeForm({...badgeForm, expiry: e.target.value})} />
               </div>
             </div>
             <div>
@@ -184,7 +184,7 @@ const EngineerCertificatesModal = memo(function EngineerCertificatesModal({
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">{t('만료일 (없으면 비워두세요)', 'Expiry (Optional)')}</label>
-                <input type="date" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={safetyForm.expiry} onChange={e => setSafetyForm({...safetyForm, expiry: e.target.value})} />
+                <input type="date" max="9999-12-31" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={safetyForm.expiry} onChange={e => setSafetyForm({...safetyForm, expiry: e.target.value})} />
               </div>
             </div>
             <div>
@@ -235,7 +235,7 @@ const EngineerCertificatesModal = memo(function EngineerCertificatesModal({
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">{t('만료일', 'Expiry')}</label>
-                <input type="date" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={visaForm.expiry} onChange={e => setVisaForm({...visaForm, expiry: e.target.value})} />
+                <input type="date" max="9999-12-31" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={visaForm.expiry} onChange={e => setVisaForm({...visaForm, expiry: e.target.value})} />
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">{t('메모 (선택)', 'Note')}</label>

@@ -5,6 +5,7 @@ import {
   LifeBuoy, Plane, Star, Kanban, Users, X, BookOpen, Lightbulb
 } from 'lucide-react';
 import { exportToExcel } from '../../utils/export';
+import { parseAnyDate } from '../../utils/dateUtils';
 import { TODAY } from '../../constants';
 
 // 월요일 시작 ISO 주
@@ -55,7 +56,7 @@ function aggregate(targetUser, weekStart, weekEnd, projects, issues, engineers) 
   const we = weekEnd.getTime();
   const inRange = (dateStr) => {
     if (!dateStr) return false;
-    const d = new Date(dateStr).getTime();
+    const d = parseAnyDate(dateStr);
     return !isNaN(d) && d >= ws && d <= we;
   };
 
