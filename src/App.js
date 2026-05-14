@@ -593,6 +593,25 @@ export default function App() {
     return () => window.removeEventListener('beforeunload', handler);
   }, []);
 
+  // QR 스캔 URL 라우팅 — ?part=PART-xxx 파라미터 감지 후 단계 모달 자동 오픈
+  // isLoading이 false가 되면 pipelineParts가 이미 세팅된 상태이므로 그 시점에 처리
+  useEffect(() => {
+    if (isLoading) return;
+    const params = new URLSearchParams(window.location.search);
+    const partId = params.get('part');
+    if (!partId) return;
+    const part = pipelineParts.find(p => p.id === partId);
+    if (!part) return;
+    const next = getNextStage(part.currentStage);
+    if (next) {
+      setPartStageTarget({ part, nextStage: next });
+      setIsPartStageModalOpen(true);
+    }
+    // 처리 후 URL에서 ?part= 제거 (새로고침 시 중복 오픈 방지)
+    const clean = window.location.pathname + window.location.hash;
+    window.history.replaceState(null, '', clean);
+  }, [isLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // 페이지 떠나기 직전 — 대기 중인 debounced 저장을 즉시 sendBeacon으로 발사
   // (api.js의 unload 핸들러는 _pendingPayloads만 처리하므로, debounce 대기 중인 건 별도 처리 필요)
   // Rules of Hooks — early return 위에 위치해야 함
