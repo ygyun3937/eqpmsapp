@@ -31,7 +31,8 @@
  * [지원 액션 (POST body { action, data })]
  *   UPDATE_PROJECT_BY_ID  — 단일 프로젝트 행 delta 저장 (성능 최적화)
  *   UPDATE_PROJECTS, UPDATE_ISSUES, UPDATE_RELEASES,
- *   UPDATE_ENGINEERS, UPDATE_PARTS, UPDATE_SITES, UPDATE_CUSTOMERS,
+ *   UPDATE_ENGINEERS, UPDATE_PARTS, UPDATE_PIPELINE_PARTS, UPDATE_PART_EVENTS,
+ *   UPDATE_SITES, UPDATE_CUSTOMERS,
  *   UPDATE_USERS, UPDATE_SETTINGS, UPDATE_WEEKLY_REPORTS
  *   BACKUP_PROJECT    — 삭제 직전 프로젝트 단독 백업 (data: { project, user }) — 30일 보관
  *   UPLOAD_FILE       — Drive에 파일 업로드 (data: { projectId, customer, projectName, fileName, mimeType, base64, category })
