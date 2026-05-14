@@ -17,6 +17,7 @@ import {
 
 // Utils
 import { getStatusColor } from './utils/status';
+import { getNextStage, canAdvanceStage, createStageRecord } from './utils/partPipeline';
 import { calcExp, calcAct } from './utils/calc';
 import { loadFromGoogleDB, saveToGoogleDB, saveProjectDelta, notifyWebhook, callGoogleAction, fileToBase64, subscribeSaveState, subscribeSaveError, getPendingSaveCount } from './utils/api';
 import { saveSnapshot, loadSnapshot, saveLastKnownGood, compareWithRemote, saveDeletedItemSnapshot, subscribeStorageWarning } from './utils/localBackup';
@@ -63,6 +64,10 @@ const EngineerActivityModal = lazy(() => import('./components/modals/EngineerAct
 const DailyReportModal = lazy(() => import('./components/modals/DailyReportModal'));
 const MobileIssueModal = lazy(() => import('./components/modals/MobileIssueModal'));
 const MobilePartModal = lazy(() => import('./components/modals/MobilePartModal'));
+const PartPipelineModal = lazy(() => import('./components/modals/PartPipelineModal'));
+const QRLabelModal = lazy(() => import('./components/modals/QRLabelModal'));
+const PartStageModal = lazy(() => import('./components/modals/PartStageModal'));
+const MobilePartPipelineModal = lazy(() => import('./components/modals/MobilePartPipelineModal'));
 const DeleteConfirmModal = lazy(() => import('./components/modals/DeleteConfirmModal'));
 // ManagerChangeModal/TripScheduleModal은 ProjectTeamModal로 통합
 const PhaseGanttModal = lazy(() => import('./components/modals/PhaseGanttModal'));
@@ -113,6 +118,12 @@ export default function App() {
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isPartModalOpen, setIsPartModalOpen] = useState(false);
+  const [isPipelinePartModalOpen, setIsPipelinePartModalOpen] = useState(false);
+  const [isQRLabelModalOpen, setIsQRLabelModalOpen] = useState(false);
+  const [qrLabelTarget, setQrLabelTarget] = useState(null);
+  const [isPartStageModalOpen, setIsPartStageModalOpen] = useState(false);
+  const [partStageTarget, setPartStageTarget] = useState(null);
+  const [pipelinePartToDelete, setPipelinePartToDelete] = useState(null);
   const [isSiteModalOpen, setIsSiteModalOpen] = useState(false);
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [customerEditTarget, setCustomerEditTarget] = useState(null);
@@ -165,6 +176,8 @@ export default function App() {
   const [releases, setReleases] = useState([]);
   const [engineers, setEngineers] = useState([]);
   const [parts, setParts] = useState([]);
+  const [pipelineParts, setPipelineParts] = useState([]);
+  const [partEvents, setPartEvents] = useState([]);
   const [sites, setSites] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [users, setUsers] = useState([]);
@@ -489,6 +502,8 @@ export default function App() {
         });
         setEngineers(migratedEngineers);
         setParts(data.parts || []);
+        if (Array.isArray(data.pipelineParts)) setPipelineParts(data.pipelineParts);
+        if (Array.isArray(data.partEvents)) setPartEvents(data.partEvents);
         // 사이트 customSpecs 배열 정규화 (GAS에서 빈셀/문자열로 와도 안전) + customerId 자동 매칭
         const normalizedSites = (data.sites || []).map(s => autoMatch({
           ...s,
@@ -1114,6 +1129,68 @@ export default function App() {
 
   const handleUpdatePartStatus = (partId, newStatus) => {
     syncParts(parts.map(p => p.id === partId ? { ...p, status: newStatus } : p));
+  };
+
+  const syncPipelineParts = (updated) => {
+    setPipelineParts(updated);
+    saveToGoogleDB('UPDATE_PIPELINE_PARTS', updated);
+  };
+
+  const syncPartEvents = (updated) => {
+    setPartEvents(updated);
+    saveToGoogleDB('UPDATE_PART_EVENTS', updated);
+  };
+
+  const handleAddPipelinePart = (newPart) => {
+    const selectedProject = projects.find(p => p.id === newPart.projectId);
+    const part = {
+      ...newPart,
+      id: generateUniqueId('PLT'),
+      projectName: selectedProject ? selectedProject.name : t('알 수 없는 프로젝트', 'Unknown Project'),
+      currentStage: '설계',
+      date: TODAY.toISOString().split('T')[0],
+    };
+    const updatedParts = [part, ...pipelineParts];
+    syncPipelineParts(updatedParts);
+    const startEvent = createStageRecord(part.id, '설계', currentUser?.name || currentUser?.id || 'system', {}, '진행중');
+    syncPartEvents([startEvent, ...partEvents]);
+    setIsPipelinePartModalOpen(false);
+    showToast(t('파트가 등록되었습니다.', 'Part registered.'));
+  };
+
+  const handleAdvancePipelineStage = (partId, nextStage, stageData) => {
+    const { checklistResults = {}, notes = '', photoUrls = '', status = '완료' } = stageData;
+    const part = pipelineParts.find(p => p.id === partId);
+    if (!part) return;
+    if (!canAdvanceStage(part.currentStage, nextStage, partEvents, partId)) {
+      showToast(t('QC 합격 기록이 없으면 제조 단계로 진입할 수 없습니다.', 'QC must pass before manufacturing.'));
+      return;
+    }
+    const event = createStageRecord(partId, part.currentStage, currentUser?.name || currentUser?.id || 'system', checklistResults, status, notes, photoUrls);
+    syncPartEvents([event, ...partEvents]);
+    syncPipelineParts(pipelineParts.map(p => p.id === partId ? { ...p, currentStage: nextStage } : p));
+    setIsPartStageModalOpen(false);
+    setPartStageTarget(null);
+    showToast(t(`${nextStage} 단계로 이동했습니다.`, `Moved to ${nextStage}.`));
+  };
+
+  const handleRejectPipelineStage = (partId, fromStage, notes) => {
+    const prevStageMap = { QC: '구매', 제조: 'QC', 납품: '제조' };
+    const prevStage = prevStageMap[fromStage] || fromStage;
+    const event = createStageRecord(partId, fromStage, currentUser?.name || currentUser?.id || 'system', {}, '불합격', notes);
+    syncPartEvents([event, ...partEvents]);
+    syncPipelineParts(pipelineParts.map(p => p.id === partId ? { ...p, currentStage: prevStage } : p));
+    setIsPartStageModalOpen(false);
+    setPartStageTarget(null);
+    showToast(t(`${fromStage} 불합격 — ${prevStage} 단계로 반려됐습니다.`, `${fromStage} failed — returned to ${prevStage}.`));
+  };
+
+  const handleDeletePipelinePart = () => {
+    if (!pipelinePartToDelete) return;
+    syncPipelineParts(pipelineParts.filter(p => p.id !== pipelinePartToDelete.id));
+    syncPartEvents(partEvents.filter(e => e.partId !== pipelinePartToDelete.id));
+    setPipelinePartToDelete(null);
+    showToast(t('파트가 삭제되었습니다.', 'Part deleted.'));
   };
 
   const handleAddSite = (newSite) => {
@@ -2093,7 +2170,23 @@ export default function App() {
               {activeTab === 'dashboard' && <DashboardView projects={projects} issues={issues} engineers={engineers} getStatusColor={getStatusColor} calcExp={calcExp} calcAct={calcAct} onProjectClick={openProjectDetail} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} currentUser={currentUser} t={t} />}
               {activeTab === 'projects' && <ProjectListView projects={projects} issues={issues} engineers={engineers} customers={customers} sites={sites} getStatusColor={getStatusColor} onAddClick={() => setIsProjectModalOpen(true)} onManageTasks={(id) => { setSelectedProjectId(id); setIsTaskModalOpen(true); }} onEditVersion={(prj) => { setVersionEditProject(prj); setIsVersionModalOpen(true); }} onChangeManager={(prj) => { setTeamEditProjectId(prj.id); setIsTeamModalOpen(true); }} onManageTeam={(prj) => { setTeamEditProjectId(prj.id); setIsTeamModalOpen(true); }} onViewPhaseGantt={(prj) => { setPhaseGanttProject(prj); setIsPhaseGanttOpen(true); }} onEditProject={(prj) => { setProjectEditTarget(prj); setIsProjectEditOpen(true); }} onDeleteProject={(prj) => setProjectToDelete(prj)} onUpdatePhase={handleUpdatePhase} onEditPhases={(prjId) => { setPhaseEditProjectId(prjId); setIsPhaseEditOpen(true); }} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} onOpenCustomer={(c) => { setCustomerEditTarget(c); setIsCustomerModalOpen(true); }} onShowEngineer={(eid) => { setActivityEngineerId(eid); setIsActivityModalOpen(true); }} onJumpTo={(tab) => setActiveTab(tab)} calcExp={calcExp} calcAct={calcAct} currentUser={currentUser} t={t} />}
               {activeTab === 'issues' && <IssueListView issues={issues} getStatusColor={getStatusColor} onAddClick={() => setIsIssueModalOpen(true)} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} onDeleteIssue={(issue) => setIssueToDelete(issue)} currentUser={currentUser} t={t} />}
-              {activeTab === 'parts' && <PartsListView parts={parts} getStatusColor={getStatusColor} onUpdateStatus={handleUpdatePartStatus} onDeletePart={(part) => setPartToDelete(part)} onAddClick={() => setIsPartModalOpen(true)} currentUser={currentUser} t={t} />}
+              {activeTab === 'parts' && (
+                <PartsListView
+                  parts={parts}
+                  pipelineParts={pipelineParts}
+                  partEvents={partEvents}
+                  getStatusColor={getStatusColor}
+                  onUpdateStatus={handleUpdatePartStatus}
+                  onDeletePart={(part) => setPartToDelete(part)}
+                  onAddClick={() => setIsPartModalOpen(true)}
+                  onAddPipelinePart={() => setIsPipelinePartModalOpen(true)}
+                  onOpenStageModal={(part, nextStage) => { setPartStageTarget({ part, nextStage }); setIsPartStageModalOpen(true); }}
+                  onOpenQRLabel={(part) => { setQrLabelTarget(part); setIsQRLabelModalOpen(true); }}
+                  onDeletePipelinePart={(part) => setPipelinePartToDelete(part)}
+                  currentUser={currentUser}
+                  t={t}
+                />
+              )}
               {/* 마스터 데이터 — 고객사 + 사이트 통합 탭. legacy 'sites'/'customers' 진입 시 defaultTab 분기. */}
               {(activeTab === 'master_data' || activeTab === 'sites' || activeTab === 'customers') && currentUser.role !== 'CUSTOMER' && (
                 <MasterDataView
@@ -2164,6 +2257,51 @@ export default function App() {
             {isProjectModalOpen && <ProjectModal engineers={engineers} customers={customers} subDomainsBySettings={settings.subDomains} onClose={() => setIsProjectModalOpen(false)} onSubmit={handleAddProject} t={t} />}
             {isIssueModalOpen && <IssueModal projects={projects} onClose={() => setIsIssueModalOpen(false)} onSubmit={handleAddIssue} t={t} />}
             {isPartModalOpen && <PartModal projects={projects} onClose={() => setIsPartModalOpen(false)} onSubmit={handleAddPart} t={t} />}
+            {isPipelinePartModalOpen && (
+              <PartPipelineModal
+                projects={projects}
+                onClose={() => setIsPipelinePartModalOpen(false)}
+                onSubmit={handleAddPipelinePart}
+                t={t}
+              />
+            )}
+            {isQRLabelModalOpen && qrLabelTarget && (
+              <QRLabelModal
+                part={qrLabelTarget}
+                onClose={() => { setIsQRLabelModalOpen(false); setQrLabelTarget(null); }}
+                t={t}
+              />
+            )}
+            {isPartStageModalOpen && partStageTarget && (
+              isMobileMode
+                ? <MobilePartPipelineModal
+                    part={partStageTarget.part}
+                    nextStage={partStageTarget.nextStage}
+                    partEvents={partEvents}
+                    onClose={() => { setIsPartStageModalOpen(false); setPartStageTarget(null); }}
+                    onAdvance={handleAdvancePipelineStage}
+                    onReject={handleRejectPipelineStage}
+                    t={t}
+                  />
+                : <PartStageModal
+                    part={partStageTarget.part}
+                    nextStage={partStageTarget.nextStage}
+                    partEvents={partEvents}
+                    onClose={() => { setIsPartStageModalOpen(false); setPartStageTarget(null); }}
+                    onAdvance={handleAdvancePipelineStage}
+                    onReject={handleRejectPipelineStage}
+                    t={t}
+                  />
+            )}
+            {pipelinePartToDelete && (
+              <DeleteConfirmModal
+                type="part"
+                item={pipelinePartToDelete}
+                onClose={() => setPipelinePartToDelete(null)}
+                onConfirm={handleDeletePipelinePart}
+                t={t}
+              />
+            )}
             {isSiteModalOpen && <SiteModal site={selectedSite} customers={customers} onClose={() => setIsSiteModalOpen(false)} onSubmit={handleAddSite} t={t} />}
             {isCustomerModalOpen && (
               <CustomerModal
