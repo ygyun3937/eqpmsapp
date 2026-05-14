@@ -223,3 +223,28 @@ export const INITIAL_ENGINEERS = [
 export const INITIAL_PARTS = [{ id: 'PRT-001', projectId: 'PRJ-2026-001', projectName: 'A사 텍사스 Fab 신규 셋업', partName: 'O-Ring', partNumber: 'OR-V-050', quantity: 10, urgency: 'High', status: '발주', date: '2026-04-02', author: '이셋업 선임', photo: null }];
 
 export const INITIAL_SITES = [{ id: 'SIT-001', customer: 'A전자', fab: 'US-Texas Fab2', line: 'Ph 1 Cleanroom', power: '208V', pcw: '수압 4.0 kgf/cm2', gas: 'CDA 6kgf', limit: '최대 2.5T', note: '', date: '2026-04-01' }];
+
+// === 파트 파이프라인 (신규 제작/구매 자재 생애주기) ===
+export const PART_PIPELINE_PHASES = ['설계', '구매', 'QC', '제조', '납품'];
+export const PART_TYPES = ['설계외주형', '구매형'];
+
+// QC 단계 인덱스 — 이전 단계에서 QC 미완료 시 제조 진입 차단
+export const PART_QC_INDEX = 2; // PART_PIPELINE_PHASES.indexOf('QC')
+
+// 단계별 기본 체크리스트 템플릿 (자재 타입별)
+export const DEFAULT_CHECKLISTS = {
+  '설계외주형': {
+    설계: ['도면 완성', '설계 검토 완료', '외주사 선정'],
+    구매: ['발주서 발행', '납기일 확인', '대금 처리'],
+    QC: ['치수 검사', '표면 처리 확인', '재질 확인', '도면 번호 일치'],
+    제조: ['조립 완료', '기능 테스트', '외관 검사'],
+    납품: ['포장 완료', '납품서 발행', '고객 서명'],
+  },
+  '구매형': {
+    설계: ['사양 확정', '공급처 선정'],
+    구매: ['발주서 발행', '납기일 확인'],
+    QC: ['외관 검사', '규격/사양 확인', '수량 확인'],
+    제조: ['조립/통합 완료', '기능 테스트'],
+    납품: ['포장 완료', '납품서 발행', '고객 서명'],
+  },
+};
