@@ -11,6 +11,19 @@ const notifyListeners = () => _listeners.forEach(fn => { try { fn(_inFlightCount
 export const subscribeSaveState = (fn) => { _listeners.add(fn); return () => _listeners.delete(fn); };
 export const getPendingSaveCount = () => _inFlightCount + _pendingPayloads.size;
 
+// 저장 실패 알림 — 3회 재시도 모두 실패 시 호출 (UI 토스트용)
+const _errorListeners = new Set();
+const notifyError = (info) => _errorListeners.forEach(fn => { try { fn(info); } catch (_) {} });
+export const subscribeSaveError = (fn) => { _errorListeners.add(fn); return () => _errorListeners.delete(fn); };
+
+// fetch에 timeout 적용 — GAS가 응답 없이 hang되는 경우 방지
+const FETCH_TIMEOUT_MS = 30000;
+const fetchWithTimeout = (url, options, timeoutMs = FETCH_TIMEOUT_MS) => {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: ctrl.signal }).finally(() => clearTimeout(timer));
+};
+
 // 페이지 떠나기 직전 모든 대기 페이로드를 sendBeacon으로 발송.
 // sendBeacon은 페이지 unload 중에도 보장 발송되는 API.
 function flushAllOnUnload() {
@@ -71,14 +84,25 @@ export const saveToGoogleDB = async (action, data, retries = 3) => {
   notifyListeners();
   _inFlightCount++;
   notifyListeners();
+  let lastError = null;
   try {
     for (let i = 0; i < retries; i++) {
       try {
-        await fetch(GAS_URL, {
+        const res = await fetchWithTimeout(GAS_URL, {
           method: 'POST',
           body: JSON.stringify({ action, data: payload }),
           keepalive: true // 페이지가 떠나도 요청 완료 시도
         });
+        // HTTP 상태 코드 검증 — 500/403 등 서버 오류 감지
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status} ${res.statusText || ''}`.trim());
+        }
+        // 응답 본문 검증 — GAS가 200 OK로 응답해도 본문에 ok:false 또는 status:'error'면 실패 처리
+        let json = null;
+        try { json = await res.json(); } catch (_) { /* JSON 아닌 응답은 무시 — 일부 GAS는 text 반환 */ }
+        if (json && (json.ok === false || json.status === 'error')) {
+          throw new Error(json.message || json.error || 'GAS 서버 처리 실패');
+        }
         // 성공 — pending에서 제거 (해당 action 한정, 다른 action은 그대로)
         if (_pendingPayloads.get(action) === payload) {
           _pendingPayloads.delete(action);
@@ -86,11 +110,20 @@ export const saveToGoogleDB = async (action, data, retries = 3) => {
         }
         return;
       } catch (error) {
-        console.warn(`구글 DB 저장 시도 ${i + 1}/${retries} 실패:`, error.message);
+        lastError = error;
+        const reason = error.name === 'AbortError' ? '응답 시간 초과(30초)' : (error.message || 'unknown');
+        console.warn(`구글 DB 저장 시도 ${i + 1}/${retries} 실패: ${reason}`);
         if (i < retries - 1) await new Promise(r => setTimeout(r, 2000));
       }
     }
-    console.error('구글 DB 저장 최종 실패');
+    // 3회 모두 실패 — 사용자에게 알림. 페이로드는 _pendingPayloads에 남아 beforeunload flush 또는 다음 로드 시 복원 배너로 처리됨.
+    console.error('구글 DB 저장 최종 실패:', lastError?.message);
+    notifyError({
+      action,
+      message: lastError?.name === 'AbortError'
+        ? '서버 응답 지연으로 저장 실패. 변경 사항은 로컬에 보관됐으니 잠시 후 자동 재전송됩니다.'
+        : '서버 저장 실패. 변경 사항은 로컬에 보관됐으니 새로고침 후 복원하거나 다시 시도해 주세요.'
+    });
   } finally {
     _inFlightCount = Math.max(0, _inFlightCount - 1);
     notifyListeners();

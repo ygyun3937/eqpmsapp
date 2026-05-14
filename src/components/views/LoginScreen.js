@@ -90,6 +90,9 @@ const LoginScreen = memo(function LoginScreen({ users, onLogin, lang, setLang, t
             {t('계정 발급은 관리자에게 문의하세요.', 'Contact admin to get an account.')}
           </div>
         )}
+        <div className="mt-4 pt-3 border-t border-slate-100 text-center text-[10px] text-slate-400 tracking-wide">
+          Developed by YYG
+        </div>
       </div>
       <div className="absolute w-full h-full inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-900/40 via-slate-900 to-slate-900 z-0"></div>
     </div>

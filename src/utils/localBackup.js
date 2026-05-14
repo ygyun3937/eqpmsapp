@@ -20,6 +20,43 @@ const PENDING = `${PREFIX}pending_changes`;
 // localStorage 항목당 안전 한도 — Chrome/Firefox 5MB 전체 한도 중 단일 키 4MB까지 허용
 const MAX_BYTES_PER_KEY = 4 * 1024 * 1024;
 
+// 전체 localStorage 한도(보수) + 경고 임계값
+const TOTAL_QUOTA = 5 * 1024 * 1024;
+const WARN_THRESHOLD = 0.8;
+
+// 사용량 측정 — 모든 키·값 길이 합산 (정확하지 않지만 충분히 근사)
+export const getLocalStorageUsage = () => {
+  if (typeof localStorage === 'undefined') return 0;
+  let total = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k == null) continue;
+    const v = localStorage.getItem(k);
+    total += k.length + (v ? v.length : 0);
+  }
+  return total;
+};
+
+// 용량 경고 구독 — App.js에서 토스트로 노출
+const _quotaListeners = new Set();
+let _quotaWarnedThisSession = false;
+export const subscribeStorageWarning = (fn) => { _quotaListeners.add(fn); return () => _quotaListeners.delete(fn); };
+
+const checkQuotaAndWarn = () => {
+  if (_quotaWarnedThisSession) return;
+  const usage = getLocalStorageUsage();
+  if (usage / TOTAL_QUOTA < WARN_THRESHOLD) return;
+  _quotaWarnedThisSession = true;
+  const usageMB = (usage / 1024 / 1024).toFixed(1);
+  const info = {
+    usage,
+    usageMB,
+    message: `로컬 백업 용량 ${usageMB}MB / 5MB. 한도 80% 초과. 브라우저 캐시·기록 정리 또는 관리자 문의 권장.`
+  };
+  _quotaListeners.forEach(fn => { try { fn(info); } catch (_) {} });
+  console.warn('[localBackup] localStorage usage 80% 초과 — 사용자 토스트 노출됨');
+};
+
 const safeSet = (storageKey, value) => {
   if (typeof localStorage === 'undefined') return false;
   try {
@@ -52,6 +89,7 @@ const safeGet = (storageKey) => {
 // 단일 컬렉션 스냅샷 저장 — sync 직후 호출
 export const saveSnapshot = (key, data) => {
   safeSet(SNAPSHOT(key), { ts: Date.now(), data });
+  checkQuotaAndWarn();
 };
 
 // 최근 스냅샷 로드

@@ -18,8 +18,8 @@ import {
 // Utils
 import { getStatusColor } from './utils/status';
 import { calcExp, calcAct } from './utils/calc';
-import { loadFromGoogleDB, saveToGoogleDB, saveProjectDelta, notifyWebhook, callGoogleAction, fileToBase64, subscribeSaveState, getPendingSaveCount } from './utils/api';
-import { saveSnapshot, loadSnapshot, saveLastKnownGood, compareWithRemote, saveDeletedItemSnapshot } from './utils/localBackup';
+import { loadFromGoogleDB, saveToGoogleDB, saveProjectDelta, notifyWebhook, callGoogleAction, fileToBase64, subscribeSaveState, subscribeSaveError, getPendingSaveCount } from './utils/api';
+import { saveSnapshot, loadSnapshot, saveLastKnownGood, compareWithRemote, saveDeletedItemSnapshot, subscribeStorageWarning } from './utils/localBackup';
 import { hashPassword } from './utils/auth';
 import { nowStored } from './utils/dateUtils';
 
@@ -545,14 +545,20 @@ export default function App() {
   // (Hook은 조건부 return 위에 있어야 함 — Rules of Hooks)
   const debouncedSaveRefs = useRef({});
   const [savingCount, setSavingCount] = useState(0);
-  // 모달 표시 지연 — 빠른 save(<800ms)엔 깜빡임 방지, 진짜 오래 걸릴 때만 표시
-  const [showSyncOverlay, setShowSyncOverlay] = useState(false);
   useEffect(() => subscribeSaveState(setSavingCount), []);
-  useEffect(() => {
-    if (savingCount === 0) { setShowSyncOverlay(false); return; }
-    const timer = setTimeout(() => setShowSyncOverlay(true), 800);
-    return () => clearTimeout(timer);
-  }, [savingCount]);
+
+  // 저장 3회 재시도 실패 시 사용자에게 토스트 알림 (silent failure 방지)
+  useEffect(() => subscribeSaveError(info => {
+    const msg = info && info.message ? info.message : '저장 실패';
+    setToastMessage(`⚠️ ${msg}`);
+    setTimeout(() => setToastMessage(''), 6000);
+  }), []);
+
+  // localStorage 용량 80% 초과 시 1회 토스트 알림
+  useEffect(() => subscribeStorageWarning(info => {
+    setToastMessage(`⚠️ ${info.message}`);
+    setTimeout(() => setToastMessage(''), 8000);
+  }), []);
 
   // 저장 진행 중에 새로고침/탭 닫기 시 브라우저 경고 prompt
   // (실제 데이터는 sendBeacon으로 flush되지만, 사용자가 의도치 않게 떠나는 것 방지)
@@ -1856,31 +1862,17 @@ export default function App() {
     );
   };
 
+  // 비차단형 코너 인디케이터 — 저장 작업이 1건이라도 진행 중이면 우측 하단에 작게 표시.
+  // 사용자는 계속 다른 작업 가능. 진짜 위험(새로고침/탭 이동)은 beforeunload 경고가 막아줌.
   const renderSyncingOverlay = () => {
-    if (!showSyncOverlay) return null;
+    if (savingCount === 0) return null;
     return (
-      <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-[400]" onClick={(e) => e.stopPropagation()}>
-        <div className="bg-white rounded-2xl shadow-2xl px-8 py-7 max-w-md mx-4 text-center" onClick={(e) => e.stopPropagation()}>
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-amber-100 rounded-full mb-4">
-            <svg className="animate-spin h-9 w-9 text-amber-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-          </div>
-          <h2 className="text-xl font-bold text-slate-800 mb-2">
-            {t('서버에 동기화 중', 'Syncing to Server')}
-          </h2>
-          <p className="text-sm text-slate-600 leading-relaxed">
-            {t('변경 사항을 안전하게 저장하고 있습니다.', 'Saving your changes safely.')}
-            <br/>
-            <span className="font-bold text-amber-700">
-              {t('새로고침이나 페이지 이동을 잠시만 멈춰주세요.', 'Please don\'t refresh or navigate away.')}
-            </span>
-          </p>
-          <div className="mt-4 text-[11px] text-slate-400">
-            {t(`처리 중 ${savingCount}건`, `${savingCount} pending`)}
-          </div>
-        </div>
+      <div className="fixed bottom-4 right-4 z-[400] bg-slate-800/95 text-white rounded-full shadow-lg px-3 py-1.5 flex items-center gap-2 text-xs font-bold pointer-events-none">
+        <svg className="animate-spin h-3.5 w-3.5 text-amber-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span>{t(`저장 중 ${savingCount}건`, `Saving ${savingCount}`)}</span>
       </div>
     );
   };
