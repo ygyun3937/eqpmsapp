@@ -2,7 +2,7 @@ import React, { useState, memo } from 'react';
 import { CheckSquare, AlertTriangle } from 'lucide-react';
 import ModalWrapper from '../common/ModalWrapper';
 
-const PartStageModal = memo(function PartStageModal({ part, nextStage, partEvents, onClose, onAdvance, onReject, t }) {
+const PartStageModal = memo(function PartStageModal({ part, nextStage, onClose, onAdvance, onReject, t }) {
   const currentStage = part.currentStage;
   const isQC = currentStage === 'QC';
   const checklists = part.pipelineConfig?.checklists?.[currentStage] || [];
@@ -37,6 +37,7 @@ const PartStageModal = memo(function PartStageModal({ part, nextStage, partEvent
       onSubmit={handleAdvance}
       submitText={t(`${nextStage} 단계로 이동`, `Move to ${nextStage}`)}
       submitDisabled={isQC && !allChecked}
+      t={t}
     >
       {/* 파트 요약 */}
       <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
@@ -49,7 +50,7 @@ const PartStageModal = memo(function PartStageModal({ part, nextStage, partEvent
         <div className={`rounded-xl border p-4 space-y-2 ${isQC ? 'border-amber-300 bg-amber-50' : 'border-slate-200'}`}>
           <div className="flex items-center justify-between">
             <p className={`text-sm font-bold ${isQC ? 'text-amber-800' : 'text-slate-700'}`}>
-              {isQC ? `🔒 QC 체크리스트` : `${currentStage} 체크리스트`}
+              {isQC ? t('🔒 QC 체크리스트', '🔒 QC Checklist') : t(`${currentStage} 체크리스트`, `${currentStage} Checklist`)}
             </p>
             <span className="text-xs font-bold text-slate-500">{completedCount} / {checklists.length}</span>
           </div>
