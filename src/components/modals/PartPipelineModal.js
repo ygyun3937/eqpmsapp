@@ -3,6 +3,11 @@ import { Package, Plus, X } from 'lucide-react';
 import ModalWrapper from '../common/ModalWrapper';
 import { PART_TYPES, DEFAULT_CHECKLISTS, PART_PIPELINE_PHASES } from '../../constants';
 
+const deepCloneChecklists = (type) =>
+  Object.fromEntries(
+    Object.entries(DEFAULT_CHECKLISTS[type]).map(([k, v]) => [k, [...v]])
+  );
+
 const PartPipelineModal = memo(function PartPipelineModal({ projects, onClose, onSubmit, t }) {
   const [data, setData] = useState({
     projectId: projects[0]?.id || '',
@@ -14,12 +19,12 @@ const PartPipelineModal = memo(function PartPipelineModal({ projects, onClose, o
     author: '',
   });
 
-  const [checklists, setChecklists] = useState(() => ({ ...DEFAULT_CHECKLISTS['구매형'] }));
+  const [checklists, setChecklists] = useState(() => deepCloneChecklists('구매형'));
   const [newItem, setNewItem] = useState({ stage: 'QC', text: '' });
 
   const handleTypeChange = (type) => {
     setData(d => ({ ...d, type }));
-    setChecklists({ ...DEFAULT_CHECKLISTS[type] });
+    setChecklists(deepCloneChecklists(type));
   };
 
   const addChecklistItem = () => {
@@ -37,6 +42,7 @@ const PartPipelineModal = memo(function PartPipelineModal({ projects, onClose, o
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (!data.projectId) return;
     onSubmit({ ...data, pipelineConfig: { checklists } });
   };
 
@@ -45,6 +51,7 @@ const PartPipelineModal = memo(function PartPipelineModal({ projects, onClose, o
       title={t('파트 등록', 'Register Part')}
       icon={<Package size={18} />}
       color="amber"
+      maxWidth="max-w-3xl"
       onClose={onClose}
       onSubmit={handleSubmit}
       submitText={t('QR 포함 등록', 'Register with QR')}

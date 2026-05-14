@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { X } from 'lucide-react';
 
-const ModalWrapper = memo(function ModalWrapper({ title, onClose, onSubmit, children, submitText, icon, color = 'blue', t = (ko, en) => ko }) {
+const ModalWrapper = memo(function ModalWrapper({ title, onClose, onSubmit, children, submitText, icon, color = 'blue', maxWidth = 'max-w-md', t = (ko, en) => ko }) {
   const colors = {
     blue: { bg: 'bg-blue-600 hover:bg-blue-700', header: 'bg-slate-50 text-slate-800' },
     red: { bg: 'bg-red-600 hover:bg-red-700', header: 'bg-red-500 text-white' },
@@ -12,7 +12,7 @@ const ModalWrapper = memo(function ModalWrapper({ title, onClose, onSubmit, chil
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-[fadeIn_0.2s_ease-in-out]">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md flex flex-col overflow-hidden max-h-[90vh]">
+      <div className={`bg-white rounded-xl shadow-xl w-full ${maxWidth} flex flex-col overflow-hidden max-h-[90vh]`}>
         <div className={`px-6 py-4 flex justify-between items-center shrink-0 ${theme.header}`}>
           <h2 className="text-lg font-bold flex items-center">
             {icon && <span className="mr-2">{icon}</span>}
