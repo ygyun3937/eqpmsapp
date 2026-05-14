@@ -155,6 +155,7 @@ const SendReportEmailModal = memo(function SendReportEmailModal({
   const [previewOpen, setPreviewOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [attachHtml, setAttachHtml] = useState(true);
   // 주소록 모달
   const [addressBookOpen, setAddressBookOpen] = useState(false);
   const [addressBookTarget, setAddressBookTarget] = useState('to');
@@ -197,15 +198,19 @@ const SendReportEmailModal = memo(function SendReportEmailModal({
     if (toList.length === 0) { setError(t('수신인을 1명 이상 추가하세요.', 'At least one recipient required.')); return; }
     setError('');
     setSending(true);
+    // replyTo는 유효한 이메일 형식일 때만 포함 — 'null'/'undefined' 문자열, 공백, 빈 값은 모두 제거
+    // (예전 사용자 레코드가 email 컬럼 없이 만들어졌다가 "null" 문자열로 로드되는 케이스 방지)
+    const replyToRaw = String(authorEmail == null ? '' : authorEmail).trim();
+    const replyToClean = (replyToRaw && replyToRaw.toLowerCase() !== 'null' && replyToRaw.toLowerCase() !== 'undefined' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(replyToRaw)) ? replyToRaw : '';
     const payload = {
       kind,
       to: toList,
       cc: ccList,
-      replyTo: authorEmail || '',
+      replyTo: replyToClean,
       senderName: author ? `${author} (MAK-PMS)` : 'MAK-PMS',
       subject, htmlBody, plainFallback,
       attachmentName: attachmentName || '',
-      attachHtml: true,
+      attachHtml,
       projectId: project?.id || '',
       projectName: project?.name || '',
       author: author || ''
@@ -300,6 +305,12 @@ const SendReportEmailModal = memo(function SendReportEmailModal({
             <label className="block text-xs font-bold text-slate-700 mb-1">{t('추가 코멘트 (선택)', 'Additional comment (optional)')}</label>
             <textarea rows="2" value={additionalComment} onChange={(e) => setAdditionalComment(e.target.value)} className="w-full text-xs p-2 border border-slate-300 rounded-md focus:outline-none focus:border-indigo-500" />
           </div>
+
+          {/* HTML 첨부 토글 — 회사 메일 서버가 HTML 첨부 차단 시 끄고 발송 */}
+          <label className="flex items-center text-xs text-slate-700 cursor-pointer">
+            <input type="checkbox" className="mr-2" checked={attachHtml} onChange={(e) => setAttachHtml(e.target.checked)} />
+            <span><strong>{t('HTML 파일 첨부', 'Attach HTML file')}</strong> <span className="text-slate-400">{t('— 메일 서버가 첨부를 차단하면 끄고 본문만 전송', '— turn off if mail server blocks attachments')}</span></span>
+          </label>
 
           {/* 미리보기 토글 */}
           <div>
