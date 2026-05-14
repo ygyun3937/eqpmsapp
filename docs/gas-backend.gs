@@ -70,6 +70,8 @@ function doGet(e) {
     releases: readFromSheet("Releases") || [],
     engineers: readFromSheet("Engineers") || [],
     parts: readFromSheet("Parts") || [],
+    pipelineParts: readFromSheet("PipelineParts") || [],
+    partEvents: readFromSheet("PartEvents") || [],
     sites: readFromSheet("Sites") || [],
     customers: readFromSheet("Customers") || [],
     users: readFromSheet("Users") || [],
@@ -118,6 +120,12 @@ function doPost(e) {
     } else if (action === 'UPDATE_PARTS') {
       try { logChange(action, 'Parts', { count: getRowCount_('Parts') }, { count: (data || []).length }); } catch (_) {}
       writeToSheet("Parts", data);
+    } else if (action === 'UPDATE_PIPELINE_PARTS') {
+      try { logChange(action, 'PipelineParts', { count: getRowCount_('PipelineParts') }, { count: (data || []).length }); } catch (_) {}
+      writeToSheet("PipelineParts", data);
+    } else if (action === 'UPDATE_PART_EVENTS') {
+      try { logChange(action, 'PartEvents', { count: getRowCount_('PartEvents') }, { count: (data || []).length }); } catch (_) {}
+      writeToSheet("PartEvents", data);
     } else if (action === 'UPDATE_SITES') {
       try { logChange(action, 'Sites', { count: getRowCount_('Sites') }, { count: (data || []).length }); } catch (_) {}
       writeToSheet("Sites", data);
