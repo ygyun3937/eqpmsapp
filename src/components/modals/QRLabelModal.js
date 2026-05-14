@@ -26,7 +26,7 @@ const QRLabelModal = memo(function QRLabelModal({ part, onClose, t }) {
       return;
     }
     printWindow.document.write(`
-      <html><head><title>QR 라벨 — ${part.partName}</title>
+      <html><head><title>QR 라벨 — ${escapeHtml(part.partName)}</title>
       <style>
         body { font-family: sans-serif; padding: 20px; }
         .label { border: 2px solid #333; padding: 16px; width: 420px; }
