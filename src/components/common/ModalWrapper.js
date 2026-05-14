@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { X } from 'lucide-react';
 
-const ModalWrapper = memo(function ModalWrapper({ title, onClose, onSubmit, children, submitText, icon, color = 'blue', maxWidth = 'max-w-md', t = (ko, en) => ko }) {
+const ModalWrapper = memo(function ModalWrapper({ title, onClose, onSubmit, children, submitText, icon, color = 'blue', maxWidth = 'max-w-md', submitDisabled = false, t = (ko, en) => ko }) {
   const colors = {
     blue: { bg: 'bg-blue-600 hover:bg-blue-700', header: 'bg-slate-50 text-slate-800' },
     red: { bg: 'bg-red-600 hover:bg-red-700', header: 'bg-red-500 text-white' },
@@ -25,7 +25,7 @@ const ModalWrapper = memo(function ModalWrapper({ title, onClose, onSubmit, chil
           {submitText && (
             <div className="pt-4 flex justify-end space-x-3">
               <button type="button" onClick={onClose} className="px-4 py-2.5 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg">{t('취소', 'Cancel')}</button>
-              <button type="submit" className={`px-4 py-2.5 text-sm font-medium text-white rounded-lg shadow-sm transition-colors flex items-center ${theme.bg}`}>{submitText}</button>
+              <button type="submit" disabled={submitDisabled} className={`px-4 py-2.5 text-sm font-medium text-white rounded-lg shadow-sm transition-colors flex items-center ${submitDisabled ? 'opacity-40 cursor-not-allowed' : theme.bg}`}>{submitText}</button>
             </div>
           )}
         </form>
