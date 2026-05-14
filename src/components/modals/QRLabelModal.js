@@ -3,15 +3,28 @@ import { QrCode, Printer, X } from 'lucide-react';
 import { generateQRDataUrl } from '../../utils/qr';
 import { PART_PIPELINE_PHASES } from '../../constants';
 
+const escapeHtml = (str) => {
+  if (str == null) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+};
+
 const QRLabelModal = memo(function QRLabelModal({ part, onClose, t }) {
   const [qrDataUrl, setQrDataUrl] = useState('');
 
   useEffect(() => {
-    generateQRDataUrl(part.id).then(setQrDataUrl);
+    let cancelled = false;
+    generateQRDataUrl(part.id)
+      .then((url) => { if (!cancelled) setQrDataUrl(url); })
+      .catch(() => { if (!cancelled) setQrDataUrl(''); });
+    return () => { cancelled = true; };
   }, [part.id]);
 
   const handlePrint = () => {
     const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert(t('팝업이 차단되었습니다. 브라우저 설정에서 팝업을 허용해주세요.', 'Popup blocked. Please allow popups in your browser settings.'));
+      return;
+    }
     printWindow.document.write(`
       <html><head><title>QR 라벨 — ${part.partName}</title>
       <style>
@@ -27,32 +40,32 @@ const QRLabelModal = memo(function QRLabelModal({ part, onClose, t }) {
       </style></head><body>
       <div class="label">
         <div class="header">
-          <div style="font-size:11px;opacity:0.8">MAK-PMS · 자재 라벨 | ${part.projectName}</div>
-          <div style="font-size:18px;font-weight:bold;margin-top:2px">${part.partName}</div>
+          <div style="font-size:11px;opacity:0.8">MAK-PMS · 자재 라벨 | ${escapeHtml(part.projectName)}</div>
+          <div style="font-size:18px;font-weight:bold;margin-top:2px">${escapeHtml(part.partName)}</div>
         </div>
         <div class="row">
           <div class="qr">
             ${qrDataUrl ? `<img src="${qrDataUrl}" />` : '<div style="width:140px;height:140px;background:#eee;display:flex;align-items:center;justify-content:center">QR</div>'}
-            <div style="font-size:10px;text-align:center;margin-top:4px;font-family:monospace">${part.id}</div>
+            <div style="font-size:10px;text-align:center;margin-top:4px;font-family:monospace">${escapeHtml(part.id)}</div>
           </div>
           <div style="flex:1">
             <div style="font-size:12px;margin-bottom:8px">
-              <div><b>P/N:</b> ${part.partNumber || '—'}</div>
-              <div><b>수량:</b> ${part.quantity} EA</div>
-              <div><b>긴급도:</b> ${part.urgency}</div>
-              <div><b>타입:</b> ${part.type || '—'}</div>
-              <div><b>등록일:</b> ${part.date}</div>
+              <div><b>P/N:</b> ${escapeHtml(part.partNumber) || '—'}</div>
+              <div><b>수량:</b> ${escapeHtml(part.quantity)} EA</div>
+              <div><b>긴급도:</b> ${escapeHtml(part.urgency)}</div>
+              <div><b>타입:</b> ${escapeHtml(part.type) || '—'}</div>
+              <div><b>등록일:</b> ${escapeHtml(part.date)}</div>
             </div>
             <div style="background:#fef3c7;border:1px solid #f59e0b;padding:6px;border-radius:4px">
               <div style="font-size:11px;font-weight:bold;margin-bottom:4px">🔒 QC 체크리스트</div>
               <ul class="checklist">
-                ${(part.pipelineConfig?.checklists?.QC || []).map(item => `<li>${item}</li>`).join('')}
+                ${(part.pipelineConfig?.checklists?.QC || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')}
               </ul>
             </div>
           </div>
         </div>
         <div style="margin-top:12px;font-size:10px;color:#666;border-top:1px solid #eee;padding-top:8px">
-          현재 단계: ${PART_PIPELINE_PHASES.join(' → ')}
+          현재 단계: ${PART_PIPELINE_PHASES.map(s => s === part.currentStage ? `<b style="color:#4f46e5">${escapeHtml(s)}</b>` : escapeHtml(s)).join(' → ')}
         </div>
       </div>
       <script>window.onload=()=>window.print()</script>
