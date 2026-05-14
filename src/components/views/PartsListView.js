@@ -2,7 +2,7 @@ import React, { useState, useMemo, memo } from 'react';
 import { Plus, Filter, Trash, Download, QrCode, ChevronRight, Lock, Package, AlertTriangle } from 'lucide-react';
 import { PART_PHASES, PART_PIPELINE_PHASES } from '../../constants';
 import { exportToExcel } from '../../utils/export';
-import { getStageCompletion, isPipelineComplete } from '../../utils/partPipeline';
+import { getNextStage, getStageCompletion, isPipelineComplete } from '../../utils/partPipeline';
 
 // ===== 파이프라인 탭 =====
 const PipelineTab = memo(function PipelineTab({
@@ -16,25 +16,32 @@ const PipelineTab = memo(function PipelineTab({
     [pipelineParts, filterStage]
   );
 
+  const completionMap = useMemo(() => {
+    const map = {};
+    for (const part of pipelineParts) {
+      map[part.id] = {
+        completedStages: getStageCompletion(part.id, partEvents),
+        isComplete: isPipelineComplete(part.id, partEvents),
+        hasQCFail: partEvents.some(e => e.partId === part.id && e.stage === 'QC' && e.status === '불합격'),
+      };
+    }
+    return map;
+  }, [pipelineParts, partEvents]);
+
   const getStepClass = (part, step) => {
-    const completedStages = getStageCompletion(part.id, partEvents);
+    const completedStages = completionMap[part.id]?.completedStages || [];
     const currentIdx = PART_PIPELINE_PHASES.indexOf(part.currentStage);
     const stepIdx = PART_PIPELINE_PHASES.indexOf(step);
-    if (completedStages.includes(step) || stepIdx < currentIdx) return 'bg-indigo-500 text-white border-indigo-600';
     if (step === part.currentStage) return 'bg-indigo-100 text-indigo-800 border-indigo-400 font-bold ring-1 ring-indigo-400';
+    if (completedStages.includes(step) || stepIdx < currentIdx) return 'bg-indigo-500 text-white border-indigo-600';
     if (step === 'QC') return 'bg-amber-50 text-amber-500 border-amber-200';
     return 'bg-slate-100 text-slate-400 border-slate-200';
   };
 
   const isQCBlocked = (part, step) => {
-    if (step !== '제조') return false;
+    const stepIdx = PART_PIPELINE_PHASES.indexOf(step);
+    if (stepIdx <= 2) return false;
     return !partEvents.some(e => e.partId === part.id && e.stage === 'QC' && e.status === '합격');
-  };
-
-  const getNextStageForPart = (part) => {
-    const idx = PART_PIPELINE_PHASES.indexOf(part.currentStage);
-    if (idx >= PART_PIPELINE_PHASES.length - 1) return null;
-    return PART_PIPELINE_PHASES[idx + 1];
   };
 
   return (
@@ -80,9 +87,8 @@ const PipelineTab = memo(function PipelineTab({
             {filtered.length === 0 ? (
               <tr><td colSpan={5} className="text-center py-10 text-slate-400">{t('등록된 파트가 없습니다.', 'No parts registered.')}</td></tr>
             ) : filtered.map(part => {
-              const isComplete = isPipelineComplete(part.id, partEvents);
-              const nextStage = getNextStageForPart(part);
-              const hasQCFail = partEvents.some(e => e.partId === part.id && e.stage === 'QC' && e.status === '불합격');
+              const { isComplete, hasQCFail } = completionMap[part.id] || {};
+              const nextStage = getNextStage(part.currentStage);
               return (
                 <tr key={part.id} className={`hover:bg-slate-50 transition-colors align-middle ${isComplete ? 'bg-green-50/30' : ''} ${hasQCFail ? 'bg-red-50/30' : ''}`}>
                   <td className="px-5 py-4">
