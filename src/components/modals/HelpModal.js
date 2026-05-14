@@ -299,13 +299,20 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                 </Section>
                 <Section title="③ 출장 일정">
                   <Step n={1}>인력 풀 = 메인 PM + 추가 인력</Step>
-                  <Step n={2}>출발일/복귀일/메모(예: 셋업 1차, Buy-off 입회) 입력</Step>
+                  <Step n={2}>주담당 엔지니어 선택 → <strong>동행 엔지니어(다중 체크박스)</strong> 선택 → 출발일/복귀일/메모 입력</Step>
                   <Step n={3}>한 사람이 같은 프로젝트에 <strong>여러 번 출장</strong> 등록 가능</Step>
                 </Section>
-                <Section title="④ 출장 등록 후 수정 (이력 자동 기록)">
-                  <Step n={1}>등록된 출장 카드 우측의 <strong>연필 아이콘</strong> 클릭 → 인력 / 출발일 / 복귀일 / 메모 수정</Step>
+                <Section title="④ 동행자 처리">
+                  <p>주담당 외에 <strong>함께 출장 가는 엔지니어</strong>를 다중 선택할 수 있습니다.</p>
+                  <p>· 주담당과 중복 선택 불가 (자동 제외)</p>
+                  <p>· 메일(신청서·보고서)에 동행자 명단 자동 표시 — 제목에 "외 N명" 추가</p>
+                  <p>· 동행으로 간 출장은 <strong>동행자 본인의 활동 이력</strong>에도 "(동행)" 태그로 표시</p>
+                  <p>· HR 출장 통계에서 "자주 동행하는 사람" 페어링 분석에 활용</p>
+                </Section>
+                <Section title="⑤ 출장 등록 후 수정 (이력 자동 기록)">
+                  <Step n={1}>등록된 출장 카드 우측의 <strong>연필 아이콘</strong> 클릭 → 인력 / 동행자 / 출발일 / 복귀일 / 메모 수정</Step>
                   <Step n={2}>변경 사유 입력 (선택)</Step>
-                  <Step n={3}>저장 시 변경 전/후 값과 사유, 수정자, 일시가 <strong>수정 이력</strong>에 자동 기록됩니다</Step>
+                  <Step n={3}>저장 시 변경 전/후 값과 사유, 수정자, 일시가 <strong>수정 이력</strong>에 자동 기록됩니다 (동행자 변경도 추적)</Step>
                   <Step n={4}>카드의 <strong>"수정 이력 (N)"</strong> 토글로 전체 변경 내역 확인 가능</Step>
                 </Section>
                 <Note>출장 일정은 인력/리소스 화면과 대시보드에 자동으로 출장 상태(현장 파견 / 출장 예정 / 복귀 N일 전 등)로 반영됩니다. 수정 이력은 활동 로그(TRIP_UPDATE)에도 함께 남습니다.</Note>
@@ -427,7 +434,7 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                   <Step n={1}>인력/리소스 리스트 우측 <strong>시계 아이콘</strong> 클릭 → 모달</Step>
                   <Step n={2}>출장 등록/수정, 이슈 등록/수정, 공유 노트, 버전 등록, AS 처리, 고객 요청, 메인 PM 변경 이력이 시간순으로 통합 집계</Step>
                   <Step n={3}>필터 칩으로 종류별 필터, 상단 검색창으로 내용/프로젝트 검색</Step>
-                  <p className="mt-1 text-[11px] text-slate-500">매칭 기준은 엔지니어 이름. 본인 명의로 등록되었거나 본인이 수정한 항목만 자동 집계됩니다.</p>
+                  <p className="mt-1 text-[11px] text-slate-500">매칭 기준은 엔지니어 이름. 본인 명의로 등록되었거나 본인이 수정한 항목, <strong>본인이 동행으로 간 출장 "(동행)"</strong>, <strong>본인이 공동 처리한 AS "(공동)"</strong>도 자동 집계됩니다.</p>
                 </Section>
                 <Section title="자격 정보 관리 (출입증/안전교육/비자)">
                   <Step n={1}>리스트의 <strong>"자격/만료" 셀</strong> 클릭 → 자격 관리 모달</Step>
@@ -458,6 +465,17 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                   <p>· 히트맵: 엔지니어×주차 격자, 셀에 일수 + 사이트 약어(예: <code className="bg-slate-100 px-1 rounded text-[11px]">5/1~5/5(5일) 사이트A</code>), 부하 적은 순으로 자동 정렬</p>
                   <p>· "다음달 셋업 누구 보낼까" 의사결정 시점에만 모달로 열어보면 됨</p>
                   <p>· Excel 추출 시에는 그대로 3시트(엔지니어 / 가용 풀 / 8주 히트맵)로 포함 — 정보 손실 없음</p>
+                </Section>
+                <Section title="★ 출장 통계 (HR) 탭 — 누가 어디로 얼마나 갔는지">
+                  <p>페이지 상단 <strong>탭 토글</strong>로 "가용성·현황" ↔ <strong>"출장 통계 (HR)"</strong> 전환.</p>
+                  <p><strong>기간 프리셋</strong>: 이번 달 / 이번 분기 / 올해 / 직접 지정 (시작·종료 날짜)</p>
+                  <p><strong>관점 토글 3종</strong>:</p>
+                  <p className="ml-4">- <strong>전체 목록</strong>: 기간 내 모든 출장 (출발/복귀/일수/주담당/동행자/사이트/프로젝트)</p>
+                  <p className="ml-4">- <strong>인력별</strong>: 엔지니어별 출장 횟수·총 일수·자주 간 사이트·자주 동행한 사람</p>
+                  <p className="ml-4">- <strong>사이트별</strong>: 사이트별 연인원·총 일수·실인원·다녀간 사람 명단</p>
+                  <p><strong>요약 카드 5장</strong>: 총 출장 건수 / 연인원 / 연인일 / 최다 출장자 / 최다 사이트</p>
+                  <p>· <strong>주담당 + 동행자 모두 집계</strong> — 동행 출장도 본인 인력 통계에 포함됨</p>
+                  <p>· "이번 달 김PM 어디 갔나" "A전자 사이트에 누가 다녀갔나" "김PM은 주로 누구랑 가나" 같은 HR 의사결정 지원</p>
                 </Section>
               </>
             )}
@@ -537,7 +555,14 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                 <Section title="AS 통합 페이지 — 직접 접수 (프로젝트 모달 진입 없이)">
                   <p>헤더 우측 <code className="bg-purple-600 text-white px-1 rounded text-[10px]">+ 새 AS 접수</code> 버튼을 누르면 프로젝트를 선택해서 곧바로 접수할 수 있는 모달이 열립니다.</p>
                   <p>· 프로젝트 select + HW/SW 토글 + 모든 풍부 필드(중요도/담당자/연락처/시리얼/희망일/방문/부품/금액) + 다중 첨부 + Ctrl+V 이미지 paste</p>
+                  <p>· <strong>공동 처리자(다중 체크박스)</strong> — 주 담당 외에 함께 처리하는 사람을 사용자 관리 목록에서 선택</p>
                   <p>· AS 부서가 프로젝트 모달까지 안 들어가도 한 화면에서 접수 → 진행 → 완료까지 처리 가능</p>
+                </Section>
+
+                <Section title="공동 처리자 활용">
+                  <p>· AS 카드에 "+ 공동: ..." 으로 공동 처리자 명단 자동 표시</p>
+                  <p>· AS 보고서 메일 발송 시 본문에 공동 처리자 row 자동 포함</p>
+                  <p>· 공동으로 처리한 AS는 <strong>공동 처리자 본인의 활동 이력</strong>에도 "(공동)" 태그로 노출 → 인력별 작업 부하 추적 가능</p>
                 </Section>
                 <Section title="AS 인라인 정보 수정 (V3 흡수)">
                   <p>각 AS 카드의 메타 칩 줄 끝에 <code className="bg-amber-50 text-amber-700 px-1 rounded text-[10px]">정보 수정</code> 버튼을 누르면 시리얼/담당자/연락처/희망일/방문/부품/금액/중요도를 카드 안에서 바로 편집할 수 있습니다.</p>
@@ -684,11 +709,21 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                   <p>· 모든 양식에 <strong>iframe 미리보기</strong> 버튼 — 발송 전 실제 메일 모양 그대로 확인 가능</p>
                 </Section>
 
-                <Section title={t('수신/참조 입력', 'Recipients')}>
-                  <p>· 이메일 입력 + <strong>Enter 또는 쉼표</strong>로 추가 (여러 명 한 번에)</p>
-                  <p>· 잘못된 이메일 형식은 자동 거부</p>
-                  <p>· 자주 쓰는 수신인 자동 추천 (defaultTo로 미리 채워짐)</p>
+                <Section title={t('수신/참조 입력 — 주소록 통합', 'Recipients — Address Book')}>
+                  <p>· <strong>이름·이메일·부서·회사로 타이핑하면 자동완성 드롭다운</strong>이 뜹니다 — ↑↓ 키로 이동, Enter로 선택</p>
+                  <p>· 입력 칸 우측 <strong>📒 주소록 버튼</strong> → 검색·필터 모달 (내부 직원 / 고객사 담당자 그룹 분리, 다중 체크박스 선택, To/Cc 토글)</p>
+                  <p>· 주소록 데이터 출처 (자동 통합):</p>
+                  <p className="ml-4">- <strong>내부 직원</strong>: 사용자 관리에 등록된 사용자 중 이메일이 입력된 사람</p>
+                  <p className="ml-4">- <strong>고객사 담당자</strong>: 고객사 모달의 명함(contacts)에 등록된 사람</p>
+                  <p>· 직접 이메일 타이핑 후 Enter/쉼표로 즉시 추가도 가능 (주소록에 없는 사람)</p>
+                  <p>· 잘못된 이메일 형식은 자동 거부 · 중복 자동 차단 · 이미 추가된 사람은 주소록 모달에서 회색 처리</p>
                   <p>· 발송 후 시스템에 송신 기록 자동 저장</p>
+                </Section>
+
+                <Section title={t('동행자·공동 처리자 자동 표시', 'Companions & Co-handlers')}>
+                  <p>· 출장 신청서·보고서에 <strong>동행 엔지니어</strong>가 자동 포함됨 — 제목에 "외 N명", 본문에 명단 row</p>
+                  <p>· AS 보고서에 <strong>공동 처리자</strong>가 자동 포함됨</p>
+                  <p>· 메일 양식 미리보기로 발송 전 확인 가능</p>
                 </Section>
 
                 <Section title={t('★ 발송 모드 1 — 시스템 계정 (기본)', 'Mode 1 — System Account (default)')}>
@@ -837,7 +872,32 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                 <h2 className="text-base font-bold text-slate-800 mb-3">{t('업데이트 내역', "What's New")}</h2>
                 <p className="text-xs text-slate-500 mb-4">{t('v1.0 베타 출시 이후 추가/개선된 기능을 시간 역순으로 정리합니다.', 'Recent improvements since v1.0 beta release.')}</p>
 
-                <Section title={t('★ 메일 첨부 파일명 + 페이지 헤더 정리 (NEW)', 'Mail Attachment Name + Page Header (NEW)')}>
+                <Section title={t('★ HR 출장 통계 탭 — 동행자 데이터 기반 (NEW)', 'HR Trip Stats Tab — Powered by Companion Data (NEW)')}>
+                  <p>· <strong>인력/리소스 관리</strong>에 "가용성·현황" / "<strong>출장 통계 (HR)</strong>" 탭 토글 추가</p>
+                  <p>· <strong>기간 프리셋</strong>: 이번 달 / 이번 분기 / 올해 / 직접 지정</p>
+                  <p>· <strong>관점 3종</strong>: 전체 목록 / 인력별 / 사이트별 — HR 의사결정 시나리오별로 즉시 전환</p>
+                  <p>· <strong>요약 카드 5장</strong>: 총 출장 건수 / 연인원 / 연인일 / 최다 출장자 / 최다 사이트</p>
+                  <p>· 인력별: 출장 횟수·총 일수·자주 간 사이트·<strong>자주 동행하는 사람</strong></p>
+                  <p>· 사이트별: 연인원·총 일수·실인원·다녀간 사람 명단</p>
+                  <p>· "이번 달 김PM 어디 갔나" / "A전자 사이트 누가 다녀갔나" / "김PM 주로 누구랑 가나" 같은 HR 분석 한 화면에서 해결</p>
+                </Section>
+
+                <Section title={t('★ 출장 동행자 + AS 공동 처리자 (NEW)', 'Trip Companions + AS Co-handlers (NEW)')}>
+                  <p>· <strong>출장 신규/편집 폼</strong>에 동행 엔지니어 다중 체크박스 — 주담당 + 동행 엔지니어 개념. 동행자 변경도 출장 수정 이력에 자동 추적</p>
+                  <p>· <strong>AS 신규 접수 모달</strong>에 공동 처리자 다중 체크박스 — 사용자 관리에서 ENGINEER/PM/ADMIN 권한자 중 선택</p>
+                  <p>· <strong>이메일 양식 3종 자동 반영</strong>: 출장 신청서/보고서/AS 보고서에 동행자·공동 처리자 row + 제목에 "외 N명"</p>
+                  <p>· <strong>활동 이력 자동 노출</strong>: 동행으로 간 출장은 "(동행)" 태그, 공동 처리한 AS는 "(공동)" 태그로 본인 활동 모달에도 표시</p>
+                </Section>
+
+                <Section title={t('★ 메일 주소록 통합 — 자동완성 + 📒 모달 (NEW)', 'Mail Address Book — Autocomplete + 📒 Modal (NEW)')}>
+                  <p>· 메일 송부 모달의 수신/참조 입력칸이 <strong>주소록과 통합</strong>됨</p>
+                  <p>· <strong>타이핑 자동완성</strong>: 이름·이메일·부서·회사로 검색 → 드롭다운 추천 (최대 6명, ↑↓ 키 + Enter 선택)</p>
+                  <p>· <strong>📒 주소록 버튼</strong>: 검색·필터(소스/회사/부서) 모달 → 다중 체크박스 → To/Cc 토글 후 추가</p>
+                  <p>· 주소록 소스: <strong>사용자 관리(이메일 있는 사람)</strong> + <strong>고객사 담당자(명함)</strong> 통합 — 별도 등록 불필요</p>
+                  <p>· 사용자 관리에 <strong>이메일 필드 추가</strong> — 사용자 추가/수정 시 입력. 미입력은 주소록에서 자동 제외</p>
+                </Section>
+
+                <Section title={t('★ 메일 첨부 파일명 + 페이지 헤더 정리', 'Mail Attachment Name + Page Header')}>
                   <p>· <strong>메일 첨부 HTML 파일명에 담당 엔지니어 이름 포함</strong></p>
                   <p className="ml-4">└ 출장 신청서: <code className="bg-slate-100 px-1 rounded text-[10px]">MAK-PMS-출장신청서-홍길동-2026-05-13.html</code></p>
                   <p className="ml-4">└ 출장 보고서: <code className="bg-slate-100 px-1 rounded text-[10px]">MAK-PMS-출장보고서-홍길동-2026-05-13.html</code></p>

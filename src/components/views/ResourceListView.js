@@ -1,11 +1,13 @@
 import React, { memo, useState } from 'react';
-import { Users, HardHat, Building, UserCircle, User, MapPin, Edit, Trash, AlertTriangle, XCircle, Download, Plane, ShieldAlert, Calendar, Home, IdCard, ShieldCheck, CheckCircle, History, BarChart3, X } from 'lucide-react';
+import { Users, HardHat, Building, UserCircle, User, MapPin, Edit, Trash, AlertTriangle, XCircle, Download, Plane, ShieldAlert, Calendar, Home, IdCard, ShieldCheck, CheckCircle, History, BarChart3, X, TrendingUp } from 'lucide-react';
 import StatCard from '../common/StatCard';
 import { exportToExcel } from '../../utils/export';
 import { getCurrentTrip } from '../../utils/calc';
+import TripStatsSection from './TripStatsSection';
 
 const ResourceListView = memo(function ResourceListView({ engineers, projects, issues, getStatusColor, TODAY, onAddClick, onEditClick, onManageCertificates, onShowActivity, onDeleteClick, currentUser, t }) {
   const [heatmapOpen, setHeatmapOpen] = useState(false);
+  const [viewMode, setViewMode] = useState('availability'); // 'availability' | 'stats'
 
   const checkExpiry = (dateStr) => {
     if (!dateStr) return { state: 'none', daysLeft: null };
@@ -181,21 +183,41 @@ const ResourceListView = memo(function ResourceListView({ engineers, projects, i
       <div className="flex justify-between items-end">
         <div><h1 className="text-2xl font-bold text-slate-800">{t('인력 및 리소스 관리', 'Resource Management')}</h1></div>
         <div className="flex items-center space-x-2">
-          <button
-            onClick={() => setHeatmapOpen(true)}
-            className="flex items-center bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50 px-3 py-1.5 rounded-lg text-sm font-bold transition-colors shadow-sm"
-            title={t('다음 8주 가용성 + 출장 부하를 한눈에', '8-week availability + trip load')}
-          >
-            <BarChart3 size={16} className="mr-1.5" /> {t('8주 가용성', '8-week View')}
-          </button>
-          <button onClick={handleExport} className="flex items-center bg-slate-100 text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors shadow-sm">
-            <Download size={16} className="mr-1.5" /> Excel
-          </button>
-          {currentUser.role === 'ADMIN' && (
+          {viewMode === 'availability' && (
+            <button
+              onClick={() => setHeatmapOpen(true)}
+              className="flex items-center bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50 px-3 py-1.5 rounded-lg text-sm font-bold transition-colors shadow-sm"
+              title={t('다음 8주 가용성 + 출장 부하를 한눈에', '8-week availability + trip load')}
+            >
+              <BarChart3 size={16} className="mr-1.5" /> {t('8주 가용성', '8-week View')}
+            </button>
+          )}
+          {viewMode === 'availability' && (
+            <button onClick={handleExport} className="flex items-center bg-slate-100 text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors shadow-sm">
+              <Download size={16} className="mr-1.5" /> Excel
+            </button>
+          )}
+          {currentUser.role === 'ADMIN' && viewMode === 'availability' && (
             <button onClick={onAddClick} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm flex items-center transition-colors"><User className="mr-2" size={16}/> {t('엔지니어 추가', 'Add Engineer')}</button>
           )}
         </div>
       </div>
+
+      {/* 탭 토글 — 가용성 / 출장 통계(HR) */}
+      <div className="inline-flex rounded-lg border border-slate-300 bg-white overflow-hidden text-sm shadow-sm">
+        <button type="button" onClick={() => setViewMode('availability')} className={`px-4 py-2 font-bold inline-flex items-center ${viewMode === 'availability' ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-slate-50'}`}>
+          <Users size={14} className="mr-1.5" />{t('가용성·현황', 'Availability')}
+        </button>
+        <button type="button" onClick={() => setViewMode('stats')} className={`px-4 py-2 font-bold inline-flex items-center ${viewMode === 'stats' ? 'bg-purple-600 text-white' : 'text-slate-700 hover:bg-slate-50'}`}>
+          <TrendingUp size={14} className="mr-1.5" />{t('출장 통계 (HR)', 'Trip Stats (HR)')}
+        </button>
+      </div>
+
+      {viewMode === 'stats' && (
+        <TripStatsSection engineers={engineers} projects={projects} t={t} />
+      )}
+
+      {viewMode === 'availability' && (<>
       {(() => {
         const tripMap = {};
         engineers.forEach(e => { tripMap[e.id] = getCurrentTrip(e, projects); });
@@ -739,6 +761,7 @@ const ResourceListView = memo(function ResourceListView({ engineers, projects, i
           </tbody>
         </table>
       </div>
+      </>)}
     </div>
   );
 });

@@ -61,6 +61,7 @@ export const SEED_ADMIN = {
   id: 'admin',
   pw: 'admin1234',
   name: '본사 관리자',
+  email: '',
   role: 'ADMIN',
   dept: '운영팀',
   customer: '',
@@ -74,10 +75,10 @@ export const SEED_ADMIN = {
 // 사내 테스트 모드 시드 (4개 권한별 계정, 비밀번호 모두 '1234')
 // 강제 변경 비활성화 — 시연/QA 흐름이 막히지 않도록
 export const SEED_TEST_USERS = [
-  { id: 'admin',  pw: '1234', name: '본사 관리자',     role: 'ADMIN',    dept: '운영팀',     customer: '',     assignedProjectIds: [], active: true, mustChangePassword: false },
-  { id: 'pm',     pw: '1234', name: '김철수 PM',       role: 'PM',       dept: '제조기술팀', customer: '',     assignedProjectIds: [], active: true, mustChangePassword: false },
-  { id: 'eng',    pw: '1234', name: '이셋업 선임',     role: 'ENGINEER', dept: 'CS팀',       customer: '',     assignedProjectIds: [], active: true, mustChangePassword: false },
-  { id: 'client', pw: '1234', name: 'A전자 담당자',    role: 'CUSTOMER', dept: '',           customer: 'A전자', assignedProjectIds: ['PRJ-2026-001'], active: true, mustChangePassword: false }
+  { id: 'admin',  pw: '1234', name: '본사 관리자',     email: 'admin@example.com',  role: 'ADMIN',    dept: '운영팀',     customer: '',     assignedProjectIds: [], active: true, mustChangePassword: false },
+  { id: 'pm',     pw: '1234', name: '김철수 PM',       email: 'pm@example.com',     role: 'PM',       dept: '제조기술팀', customer: '',     assignedProjectIds: [], active: true, mustChangePassword: false },
+  { id: 'eng',    pw: '1234', name: '이셋업 선임',     email: 'eng@example.com',    role: 'ENGINEER', dept: 'CS팀',       customer: '',     assignedProjectIds: [], active: true, mustChangePassword: false },
+  { id: 'client', pw: '1234', name: 'A전자 담당자',    email: 'client@a-elec.com',  role: 'CUSTOMER', dept: '',           customer: 'A전자', assignedProjectIds: ['PRJ-2026-001'], active: true, mustChangePassword: false }
 ];
 
 export const ROLE_OPTIONS = [

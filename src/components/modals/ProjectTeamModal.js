@@ -5,7 +5,7 @@ import ModalWrapper from '../common/ModalWrapper';
 import SendReportEmailModal from './SendReportEmailModal';
 
 const ProjectTeamModal = memo(function ProjectTeamModal({
-  project, engineers, currentUser, mailGasUrl,
+  project, engineers, users, customers, currentUser, mailGasUrl,
   onClose, onChangeManager, onToggleAssignment,
   onAddTrip, onUpdateTrip, onDeleteTrip,
   t
@@ -15,12 +15,12 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
   const [newManager, setNewManager] = useState('');
   const [reason, setReason] = useState('');
   // 출장 일정
-  const [tripForm, setTripForm] = useState({ engineerId: '', departureDate: '', returnDate: '', note: '' });
+  const [tripForm, setTripForm] = useState({ engineerId: '', companionIds: [], departureDate: '', returnDate: '', note: '' });
   const [tripError, setTripError] = useState('');
   const [emailTrip, setEmailTrip] = useState(null); // { kind: 'trip_request'|'trip_report', trip }
   // 출장 수정
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ engineerId: '', departureDate: '', returnDate: '', note: '', reason: '' });
+  const [editForm, setEditForm] = useState({ engineerId: '', companionIds: [], departureDate: '', returnDate: '', note: '', reason: '' });
   const [editError, setEditError] = useState('');
   const [historyOpenIds, setHistoryOpenIds] = useState(() => new Set());
 
@@ -60,8 +60,19 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
     if (!tripForm.departureDate) { setTripError(t('출발일을 입력하세요.', 'Enter departure.')); return; }
     if (!tripForm.returnDate) { setTripError(t('복귀일을 입력하세요.', 'Enter return.')); return; }
     if (new Date(tripForm.returnDate) < new Date(tripForm.departureDate)) { setTripError(t('복귀일이 출발일보다 빠를 수 없습니다.', 'Return must be after departure.')); return; }
-    onAddTrip(project.id, { ...tripForm });
-    setTripForm({ engineerId: '', departureDate: '', returnDate: '', note: '' });
+    const companions = (tripForm.companionIds || [])
+      .filter(id => id && id !== tripForm.engineerId)
+      .map(id => ({ id, name: (list.find(e => e.id === id) || {}).name || '' }));
+    onAddTrip(project.id, { ...tripForm, companions });
+    setTripForm({ engineerId: '', companionIds: [], departureDate: '', returnDate: '', note: '' });
+  };
+
+  const toggleCompanion = (formSetter, form, id) => {
+    if (!id) return;
+    if (id === form.engineerId) return; // 주담당과 동일 불가
+    const set = new Set(form.companionIds || []);
+    if (set.has(id)) set.delete(id); else set.add(id);
+    formSetter({ ...form, companionIds: Array.from(set) });
   };
 
   const handleStartEdit = (trip) => {
@@ -69,6 +80,7 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
     setEditingId(trip.id);
     setEditForm({
       engineerId: trip.engineerId || '',
+      companionIds: Array.isArray(trip.companions) ? trip.companions.map(c => c.id).filter(Boolean) : [],
       departureDate: trip.departureDate || '',
       returnDate: trip.returnDate || '',
       note: trip.note || '',
@@ -79,7 +91,7 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
   const handleCancelEdit = () => {
     setEditingId(null);
     setEditError('');
-    setEditForm({ engineerId: '', departureDate: '', returnDate: '', note: '', reason: '' });
+    setEditForm({ engineerId: '', companionIds: [], departureDate: '', returnDate: '', note: '', reason: '' });
   };
 
   const handleSaveEdit = (trip) => {
@@ -113,15 +125,26 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
       }
     });
 
+    // 동행자 변경 비교
+    const beforeCompIds = (trip.companions || []).map(c => c.id).filter(Boolean).sort();
+    const afterCompIds = (editForm.companionIds || []).filter(id => id && id !== editForm.engineerId).sort();
+    if (JSON.stringify(beforeCompIds) !== JSON.stringify(afterCompIds)) {
+      const beforeDisp = beforeCompIds.map(id => nameOf(id)).join(', ') || '(없음)';
+      const afterDisp = afterCompIds.map(id => nameOf(id)).join(', ') || '(없음)';
+      changes.push({ field: t('동행자', 'Companions'), from: beforeDisp, to: afterDisp });
+    }
+
     if (changes.length === 0) {
       handleCancelEdit();
       return;
     }
 
     const newName = nameOf(editForm.engineerId);
+    const companions = afterCompIds.map(id => ({ id, name: nameOf(id) }));
     const updates = {
       engineerId: editForm.engineerId,
       engineerName: newName,
+      companions,
       departureDate: editForm.departureDate,
       returnDate: editForm.returnDate,
       note: editForm.note,
@@ -287,7 +310,7 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
                   {t('이 프로젝트에 배정된 인력이 없습니다. "추가 인력" 탭에서 먼저 배정해 주세요.', 'No assignees. Use "Team" tab first.')}
                 </div>
               ) : (
-                <select className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={tripForm.engineerId} onChange={e => setTripForm({...tripForm, engineerId: e.target.value})}>
+                <select className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={tripForm.engineerId} onChange={e => setTripForm({...tripForm, engineerId: e.target.value, companionIds: (tripForm.companionIds || []).filter(id => id !== e.target.value)})}>
                   <option value="">{t('-- 선택 --', '-- Select --')}</option>
                   {tripPool.map(eng => (
                     <option key={eng.id} value={eng.id}>
@@ -298,6 +321,25 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
                 </select>
               )}
             </div>
+            {tripPool.length > 1 && (
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {t('동행 엔지니어 (선택, 다중)', 'Companions (optional, multi)')}
+                  {(tripForm.companionIds || []).length > 0 && <span className="ml-1 text-[10px] text-purple-600 font-normal">· {tripForm.companionIds.length}{t('명 선택', ' selected')}</span>}
+                </label>
+                <div className="border border-slate-200 rounded-lg p-2 bg-slate-50 max-h-28 overflow-y-auto grid grid-cols-2 gap-1">
+                  {tripPool.filter(eng => eng.id !== tripForm.engineerId).map(eng => (
+                    <label key={eng.id} className="flex items-center text-[11px] text-slate-700 cursor-pointer hover:bg-white p-1 rounded">
+                      <input type="checkbox" className="mr-1.5" checked={(tripForm.companionIds || []).includes(eng.id)} onChange={() => toggleCompanion(setTripForm, tripForm, eng.id)} />
+                      <span className="truncate">{eng.name}{eng.grade ? ` ${eng.grade}` : ''}</span>
+                    </label>
+                  ))}
+                  {tripPool.filter(eng => eng.id !== tripForm.engineerId).length === 0 && (
+                    <span className="text-[10px] text-slate-400 italic col-span-2">{t('동행 가능한 인력이 없습니다.', 'No available companions.')}</span>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">{t('출발일', 'Departure')}</label>
@@ -349,7 +391,7 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
                         </div>
                         <div>
                           <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('인력', 'Engineer')}</label>
-                          <select className="w-full text-xs p-1.5 border border-slate-300 rounded" value={editForm.engineerId} onChange={e => setEditForm({...editForm, engineerId: e.target.value})}>
+                          <select className="w-full text-xs p-1.5 border border-slate-300 rounded" value={editForm.engineerId} onChange={e => setEditForm({...editForm, engineerId: e.target.value, companionIds: (editForm.companionIds || []).filter(id => id !== e.target.value)})}>
                             <option value="">{t('-- 선택 --', '-- Select --')}</option>
                             {tripPool.map(e2 => (
                               <option key={e2.id} value={e2.id}>
@@ -359,6 +401,22 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
                             ))}
                           </select>
                         </div>
+                        {tripPool.length > 1 && (
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-700 mb-0.5">
+                              {t('동행 엔지니어', 'Companions')}
+                              {(editForm.companionIds || []).length > 0 && <span className="ml-1 text-[9px] text-purple-600 font-normal">· {editForm.companionIds.length}{t('명', '')}</span>}
+                            </label>
+                            <div className="border border-slate-200 rounded p-1.5 bg-white max-h-24 overflow-y-auto grid grid-cols-2 gap-1">
+                              {tripPool.filter(eng => eng.id !== editForm.engineerId).map(eng => (
+                                <label key={eng.id} className="flex items-center text-[10px] text-slate-700 cursor-pointer hover:bg-slate-50 p-0.5 rounded">
+                                  <input type="checkbox" className="mr-1" checked={(editForm.companionIds || []).includes(eng.id)} onChange={() => toggleCompanion(setEditForm, editForm, eng.id)} />
+                                  <span className="truncate">{eng.name}{eng.grade ? ` ${eng.grade}` : ''}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('출발일', 'Departure')}</label>
@@ -406,6 +464,12 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
                             <Calendar size={9} className="mr-0.5 text-purple-400" />
                             {tr.departureDate} ~ {tr.returnDate}
                           </div>
+                          {Array.isArray(tr.companions) && tr.companions.length > 0 && (
+                            <div className="text-[10px] text-slate-600 mt-0.5 flex items-start">
+                              <Users size={9} className="mr-1 mt-0.5 text-purple-400 shrink-0" />
+                              <span><span className="text-slate-500">{t('동행', 'With')}:</span> <span className="font-bold">{tr.companions.map(c => c.name).filter(Boolean).join(', ')}</span></span>
+                            </div>
+                          )}
                           {tr.note && <div className="text-[10px] text-slate-500 italic mt-0.5">{tr.note}</div>}
                           {history.length > 0 && (
                             <button type="button" onClick={() => toggleHistory(tr.id)} className="mt-1 text-[10px] text-slate-500 hover:text-slate-700 flex items-center font-bold">
@@ -466,6 +530,8 @@ const ProjectTeamModal = memo(function ProjectTeamModal({
           author={currentUser?.name || ''}
           authorEmail={currentUser?.email || ''}
           mailGasUrl={mailGasUrl}
+          users={users}
+          customers={customers}
           onClose={() => setEmailTrip(null)}
           onSent={() => setEmailTrip(null)}
           t={t}

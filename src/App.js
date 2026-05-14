@@ -1386,17 +1386,25 @@ export default function App() {
 
   // === 출장 일정 핸들러 ===
   const handleAddTrip = (projectId, payload) => {
+    const mainId = payload.engineerId;
+    const companions = Array.isArray(payload.companions)
+      ? payload.companions
+          .filter(c => c && c.id && c.id !== mainId)
+          .map(c => ({ id: c.id, name: c.name || (engineers.find(e => e.id === c.id) || {}).name || '' }))
+      : [];
     const trip = {
       id: Date.now(),
-      engineerId: payload.engineerId,
-      engineerName: (engineers.find(e => e.id === payload.engineerId) || {}).name || '',
+      engineerId: mainId,
+      engineerName: (engineers.find(e => e.id === mainId) || {}).name || '',
+      companions,
       departureDate: payload.departureDate,
       returnDate: payload.returnDate,
       note: payload.note || '',
       createdAt: nowStored(),
       createdBy: currentUser.name
     };
-    syncProject(projectId, p => addLog({ ...p, trips: [...(p.trips || []), trip] }, 'TRIP_ADD', `출장 등록: ${trip.engineerName} (${trip.departureDate}~${trip.returnDate})`));
+    const companionLabel = companions.length > 0 ? ` + ${companions.map(c => c.name).filter(Boolean).join(', ')}` : '';
+    syncProject(projectId, p => addLog({ ...p, trips: [...(p.trips || []), trip] }, 'TRIP_ADD', `출장 등록: ${trip.engineerName}${companionLabel} (${trip.departureDate}~${trip.returnDate})`));
   };
 
   const handleUpdateTrip = (projectId, tripId, updates, changeSummary) => {
@@ -1433,9 +1441,15 @@ export default function App() {
         viewUrl: meta.viewUrl, downloadUrl: meta.downloadUrl
       });
     }
+    const coEngineers = Array.isArray(data.coEngineers)
+      ? data.coEngineers
+          .filter(c => c && c.id && c.id !== data.engineer && c.name !== data.engineer)
+          .map(c => ({ id: c.id, name: c.name || '' }))
+      : [];
     const record = {
       id: Date.now(),
       category, type: data.type, engineer: data.engineer,
+      coEngineers,
       description: data.description, resolution: data.resolution || '',
       // V3 흡수 — 풍부 필드 (모두 선택 입력)
       priority: data.priority === '긴급' ? '긴급' : '보통',
@@ -2108,7 +2122,7 @@ export default function App() {
               )}
               {activeTab === 'resources' && <ResourceListView engineers={engineers} projects={projects} issues={issues} getStatusColor={getStatusColor} TODAY={TODAY} onAddClick={() => { setSelectedEngineer(null); setIsEngineerModalOpen(true); }} onEditClick={(eng) => { setSelectedEngineer(eng); setIsEngineerModalOpen(true); }} onManageCertificates={(eng) => { setCertEngineerId(eng.id); setIsCertModalOpen(true); }} onShowActivity={(eng) => { setActivityEngineerId(eng.id); setIsActivityModalOpen(true); }} onDeleteClick={(eng) => setEngineerToDelete(eng)} currentUser={currentUser} t={t} />}
               {activeTab === 'as' && currentUser.role !== 'CUSTOMER' && (
-                <ASManagementView projects={projects} onProjectClick={openProjectDetail} onUpdateAS={handleUpdateAS} onAddAS={handleAddAS} onAddASComment={handleAddASComment} onCompleteAS={handleCompleteAS} onRevertCompleteAS={handleRevertCompleteAS} onUploadAttachment={handleUploadAttachment} driveConfigured={!!settings.driveRootFolderId} mailGasUrl={settings.mailGasUrl} currentUser={currentUser} t={t} />
+                <ASManagementView projects={projects} users={users} customers={customers} onProjectClick={openProjectDetail} onUpdateAS={handleUpdateAS} onAddAS={handleAddAS} onAddASComment={handleAddASComment} onCompleteAS={handleCompleteAS} onRevertCompleteAS={handleRevertCompleteAS} onUploadAttachment={handleUploadAttachment} driveConfigured={!!settings.driveRootFolderId} mailGasUrl={settings.mailGasUrl} currentUser={currentUser} t={t} />
               )}
               {activeTab === 'weekly' && currentUser.role !== 'CUSTOMER' && (
                 (settings.weeklyReportEnabled && (currentUser.role === 'ADMIN' || currentUser.weeklyReportEnabled)) ? (
@@ -2195,7 +2209,7 @@ export default function App() {
             {isTeamModalOpen && teamEditProjectId && (() => {
               const liveProject = projects.find(p => p.id === teamEditProjectId);
               if (!liveProject) return null;
-              return <ProjectTeamModal project={liveProject} engineers={engineers} currentUser={currentUser} mailGasUrl={settings.mailGasUrl} onClose={() => { setIsTeamModalOpen(false); setTeamEditProjectId(null); }} onChangeManager={handleChangeManager} onToggleAssignment={handleToggleEngineerAssignment} onAddTrip={handleAddTrip} onUpdateTrip={handleUpdateTrip} onDeleteTrip={handleDeleteTrip} t={t} />;
+              return <ProjectTeamModal project={liveProject} engineers={engineers} users={users} customers={customers} currentUser={currentUser} mailGasUrl={settings.mailGasUrl} onClose={() => { setIsTeamModalOpen(false); setTeamEditProjectId(null); }} onChangeManager={handleChangeManager} onToggleAssignment={handleToggleEngineerAssignment} onAddTrip={handleAddTrip} onUpdateTrip={handleUpdateTrip} onDeleteTrip={handleDeleteTrip} t={t} />;
             })()}
             {isReleaseModalOpen && <ReleaseModal onClose={() => setIsReleaseModalOpen(false)} onSubmit={handleAddRelease} t={t} />}
             {isEngineerModalOpen && <EngineerModal engineer={selectedEngineer} projects={projects} onClose={() => setIsEngineerModalOpen(false)} onSubmit={handleAddEngineer} t={t} />}

@@ -56,14 +56,16 @@ const EngineerActivityModal = memo(function EngineerActivityModal({ engineer, pr
     (projects || []).forEach(p => {
       // 출장 등록 + 수정 이력
       (p.trips || []).forEach(tr => {
-        const matchTrip = (tr.engineerId && tr.engineerId === id) || (tr.engineerName === name);
-        if (matchTrip) {
+        const isMain = (tr.engineerId && tr.engineerId === id) || (tr.engineerName === name);
+        const isCompanion = !isMain && Array.isArray(tr.companions) && tr.companions.some(c => (c.id && c.id === id) || c.name === name);
+        if (isMain || isCompanion) {
+          const tag = isCompanion ? ` ${t('(동행)', '(Companion)')}` : '';
           out.push({
             type: 'TRIP',
             ts: toMs(tr.createdAt) || toMs(tr.departureDate),
             projectId: p.id,
             projectName: p.name,
-            title: `${t('출장 등록', 'Trip')}: ${tr.departureDate || '-'} ~ ${tr.returnDate || '-'}`,
+            title: `${t('출장 등록', 'Trip')}${tag}: ${tr.departureDate || '-'} ~ ${tr.returnDate || '-'}`,
             detail: tr.note || '',
             actor: tr.createdBy || name
           });
@@ -116,13 +118,16 @@ const EngineerActivityModal = memo(function EngineerActivityModal({ engineer, pr
 
       // AS
       (p.asRecords || []).forEach(a => {
-        if (a.engineer === name) {
+        const isMain = a.engineer === name;
+        const isCo = !isMain && Array.isArray(a.coEngineers) && a.coEngineers.some(c => (c.id && c.id === id) || c.name === name);
+        if (isMain || isCo) {
+          const tag = isCo ? ` ${t('(공동)', '(Co)')}` : '';
           out.push({
             type: 'AS',
             ts: toMs(a.date) || (typeof a.id === 'number' ? a.id : 0),
             projectId: p.id,
             projectName: p.name,
-            title: `${t('AS 처리', 'AS')}: [${a.type || ''}] ${a.status || ''}`,
+            title: `${t('AS 처리', 'AS')}${tag}: [${a.type || ''}] ${a.status || ''}`,
             detail: a.description || '',
             actor: a.engineer
           });

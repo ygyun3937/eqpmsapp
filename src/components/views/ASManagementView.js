@@ -9,7 +9,7 @@ const AS_TYPES = ['전체', ...AS_HW_TYPES, ...AS_SW_TYPES];
 // HW/SW 통합 상태: 중복 제거 + 표시 순서 보존
 const AS_STATUS_ALL = Array.from(new Set(['전체', ...AS_HW_STATUSES, ...AS_SW_STATUSES]));
 
-const ASManagementView = memo(function ASManagementView({ projects, onProjectClick, onUpdateAS, onAddAS, onAddASComment, onCompleteAS, onRevertCompleteAS, onUploadAttachment, driveConfigured, mailGasUrl, currentUser, t }) {
+const ASManagementView = memo(function ASManagementView({ projects, users, customers, onProjectClick, onUpdateAS, onAddAS, onAddASComment, onCompleteAS, onRevertCompleteAS, onUploadAttachment, driveConfigured, mailGasUrl, currentUser, t }) {
   const [filterType, setFilterType] = useState('전체');
   const [filterStatus, setFilterStatus] = useState('전체');
   const [filterProject, setFilterProject] = useState('all');
@@ -163,7 +163,7 @@ const ASManagementView = memo(function ASManagementView({ projects, onProjectCli
         </div>
         <div className="flex items-center gap-2">
           {currentUser.role !== 'CUSTOMER' && onAddAS && (
-            <button onClick={() => setCreateModal({ projectId: '', category: 'HW', type: AS_HW_TYPES[0], engineer: currentUser.name || '', description: '', resolution: '', priority: '보통', manager: '', contact: '', serial: '', part: '', cost: '', reqDate: '', visit: '', files: [], uploading: false, error: '' })} className="flex items-center bg-purple-600 text-white border border-purple-600 px-4 py-2 rounded-lg text-sm font-bold hover:bg-purple-700 transition-colors shadow-sm">
+            <button onClick={() => setCreateModal({ projectId: '', category: 'HW', type: AS_HW_TYPES[0], engineer: currentUser.name || '', coEngineerIds: [], description: '', resolution: '', priority: '보통', manager: '', contact: '', serial: '', part: '', cost: '', reqDate: '', visit: '', files: [], uploading: false, error: '' })} className="flex items-center bg-purple-600 text-white border border-purple-600 px-4 py-2 rounded-lg text-sm font-bold hover:bg-purple-700 transition-colors shadow-sm">
               <Plus size={16} className="mr-1.5" /> {t('새 AS 접수', 'New AS')}
             </button>
           )}
@@ -270,6 +270,9 @@ const ASManagementView = memo(function ASManagementView({ projects, onProjectCli
                       <span className="flex items-center"><Building size={11} className="mr-1" />{r.customer}</span>
                       {r.site && <span>· {r.site}</span>}
                       <span className="flex items-center"><User size={11} className="mr-1" />{r.engineer}</span>
+                      {Array.isArray(r.coEngineers) && r.coEngineers.length > 0 && (
+                        <span className="text-slate-500">+ {t('공동', 'Co')}: <span className="font-bold">{r.coEngineers.map(c => c.name).filter(Boolean).join(', ')}</span></span>
+                      )}
                     </div>
 
                     {/* V3 메타 칩 — 인라인 편집 모드 / 표시 모드 분기 */}
@@ -652,7 +655,14 @@ const ASManagementView = memo(function ASManagementView({ projects, onProjectCli
           if (m.files.length > 0 && !driveConfigured) { setCreateModal({ ...m, error: t('Drive 미연동 — 파일 첨부 불가', 'Drive not configured.') }); return; }
           setCreateModal({ ...m, uploading: true, error: '' });
           try {
-            await onAddAS(m.projectId, { category: m.category, type: m.type, engineer: m.engineer, description: m.description, resolution: m.resolution, priority: m.priority, manager: m.manager, contact: m.contact, serial: m.serial, part: m.part, cost: m.cost, reqDate: m.reqDate, visit: m.visit, files: m.files, onProgress: () => {} });
+            const coEngineers = (m.coEngineerIds || [])
+              .map(id => {
+                const u = (users || []).find(x => x.id === id);
+                return u ? { id: u.id, name: u.name } : null;
+              })
+              .filter(Boolean)
+              .filter(c => c.name !== m.engineer);
+            await onAddAS(m.projectId, { category: m.category, type: m.type, engineer: m.engineer, coEngineers, description: m.description, resolution: m.resolution, priority: m.priority, manager: m.manager, contact: m.contact, serial: m.serial, part: m.part, cost: m.cost, reqDate: m.reqDate, visit: m.visit, files: m.files, onProgress: () => {} });
             close();
           } catch (e) {
             setCreateModal({ ...m, uploading: false, error: e?.message || t('접수 실패', 'Save failed') });
@@ -712,6 +722,32 @@ const ASManagementView = memo(function ASManagementView({ projects, onProjectCli
                     <input type="text" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={m.contact} onChange={(e) => setCreateModal({ ...m, contact: e.target.value })} placeholder="010-0000-0000" />
                   </div>
                 </div>
+                {/* 공동 처리자 (다중 선택, 선택) */}
+                {(() => {
+                  const candidateUsers = (users || []).filter(u => u.role !== 'CUSTOMER' && u.active !== false && u.name !== m.engineer);
+                  if (candidateUsers.length === 0) return null;
+                  const toggleCo = (id) => {
+                    const set = new Set(m.coEngineerIds || []);
+                    if (set.has(id)) set.delete(id); else set.add(id);
+                    setCreateModal({ ...m, coEngineerIds: Array.from(set) });
+                  };
+                  return (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        {t('공동 처리자 (선택, 다중)', 'Co-handlers (optional, multi)')}
+                        {(m.coEngineerIds || []).length > 0 && <span className="ml-1 text-[10px] text-purple-600 font-normal">· {m.coEngineerIds.length}{t('명 선택', ' selected')}</span>}
+                      </label>
+                      <div className="border border-slate-200 rounded-lg p-2 bg-slate-50 max-h-28 overflow-y-auto grid grid-cols-3 gap-1">
+                        {candidateUsers.map(u => (
+                          <label key={u.id} className="flex items-center text-[11px] text-slate-700 cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" className="mr-1.5" checked={(m.coEngineerIds || []).includes(u.id)} onChange={() => toggleCo(u.id)} />
+                            <span className="truncate">{u.name}{u.dept ? ` · ${u.dept}` : ''}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
                 {/* 시리얼 + 희망일 + 방문 (HW only for 희망일/방문) */}
                 <div className="grid grid-cols-3 gap-2">
                   <div>
@@ -851,6 +887,8 @@ const ASManagementView = memo(function ASManagementView({ projects, onProjectCli
           author={currentUser?.name || ''}
           authorEmail={currentUser?.email || ''}
           mailGasUrl={mailGasUrl}
+          users={users}
+          customers={customers}
           onClose={() => setEmailTarget(null)}
           onSent={() => { setEmailTarget(null); }}
           t={t}

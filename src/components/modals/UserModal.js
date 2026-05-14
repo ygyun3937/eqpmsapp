@@ -8,6 +8,7 @@ const UserModal = memo(function UserModal({ user, users, projects, onClose, onSu
   const [data, setData] = useState(user ? {
     id: user.id || '',
     name: user.name || '',
+    email: user.email || '',
     role: user.role || 'ENGINEER',
     dept: user.dept || '',
     position: user.position || '',
@@ -16,7 +17,7 @@ const UserModal = memo(function UserModal({ user, users, projects, onClose, onSu
     active: user.active !== false,
     mustChangePassword: !!user.mustChangePassword
   } : {
-    id: '', name: '', role: 'ENGINEER', dept: '', position: '', customer: '',
+    id: '', name: '', email: '', role: 'ENGINEER', dept: '', position: '', customer: '',
     assignedProjectIds: [], active: true, mustChangePassword: true
   });
   const POSITION_OPTIONS = ['', '사원', '주임', '대리', '과장', '차장', '부장', '이사', '상무', '전무', '대표'];
@@ -46,6 +47,10 @@ const UserModal = memo(function UserModal({ user, users, projects, onClose, onSu
       return;
     }
     if (!data.name.trim()) { setError(t('이름을 입력하세요.', 'Enter a name.')); return; }
+    const emailTrim = (data.email || '').trim();
+    if (emailTrim && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
+      setError(t('이메일 형식이 올바르지 않습니다.', 'Invalid email format.')); return;
+    }
 
     if (!isEdit) {
       if (!pw || pw.length < 4) { setError(t('비밀번호는 4자 이상이어야 합니다.', 'Password must be 4+ chars.')); return; }
@@ -59,13 +64,11 @@ const UserModal = memo(function UserModal({ user, users, projects, onClose, onSu
       setError(t('고객사명을 입력하세요.', 'Enter the customer company name.')); return;
     }
 
-    const payload = { ...data, id };
+    const payload = { ...data, id, email: emailTrim };
     if (pw) {
       payload.pw = await hashPassword(pw);
-      payload.mustChangePassword = false;
     } else if (!isEdit) {
       payload.pw = await hashPassword('changeme');
-      payload.mustChangePassword = true;
     } else {
       payload.pw = user.pw;
     }
@@ -89,6 +92,12 @@ const UserModal = memo(function UserModal({ user, users, projects, onClose, onSu
           <label className="block text-sm font-bold mb-1">{t('이름', 'Name')}</label>
           <input required className="w-full p-2.5 border rounded-lg" value={data.name} onChange={e => setData({ ...data, name: e.target.value })} />
         </div>
+      </div>
+      <div>
+        <label className="block text-sm font-bold mb-1">
+          {t('이메일', 'Email')} <span className="text-xs font-normal text-slate-400">{t('(선택 — 메일 주소록에 활용)', '(optional — used for mail address book)')}</span>
+        </label>
+        <input type="email" autoComplete="email" className="w-full p-2.5 border rounded-lg" value={data.email} onChange={e => setData({ ...data, email: e.target.value })} placeholder="example@company.com" />
       </div>
       <div className="grid grid-cols-3 gap-4">
         <div>

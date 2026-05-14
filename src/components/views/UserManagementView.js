@@ -37,7 +37,7 @@ const UserManagementView = memo(function UserManagementView({ users, projects, c
       if (filterStatus === 'active' && u.active === false) return false;
       if (filterStatus === 'disabled' && u.active !== false) return false;
       if (!kw) return true;
-      return [u.id, u.name, u.dept, u.customer, u.position].filter(Boolean).some(v => String(v).toLowerCase().includes(kw));
+      return [u.id, u.name, u.email, u.dept, u.customer, u.position].filter(Boolean).some(v => String(v).toLowerCase().includes(kw));
     });
   }, [users, filterRole, filterPosition, filterDept, filterStatus, search]);
 
@@ -77,7 +77,7 @@ const UserManagementView = memo(function UserManagementView({ users, projects, c
         <div className="p-4 border-b border-slate-200 flex flex-wrap items-center gap-2">
           <div className="flex items-center bg-slate-50 px-3 py-1.5 rounded-lg flex-1 min-w-[200px]">
             <Search size={16} className="text-slate-400 mr-2" />
-            <input className="bg-transparent outline-none text-sm w-full" placeholder={t('아이디/이름/부서/직급/고객사 검색', 'Search ID/Name/Dept/Position/Customer')} value={search} onChange={e => setSearch(e.target.value)} />
+            <input className="bg-transparent outline-none text-sm w-full" placeholder={t('아이디/이름/이메일/부서/직급/고객사 검색', 'Search ID/Name/Email/Dept/Position/Customer')} value={search} onChange={e => setSearch(e.target.value)} />
           </div>
           <select className="text-sm p-2 border rounded-lg bg-white" value={filterRole} onChange={e => setFilterRole(e.target.value)} title={t('권한 필터', 'Role filter')}>
             <option value="all">{t('전체 권한', 'All Roles')}</option>
@@ -105,6 +105,7 @@ const UserManagementView = memo(function UserManagementView({ users, projects, c
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('아이디', 'ID')}</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('이름 / 부서', 'Name / Dept')}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('이메일', 'Email')}</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('권한', 'Role')}</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('고객사 / 접근 프로젝트', 'Customer / Projects')}</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('상태', 'Status')}</th>
@@ -129,6 +130,11 @@ const UserManagementView = memo(function UserManagementView({ users, projects, c
                         {u.position && <span className="ml-1 text-xs text-slate-500 font-normal">{u.position}</span>}
                       </div>
                       <div className="text-xs text-slate-500">{u.dept || '-'}</div>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {u.email
+                        ? <span className="text-xs text-slate-700 font-mono">{u.email}</span>
+                        : <span className="text-xs text-slate-300 italic">{t('미등록', 'not set')}</span>}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <span className={`text-xs font-bold px-2 py-1 rounded-full border ${roleBadge(u.role)}`}>{roleLabel(u.role)}</span>
@@ -207,7 +213,7 @@ const UserManagementView = memo(function UserManagementView({ users, projects, c
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={wrEnabled ? 9 : 8} className="px-4 py-10 text-center text-sm text-slate-400">{t('표시할 사용자가 없습니다.', 'No users to show.')}</td></tr>
+                <tr><td colSpan={wrEnabled ? 10 : 9} className="px-4 py-10 text-center text-sm text-slate-400">{t('표시할 사용자가 없습니다.', 'No users to show.')}</td></tr>
               )}
             </tbody>
           </table>
