@@ -19,7 +19,7 @@ export const canAdvanceStage = (fromStage, toStage, partEvents, partId) => {
 };
 
 export const createStageRecord = (partId, stage, actor, checklistResults = {}, status = '완료', notes = '', photoUrls = '') => ({
-  id: `EVT-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+  id: `EVT-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
   partId,
   stage,
   status,

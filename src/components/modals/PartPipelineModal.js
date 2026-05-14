@@ -75,7 +75,7 @@ const PartPipelineModal = memo(function PartPipelineModal({ projects, onClose, o
             </div>
             <div>
               <label className="block text-sm font-bold text-slate-700 mb-1">{t('수량', 'Qty')} *</label>
-              <input required type="number" min="1" className="w-full p-2.5 border rounded-lg text-sm text-blue-600 font-bold" value={data.quantity} onChange={e => setData(d => ({ ...d, quantity: parseInt(e.target.value) || 1 }))} />
+              <input required type="number" min="1" className="w-full p-2.5 border rounded-lg text-sm text-blue-600 font-bold" value={data.quantity} onChange={e => setData(d => ({ ...d, quantity: parseInt(e.target.value, 10) || 1 }))} />
             </div>
           </div>
 

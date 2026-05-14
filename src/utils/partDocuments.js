@@ -7,7 +7,7 @@ const escapeHtml = (str) => {
 export const generateQCReport = (part, stageRecord) => {
   const { actor, completedAt, checklistResults = {}, notes = '', photoUrls = '' } = stageRecord;
   const date = completedAt ? new Date(completedAt).toLocaleDateString('ko-KR') : '-';
-  const passed = Object.values(checklistResults).every(Boolean);
+  const passed = Object.keys(checklistResults).length > 0 && Object.values(checklistResults).every(Boolean);
 
   const rows = Object.entries(checklistResults).map(([item, result]) =>
     `<tr><td>${escapeHtml(item)}</td><td style="color:${result ? 'green' : 'red'};font-weight:bold">${result ? '합격 ✓' : '불합격 ✗'}</td></tr>`

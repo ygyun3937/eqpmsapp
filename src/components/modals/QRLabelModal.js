@@ -45,7 +45,7 @@ const QRLabelModal = memo(function QRLabelModal({ part, onClose, t }) {
         </div>
         <div class="row">
           <div class="qr">
-            ${qrDataUrl ? `<img src="${qrDataUrl}" />` : '<div style="width:140px;height:140px;background:#eee;display:flex;align-items:center;justify-content:center">QR</div>'}
+            ${qrDataUrl ? `<img src="${escapeHtml(qrDataUrl)}" />` : '<div style="width:140px;height:140px;background:#eee;display:flex;align-items:center;justify-content:center">QR</div>'}
             <div style="font-size:10px;text-align:center;margin-top:4px;font-family:monospace">${escapeHtml(part.id)}</div>
           </div>
           <div style="flex:1">

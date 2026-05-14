@@ -18,6 +18,7 @@ import {
 // Utils
 import { getStatusColor } from './utils/status';
 import { getNextStage, canAdvanceStage, createStageRecord } from './utils/partPipeline';
+import { generateQCReport, generateDeliveryNote, openDocumentForPrint } from './utils/partDocuments';
 import { calcExp, calcAct } from './utils/calc';
 import { loadFromGoogleDB, saveToGoogleDB, saveProjectDelta, notifyWebhook, callGoogleAction, fileToBase64, subscribeSaveState, subscribeSaveError, getPendingSaveCount } from './utils/api';
 import { saveSnapshot, loadSnapshot, saveLastKnownGood, compareWithRemote, saveDeletedItemSnapshot, subscribeStorageWarning } from './utils/localBackup';
@@ -1136,9 +1137,12 @@ export default function App() {
     saveToGoogleDB('UPDATE_PIPELINE_PARTS', updated);
   };
 
-  const syncPartEvents = (updated) => {
-    setPartEvents(updated);
-    saveToGoogleDB('UPDATE_PART_EVENTS', updated);
+  const syncPartEvents = (updater) => {
+    setPartEvents(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      saveToGoogleDB('UPDATE_PART_EVENTS', next);
+      return next;
+    });
   };
 
   const handleAddPipelinePart = (newPart) => {
@@ -1153,7 +1157,7 @@ export default function App() {
     const updatedParts = [part, ...pipelineParts];
     syncPipelineParts(updatedParts);
     const startEvent = createStageRecord(part.id, '설계', currentUser?.name || currentUser?.id || 'system', {}, '진행중');
-    syncPartEvents([startEvent, ...partEvents]);
+    syncPartEvents(prev => [startEvent, ...prev]);
     setIsPipelinePartModalOpen(false);
     showToast(t('파트가 등록되었습니다.', 'Part registered.'));
   };
@@ -1166,19 +1170,30 @@ export default function App() {
       showToast(t('QC 합격 기록이 없으면 제조 단계로 진입할 수 없습니다.', 'QC must pass before manufacturing.'));
       return;
     }
-    const event = createStageRecord(partId, part.currentStage, currentUser?.name || currentUser?.id || 'system', checklistResults, status, notes, photoUrls);
-    syncPartEvents([event, ...partEvents]);
+    const fromStage = part.currentStage;
+    const event = createStageRecord(partId, fromStage, currentUser?.name || currentUser?.id || 'system', checklistResults, status, notes, photoUrls);
+    syncPartEvents(prev => [event, ...prev]);
     syncPipelineParts(pipelineParts.map(p => p.id === partId ? { ...p, currentStage: nextStage } : p));
     setIsPartStageModalOpen(false);
     setPartStageTarget(null);
     showToast(t(`${nextStage} 단계로 이동했습니다.`, `Moved to ${nextStage}.`));
+
+    // 문서 생성 — PC/모바일 공통 경로
+    if (fromStage === 'QC' && status === '합격') {
+      const record = { actor: currentUser?.name || currentUser?.id || '—', completedAt: new Date().toISOString(), checklistResults, notes };
+      openDocumentForPrint(generateQCReport(part, record));
+    }
+    if (fromStage === '납품') {
+      const record = { actor: currentUser?.name || currentUser?.id || '—', completedAt: new Date().toISOString(), notes };
+      openDocumentForPrint(generateDeliveryNote(part, record));
+    }
   };
 
   const handleRejectPipelineStage = (partId, fromStage, notes) => {
     const prevStageMap = { QC: '구매', 제조: 'QC', 납품: '제조' };
     const prevStage = prevStageMap[fromStage] || fromStage;
     const event = createStageRecord(partId, fromStage, currentUser?.name || currentUser?.id || 'system', {}, '불합격', notes);
-    syncPartEvents([event, ...partEvents]);
+    syncPartEvents(prev => [event, ...prev]);
     syncPipelineParts(pipelineParts.map(p => p.id === partId ? { ...p, currentStage: prevStage } : p));
     setIsPartStageModalOpen(false);
     setPartStageTarget(null);
@@ -1188,7 +1203,7 @@ export default function App() {
   const handleDeletePipelinePart = () => {
     if (!pipelinePartToDelete) return;
     syncPipelineParts(pipelineParts.filter(p => p.id !== pipelinePartToDelete.id));
-    syncPartEvents(partEvents.filter(e => e.partId !== pipelinePartToDelete.id));
+    syncPartEvents(prev => prev.filter(e => e.partId !== pipelinePartToDelete.id));
     setPipelinePartToDelete(null);
     showToast(t('파트가 삭제되었습니다.', 'Part deleted.'));
   };

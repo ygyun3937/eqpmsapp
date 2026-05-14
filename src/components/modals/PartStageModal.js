@@ -1,7 +1,6 @@
 import React, { useState, memo } from 'react';
 import { CheckSquare, AlertTriangle } from 'lucide-react';
 import ModalWrapper from '../common/ModalWrapper';
-import { generateQCReport, generateDeliveryNote, openDocumentForPrint } from '../../utils/partDocuments';
 
 const PartStageModal = memo(function PartStageModal({ part, nextStage, onClose, onAdvance, onReject, t }) {
   const currentStage = part.currentStage;
@@ -23,15 +22,6 @@ const PartStageModal = memo(function PartStageModal({ part, nextStage, onClose, 
       status: isQC ? '합격' : '완료',
     };
     onAdvance(part.id, nextStage, stageData);
-
-    if (isQC) {
-      const record = { actor: part.author || '—', completedAt: new Date().toISOString(), checklistResults: checked, notes };
-      openDocumentForPrint(generateQCReport(part, record));
-    }
-    if (currentStage === '납품') {
-      const record = { actor: part.author || '—', completedAt: new Date().toISOString(), notes };
-      openDocumentForPrint(generateDeliveryNote(part, record));
-    }
   };
 
   const handleReject = () => {
