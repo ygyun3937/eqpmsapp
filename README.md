@@ -1213,5 +1213,38 @@ graph TD
 | **QR 스캔 URL 라우팅** | ⚠️ **미구현** | `?part=` 파라미터 감지 → 모달 자동 오픈 |
 | **스캔 후 URL 정리** | ⚠️ **미구현** | `history.replaceState`로 `?part=` 제거 |
 
-> **다음 작업:** `App.js`에 `useEffect` 추가 — `pipelineParts` 로드 완료 후 `URLSearchParams`로 `?part=` 파라미터를 읽어 해당 파트의 `MobilePartPipelineModal`을 자동으로 오픈하는 QR 스캔 라우팅 구현
+> **다음 작업:** GAS 재배포 — 아래 섹션 15-8 참조
+
+---
+
+### 15-8. GAS 재배포 가이드 (필수)
+
+`docs/gas-backend.gs` 에 `PipelineParts` / `PartEvents` 지원이 추가됐습니다.  
+**실제 데이터 동기화가 되려면 Google Apps Script 콘솔에서 새 버전으로 배포해야 합니다.**
+
+#### 배포 절차
+
+1. **Google Apps Script 콘솔 접속**
+   - [script.google.com](https://script.google.com) → 현재 연결된 프로젝트 열기
+
+2. **코드 붙여넣기**
+   - `docs/gas-backend.gs` 전체 내용을 복사
+   - Apps Script 에디터에 붙여넣기 (기존 코드 전체 교체)
+
+3. **새 버전 배포**
+   ```
+   배포 → 배포 관리 → 연필 아이콘 → 버전: "새 버전" 선택 → 배포
+   ```
+
+4. **Google Sheets 시트 생성 확인**
+   - `writeToSheet`는 시트가 없으면 자동 생성하므로, 첫 파트 등록 시 **PipelineParts** / **PartEvents** 시트가 자동으로 만들어집니다.
+
+#### 배포 전/후 동작 차이
+
+| 항목 | 배포 전 (현재) | 배포 후 |
+|------|--------------|---------|
+| 파트 등록 | React 상태에만 저장, 새로고침 시 소멸 | Sheets에 영속 저장 |
+| QR 스캔 라우팅 | 새 페이지 로드 시 파트 못 찾음 | 파트 ID로 즉시 조회 가능 |
+| QC 성적서 | 동일 세션 내에서만 작동 | 어느 기기에서도 작동 |
+| `doGet` 응답 | `pipelineParts` 필드 없음 | `pipelineParts` / `partEvents` 반환 |
 

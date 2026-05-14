@@ -51,7 +51,7 @@ const PartPipelineModal = memo(function PartPipelineModal({ projects, onClose, o
       title={t('파트 등록', 'Register Part')}
       icon={<Package size={18} />}
       color="amber"
-      maxWidth="max-w-3xl"
+      maxWidth="max-w-5xl"
       onClose={onClose}
       onSubmit={handleSubmit}
       submitText={t('QR 포함 등록', 'Register with QR')}
