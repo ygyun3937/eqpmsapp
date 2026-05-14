@@ -999,3 +999,219 @@ flowchart LR
 | 상수 | — | constants/index.js (워런티 단계, 도메인별 카테고리, 직급, TODAY 실시간) |
 | 의존성 | — | package.json (exceljs ^4.4.0 추가) |
 
+---
+
+## 15. 자재 파이프라인 (Parts Pipeline)
+
+자재/파트를 **설계 → 구매 → QC → 제조 → 납품** 5단계로 추적하는 기능.  
+QC 단계가 강제 게이트(Gate)로 작동하며, QR 코드 기반 현장 모바일 스캔과 PC 관리가 **유기적으로 연동**됩니다.
+
+---
+
+### 15-1. 전체 파이프라인 워크플로우 (PC/모바일 담당 구분)
+
+```mermaid
+flowchart TD
+    subgraph PC["💻 PC (PartsListView — 파이프라인 탭)"]
+        P1["① 파트 등록\nPartPipelineModal\n파트명 · P/N · 수량 · 긴급도\n단계별 체크리스트 정의"]
+        P2["② QR 라벨 인쇄\nQRLabelModal\n라벨 미리보기 + 프린트"]
+        P3["③ 구매 완료\nPartStageModal\n체크리스트 확인 후 단계 진행"]
+        P4["④ 제조 완료\nPartStageModal\nQC 합격 후에만 활성화"]
+        P5["⑤ 납품 처리\nPartStageModal\n→ 납품확인서 자동 출력"]
+    end
+
+    subgraph FIELD["📱 현장 (MobilePartPipelineModal)"]
+        M1["QR 코드 스캔\n(카메라 앱)"]
+        M2["앱 자동 오픈\n?part=PART-xxx 감지\n⚠️ 현재 미구현"]
+        M3["체크리스트 완료\n+ 사진 촬영\n+ 메모 입력"]
+        M4{"QC 판정"}
+        M5["✅ 합격 처리\n→ QC 성적서 자동 출력"]
+        M6["❌ 불합격 — 반려\n반려 사유 입력\n→ 구매 단계로 되돌림"]
+    end
+
+    subgraph GAS["🗄️ Google Sheets (GAS)"]
+        S1[("PipelineParts\n시트")]
+        S2[("PartEvents\n이벤트 이력 시트")]
+    end
+
+    P1 -->|"QR 라벨 출력 후\n현장 부착"| P2
+    P2 -->|"부착 완료"| M1
+    M1 --> M2 --> M3 --> M4
+    M4 -->|합격| M5
+    M4 -->|불합격| M6
+
+    M5 -->|"QC 게이트 해제"| P4
+    M6 -->|"단계 반려"| P3
+
+    P1 & P3 & P4 & P5 <-->|"sync"| S1
+    M5 & M6 -->|"이벤트 기록"| S2
+    S2 -->|"이력 조회"| PC
+
+    style M2 fill:#fee2e2,stroke:#ef4444,color:#991b1b
+    style M5 fill:#d1fae5,stroke:#059669
+    style M6 fill:#fef3c7,stroke:#d97706
+```
+
+---
+
+### 15-2. QC 게이트 동작 원리
+
+QC(인덱스 2)를 기준으로 **이전 단계(설계·구매)** 는 자유 진행, **이후 단계(제조·납품)** 는 QC 합격 이벤트가 없으면 버튼이 비활성화됩니다.
+
+```mermaid
+flowchart LR
+    A[설계] --> B[구매]
+    B --> C{{"🔒 QC 게이트\n(canAdvanceStage)"}}
+    C -->|"❌ 합격 이벤트 없음"| BLOCK["제조 버튼\n비활성화\n(isQCBlocked)"]
+    C -->|"✅ 합격 이벤트 존재"| D[제조]
+    D --> E[납품]
+
+    subgraph QC단계 ["QC 단계 내부 (MobilePartPipelineModal / PartStageModal)"]
+        Q1["체크리스트 전체 완료\n(allChecked)"] --> Q2["합격 버튼 활성화\n(submitDisabled 해제)"]
+        Q2 --> Q3["onAdvance 호출\nstatus: '합격'"]
+        Q3 --> Q4["partEvents에\n합격 이벤트 기록"]
+    end
+
+    B --> QC단계
+    QC단계 -->|"합격"| C
+    QC단계 -->|"불합격"| B
+```
+
+---
+
+### 15-3. QR 스캔 → 모바일 모달 자동 오픈 시퀀스
+
+QR 라벨에는 `http://서버IP:3000?part=PART-xxx` URL이 인코딩됩니다.  
+현재 URL 파라미터 처리 로직이 미구현 상태이며, 아래 흐름이 완성되어야 모바일 현장 사용이 가능합니다.
+
+```mermaid
+sequenceDiagram
+    actor 검사자 as 검사자 (모바일)
+    participant QR as QR 라벨
+    participant Browser as 모바일 브라우저
+    participant App as App.js
+    participant GAS as GAS/Sheets
+    participant Modal as MobilePartPipelineModal
+
+    검사자->>QR: 카메라로 스캔
+    QR->>Browser: GET http://서버:3000?part=PART-abc123
+    Browser->>App: React SPA 로드
+
+    App->>GAS: fetchAllData()
+    GAS-->>App: pipelineParts / partEvents 반환
+
+    Note over App: ⚠️ 현재 미구현 ↓
+    App->>App: URLSearchParams 파싱<br/>partId = ?part= 추출
+    App->>App: pipelineParts에서 해당 파트 탐색
+    App->>App: getNextStage(part) 계산
+    App->>App: isMobileMode = window.innerWidth < 768
+
+    alt 모바일 (isMobileMode = true)
+        App->>Modal: partStageTarget 세팅<br/>→ MobilePartPipelineModal 자동 오픈
+        검사자->>Modal: 체크리스트 완료 + 사진 촬영
+        검사자->>Modal: 합격 / 불합격 선택
+        Modal->>App: onAdvance / onReject 호출
+        App->>GAS: UPDATE_PIPELINE_PARTS<br/>UPDATE_PART_EVENTS
+        App->>Browser: history.replaceState로 ?part= 제거
+    else PC (isMobileMode = false)
+        App->>App: PartStageModal 오픈<br/>(관리자 검토 용도)
+    end
+```
+
+---
+
+### 15-4. 컴포넌트 & 상태 구조
+
+```mermaid
+graph TD
+    subgraph AppState["App.js 핵심 상태"]
+        ST1["pipelineParts[ ]\n파트 목록 + currentStage"]
+        ST2["partEvents[ ]\n단계별 이벤트 이력"]
+        ST3["partStageTarget\n{ part, nextStage }"]
+        ST4["isMobileMode\nwindow.innerWidth < 768"]
+    end
+
+    subgraph Modals["모달 (조건부 lazy 로드)"]
+        M1["PartPipelineModal\n파트 등록 + 체크리스트 정의"]
+        M2["QRLabelModal\nQR 라벨 미리보기 + 인쇄"]
+        M3["PartStageModal\nPC 단계 진행 (QC 게이트 포함)"]
+        M4["MobilePartPipelineModal\n모바일 전체화면 QC 스캔"]
+    end
+
+    subgraph Views["뷰"]
+        V1["PartsListView\n📦 파이프라인 탭\n🔧 스페어파트 탭"]
+    end
+
+    subgraph Utils["유틸리티"]
+        U1["partPipeline.js\ncanAdvanceStage\ngetNextStage\ngetStageCompletion"]
+        U2["qr.js\ngenerateQRDataUrl\n?part=PART-xxx URL 인코딩"]
+        U3["partDocuments.js\ngenerateQCReport\ngenerateDeliveryNote\nopenDocumentForPrint"]
+    end
+
+    V1 -->|onOpenStageModal| ST3
+    ST3 & ST4 -->|"isMobileMode ?"| M4
+    ST3 & ST4 -->|"!isMobileMode ?"| M3
+    M3 & M4 -->|"onAdvance / onReject"| ST1
+    M3 & M4 -->|stageData| ST2
+    App -->|"합격 시 / 납품 시"| U3
+
+    V1 -->|onOpenQRLabel| M2
+    M2 --> U2
+    V1 -->|파트 등록| M1
+    M1 -->|onSubmit| ST1
+    M3 & M4 -->|"QC/납품 완료"| U3
+
+    ST1 & ST2 <-->|"sync"| GAS[(GAS / Sheets)]
+    V1 --> U1
+
+    style M4 fill:#dcfce7,stroke:#16a34a
+    style M3 fill:#dbeafe,stroke:#2563eb
+    style ST3 fill:#f3e8ff,stroke:#9333ea
+```
+
+---
+
+### 15-5. 파일 구조 및 역할
+
+| 파일 | 역할 |
+|------|------|
+| `src/constants/index.js` | `PART_PIPELINE_PHASES`, `PART_QC_INDEX`, `DEFAULT_CHECKLISTS`, `PART_TYPES` |
+| `src/utils/partPipeline.js` | `canAdvanceStage`, `getNextStage`, `createStageRecord`, `getStageCompletion` — 순수 함수, 테스트 15개 |
+| `src/utils/qr.js` | `generateQRDataUrl`, `generateQRSvg` — `?part=PART-xxx` URL 인코딩 |
+| `src/utils/partDocuments.js` | `generateQCReport`, `generateDeliveryNote`, `openDocumentForPrint` — XSS 안전한 HTML 생성 |
+| `src/components/modals/PartPipelineModal.js` | 파트 등록 (파트명/P/N/수량/긴급도/타입 + 단계별 체크리스트 정의) |
+| `src/components/modals/QRLabelModal.js` | QR 라벨 미리보기 + 브라우저 인쇄 |
+| `src/components/modals/PartStageModal.js` | PC 단계 진행 모달 (QC 게이트: 체크리스트 전체 완료 필수) |
+| `src/components/modals/MobilePartPipelineModal.js` | 모바일 전체화면 QC 스캔 모달 (터치 UI + 카메라 촬영) |
+| `src/components/views/PartsListView.js` | 파이프라인 탭 + 스페어파트 탭 통합 뷰 (`completionMap` 메모이제이션) |
+| `src/components/common/ModalWrapper.js` | 공통 모달 프레임 (`maxWidth`, `submitDisabled` 확장) |
+| `docs/gas-backend.gs` | GAS: `pipelineParts`/`partEvents` doGet 응답 + `UPDATE_PIPELINE_PARTS`/`UPDATE_PART_EVENTS` doPost 처리 |
+
+---
+
+### 15-6. GAS Sheets 연동 액션
+
+| 액션 | 방향 | 설명 |
+|------|------|------|
+| `doGet` → `pipelineParts` | GAS → 앱 | PipelineParts 시트 전체 읽기 |
+| `doGet` → `partEvents` | GAS → 앱 | PartEvents 시트 전체 읽기 |
+| `UPDATE_PIPELINE_PARTS` | 앱 → GAS | 파트 목록 전체 덮어쓰기 (CHANGE_LOG 기록 포함) |
+| `UPDATE_PART_EVENTS` | 앱 → GAS | 이벤트 이력 전체 덮어쓰기 (CHANGE_LOG 기록 포함) |
+
+---
+
+### 15-7. 현재 구현 상태 및 미구현 항목
+
+| 항목 | 상태 | 비고 |
+|------|------|------|
+| 파트 등록 + QR 라벨 인쇄 | ✅ 완료 | PartPipelineModal + QRLabelModal |
+| PC 단계 진행 (QC 게이트) | ✅ 완료 | PartStageModal + submitDisabled |
+| 모바일 QC 스캔 UI | ✅ 완료 | MobilePartPipelineModal |
+| QC 성적서 자동 출력 | ✅ 완료 | generateQCReport (합격 시 자동) |
+| 납품확인서 자동 출력 | ✅ 완료 | generateDeliveryNote (납품 시 자동) |
+| GAS 백엔드 연동 | ✅ 완료 | PipelineParts + PartEvents 시트 |
+| **QR 스캔 URL 라우팅** | ⚠️ **미구현** | `?part=` 파라미터 감지 → 모달 자동 오픈 |
+| **스캔 후 URL 정리** | ⚠️ **미구현** | `history.replaceState`로 `?part=` 제거 |
+
+> **다음 작업:** `App.js`에 `useEffect` 추가 — `pipelineParts` 로드 완료 후 `URLSearchParams`로 `?part=` 파라미터를 읽어 해당 파트의 `MobilePartPipelineModal`을 자동으로 오픈하는 QR 스캔 라우팅 구현
+
