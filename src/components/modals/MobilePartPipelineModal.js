@@ -60,7 +60,7 @@ const MobilePartPipelineModal = memo(function MobilePartPipelineModal({ part, ne
                     ? 'bg-indigo-600 text-white'
                     : 'bg-slate-100 text-slate-400'
               }`}>
-                {s === currentStage ? `← 현재` : s}
+                {s === currentStage ? `← ${t('현재', 'Current')}` : s}
               </span>
               {i < PART_PIPELINE_PHASES.length - 1 && <ChevronRight size={12} className="text-slate-300 flex-shrink-0" />}
             </React.Fragment>
