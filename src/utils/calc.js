@@ -52,18 +52,22 @@ export const calcOverallProgress = (project) => {
 const daysBetween = (a, b) => Math.floor((a.getTime() - b.getTime()) / (1000 * 60 * 60 * 24));
 
 // 엔지니어가 등록된 모든 출장 일정 모음 (project.trips 기준)
+// 주담당(engineerId) + 동행자(companions[].id) 모두 매칭 — 동행자도 같은 기간 같은 사이트에 가있는 것으로 처리
 export const getEngineerTrips = (engineer, projects) => {
   if (!engineer || !engineer.id) return [];
   const out = [];
   (projects || []).forEach(p => {
     (p.trips || []).forEach(t => {
-      if (t.engineerId === engineer.id) {
+      const isMain = t.engineerId === engineer.id;
+      const isCompanion = !isMain && Array.isArray(t.companions) && t.companions.some(c => c && c.id === engineer.id);
+      if (isMain || isCompanion) {
         out.push({
           ...t,
           projectId: p.id,
           projectName: p.name,
           site: p.site,
-          customer: p.customer
+          customer: p.customer,
+          asCompanion: isCompanion
         });
       }
     });
@@ -88,7 +92,7 @@ export const getCurrentTrip = (engineer, projects) => {
     const tr = ongoing[0];
     return {
       state: 'onsite',
-      label: '현장 파견',
+      label: tr.asCompanion ? '현장 파견 (동행)' : '현장 파견',
       site: tr.site,
       projectId: tr.projectId,
       projectName: tr.projectName,
@@ -96,7 +100,8 @@ export const getCurrentTrip = (engineer, projects) => {
       returnDate: tr.returnDate,
       daysLeft: daysBetween(new Date(tr.returnDate), today),
       note: tr.note,
-      tripId: tr.id
+      tripId: tr.id,
+      asCompanion: !!tr.asCompanion
     };
   }
 
@@ -107,7 +112,7 @@ export const getCurrentTrip = (engineer, projects) => {
     const tr = future[0];
     return {
       state: 'scheduled',
-      label: '출장 예정',
+      label: tr.asCompanion ? '출장 예정 (동행)' : '출장 예정',
       site: tr.site,
       projectId: tr.projectId,
       projectName: tr.projectName,
@@ -115,7 +120,8 @@ export const getCurrentTrip = (engineer, projects) => {
       returnDate: tr.returnDate,
       daysUntil: daysBetween(new Date(tr.departureDate), today),
       note: tr.note,
-      tripId: tr.id
+      tripId: tr.id,
+      asCompanion: !!tr.asCompanion
     };
   }
 
