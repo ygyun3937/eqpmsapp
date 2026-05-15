@@ -9,7 +9,7 @@ const AS_TYPES = ['전체', ...AS_HW_TYPES, ...AS_SW_TYPES];
 // HW/SW 통합 상태: 중복 제거 + 표시 순서 보존
 const AS_STATUS_ALL = Array.from(new Set(['전체', ...AS_HW_STATUSES, ...AS_SW_STATUSES]));
 
-const ASManagementView = memo(function ASManagementView({ projects, users, customers, onProjectClick, onUpdateAS, onAddAS, onAddASComment, onCompleteAS, onRevertCompleteAS, onUploadAttachment, driveConfigured, mailGasUrl, currentUser, t }) {
+const ASManagementView = memo(function ASManagementView({ projects, engineers, users, customers, onProjectClick, onUpdateAS, onAddAS, onAddASComment, onCompleteAS, onRevertCompleteAS, onUploadAttachment, driveConfigured, mailGasUrl, currentUser, t }) {
   const [filterType, setFilterType] = useState('전체');
   const [filterStatus, setFilterStatus] = useState('전체');
   const [filterProject, setFilterProject] = useState('all');
@@ -711,11 +711,11 @@ const ASManagementView = memo(function ASManagementView({ projects, users, custo
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">{isHW ? t('담당 엔지니어 *', 'Engineer *') : t('담당자 *', 'Owner *')}</label>
-                    {(users || []).filter(u => u.role !== 'CUSTOMER' && u.active !== false).length > 0 ? (
+                    {Array.isArray(engineers) && engineers.filter(e => e.active !== false).length > 0 ? (
                       <select className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={m.engineer} onChange={(e) => setCreateModal({ ...m, engineer: e.target.value })}>
                         <option value="">{t('-- 선택 --', '-- Select --')}</option>
-                        {(users || []).filter(u => u.role !== 'CUSTOMER' && u.active !== false).map(u => (
-                          <option key={u.id} value={u.name}>{u.name}</option>
+                        {engineers.filter(e => e.active !== false).map(e => (
+                          <option key={e.id} value={e.name}>{e.name}</option>
                         ))}
                       </select>
                     ) : (
