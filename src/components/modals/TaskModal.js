@@ -1771,7 +1771,16 @@ const TaskModal = memo(function TaskModal({ project, allProjects, projectIssues,
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-600 mb-1">{isHW ? t('담당 엔지니어', 'Engineer') : t('담당자', 'Owner')}</label>
-                      <input type="text" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newASForm.engineer} onChange={(e) => setNewASForm({...newASForm, engineer: e.target.value})} placeholder={t('이름 입력', 'Name')} />
+                      {Array.isArray(engineers) && engineers.filter(e => e.active !== false).length > 0 ? (
+                        <select className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newASForm.engineer} onChange={(e) => setNewASForm({...newASForm, engineer: e.target.value})}>
+                          <option value="">{t('-- 선택 --', '-- Select --')}</option>
+                          {engineers.filter(e => e.active !== false).map(e => (
+                            <option key={e.id} value={e.name}>{e.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input type="text" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={newASForm.engineer} onChange={(e) => setNewASForm({...newASForm, engineer: e.target.value})} placeholder={t('이름 입력', 'Name')} />
+                      )}
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-600 mb-1">{t('중요도', 'Priority')}</label>

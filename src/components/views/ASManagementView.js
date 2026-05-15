@@ -711,7 +711,16 @@ const ASManagementView = memo(function ASManagementView({ projects, users, custo
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">{isHW ? t('담당 엔지니어 *', 'Engineer *') : t('담당자 *', 'Owner *')}</label>
-                    <input type="text" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={m.engineer} onChange={(e) => setCreateModal({ ...m, engineer: e.target.value })} />
+                    {(users || []).filter(u => u.role !== 'CUSTOMER' && u.active !== false).length > 0 ? (
+                      <select className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={m.engineer} onChange={(e) => setCreateModal({ ...m, engineer: e.target.value })}>
+                        <option value="">{t('-- 선택 --', '-- Select --')}</option>
+                        {(users || []).filter(u => u.role !== 'CUSTOMER' && u.active !== false).map(u => (
+                          <option key={u.id} value={u.name}>{u.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input type="text" className="w-full text-sm p-2 border border-slate-300 rounded-lg" value={m.engineer} onChange={(e) => setCreateModal({ ...m, engineer: e.target.value })} />
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">{t('고객사 담당자', 'Customer Manager')}</label>
