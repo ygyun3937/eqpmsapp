@@ -1,7 +1,7 @@
 import React, { useState, memo } from 'react';
 import { X, ListTodo, CheckSquare, AlertTriangle, CheckCircle, User, Edit, Trash, PenTool, Info, ShieldCheck, FileText, ImageIcon, History, GitCommit as TimelineIcon, Package, Wrench, HardDrive, MessageSquare, Send, LifeBuoy, Plus, ShieldOff, Sparkles, Paperclip, Upload, Download, ExternalLink, Loader, FolderOpen, CalendarDays, Star, Calendar, Clock, StickyNote, Building2, Database, Mail, Smartphone, Phone, MapPin, ArrowUpRight } from 'lucide-react';
 import InfoPopover from '../common/InfoPopover';
-import { PROJECT_PHASES, AS_HW_TYPES, AS_SW_TYPES, AS_DEFAULT_CATEGORY, getASTypesByCategory, getASStatusesByCategory, formatDomain } from '../../constants';
+import { PROJECT_PHASES, AS_HW_TYPES, AS_SW_TYPES, AS_DEFAULT_CATEGORY, getASTypesByCategory, getASStatusesByCategory, getASResolutionTypesByCategory, AS_BILLING_OPTIONS, formatDomain } from '../../constants';
 import { calcAct as calcSetupProgress, calcPhaseProgress, calcOverallProgress } from '../../utils/calc';
 import ProjectPipelineStepper from '../common/ProjectPipelineStepper';
 import SetupPipelineStepper from '../common/SetupPipelineStepper';
@@ -2095,6 +2095,14 @@ const TaskModal = memo(function TaskModal({ project, allProjects, projectIssues,
                                 </div>
                               )}
 
+                              {/* 처리유형 / 비용청구 (완료 시 분류) */}
+                              {as.status === '완료' && (as.asType || as.billing) && (
+                                <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px] font-bold">
+                                  {as.asType && <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200">{as.asType}</span>}
+                                  {as.billing && <span className={`px-2 py-0.5 rounded-full border ${/유상/.test(as.billing) ? 'bg-red-100 text-red-700 border-red-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>{as.billing}</span>}
+                                </div>
+                              )}
+
                               {/* 완료 보고서 — 완료된 AS만 노출 */}
                               {as.status === '완료' && as.report && (
                                 <div className="mt-3 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
@@ -2167,7 +2175,8 @@ const TaskModal = memo(function TaskModal({ project, allProjects, projectIssues,
                                     <button key={s} onClick={() => {
                                       // 완료로 가는 건 보고서 모달 거치도록 가로채기
                                       if (s === '완료' && as.status !== '완료' && onCompleteAS) {
-                                        setAsCompleteModal({ asId: as.id, file: null, isNA: false, uploading: false });
+                                        const cat = as.category || AS_DEFAULT_CATEGORY;
+                                        setAsCompleteModal({ asId: as.id, category: cat, file: null, isNA: false, uploading: false, asType: getASResolutionTypesByCategory(cat)[0], billing: AS_BILLING_OPTIONS[0] });
                                         return;
                                       }
                                       onUpdateAS(project.id, as.id, { status: s });
@@ -2198,7 +2207,7 @@ const TaskModal = memo(function TaskModal({ project, allProjects, projectIssues,
                   if (!m.isNA && !m.file) return;
                   setAsCompleteModal({ ...m, uploading: true });
                   try {
-                    await onCompleteAS(project.id, m.asId, { isNA: m.isNA, file: m.file, onProgress: () => {} });
+                    await onCompleteAS(project.id, m.asId, { isNA: m.isNA, file: m.file, asType: m.asType, billing: m.billing, onProgress: () => {} });
                     setAsCompleteModal(null);
                   } catch (e) {
                     setAsCompleteModal({ ...m, uploading: false });
@@ -2212,6 +2221,20 @@ const TaskModal = memo(function TaskModal({ project, allProjects, projectIssues,
                         <button onClick={closeModal} disabled={m.uploading} className="text-slate-400 hover:text-slate-700 disabled:opacity-50"><X size={18} /></button>
                       </div>
                       <div className="p-4 space-y-3">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-600 mb-1">{t('처리 유형', 'Resolution Type')}</label>
+                            <select value={m.asType} disabled={m.uploading} onChange={(e) => setAsCompleteModal({ ...m, asType: e.target.value })} className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white disabled:opacity-50">
+                              {getASResolutionTypesByCategory(m.category).map(o => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-600 mb-1">{t('비용 청구', 'Billing')}</label>
+                            <select value={m.billing} disabled={m.uploading} onChange={(e) => setAsCompleteModal({ ...m, billing: e.target.value })} className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white disabled:opacity-50">
+                              {AS_BILLING_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                          </div>
+                        </div>
                         <div className="text-xs text-slate-600 leading-relaxed">{t('완료 처리 시 보고서(작업 결과서 / 점검 보고서 / 패치 노트 등)를 첨부하거나 N/A를 명시해야 합니다.', 'Attach a report or mark N/A.')}</div>
                         <input
                           type="file"

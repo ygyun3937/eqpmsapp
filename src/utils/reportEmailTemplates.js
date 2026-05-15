@@ -66,9 +66,10 @@ export function buildTripRequestEmail({ project, trip, author, additionalComment
 
   const content = `
     <table style="${S.table}">
+      ${projectId ? row('프로젝트 코드', `<span style="font-family:monospace;font-weight:bold;">${escapeHtml(projectId)}</span>`) : ''}
+      ${row('프로젝트', `${escapeHtml(projectName)}${projectCustomer ? ` <span style="color:#64748b">(${escapeHtml(projectCustomer)})</span>` : ''}`)}
       ${row('신청자', escapeHtml(engineerName))}
       ${compText ? row('동행자', `<strong>${escapeHtml(compText)}</strong> <span style="color:#64748b">(${trip.companions.length}명)</span>`) : ''}
-      ${row('프로젝트', `${escapeHtml(projectName)}${projectCustomer ? ` <span style="color:#64748b">(${escapeHtml(projectCustomer)})</span>` : ''}`)}
       ${row('출장지', escapeHtml(site || '-'))}
       ${row('기간', `<strong>${escapeHtml(trip.departureDate || '?')} ~ ${escapeHtml(trip.returnDate || '?')}</strong>`)}
       ${trip.cost ? row('예상 비용', escapeHtml(String(trip.cost))) : ''}
@@ -76,14 +77,12 @@ export function buildTripRequestEmail({ project, trip, author, additionalComment
     </table>
     ${labelBlock('출장 목적 / 업무 내용', purpose)}
     ${labelBlock('신청자 추가 코멘트', additionalComment)}
-    <div style="${S.label}">프로젝트 ID</div>
-    <div style="${S.monoSm}">${escapeHtml(projectId)}</div>
   `;
 
   return {
     subject,
     htmlBody: wrapHtml('출장 신청서', '[출장 신청]', content),
-    plainFallback: `${subject}\n\n신청자: ${engineerName}${compText ? '\n동행자: ' + compText : ''}\n프로젝트: ${projectName}\n기간: ${trip.departureDate} ~ ${trip.returnDate}\n출장지: ${site}\n${purpose ? '\n목적: ' + purpose : ''}`,
+    plainFallback: `${subject}\n\n${projectId ? '프로젝트 코드: ' + projectId + '\n' : ''}프로젝트: ${projectName}\n신청자: ${engineerName}${compText ? '\n동행자: ' + compText : ''}\n기간: ${trip.departureDate} ~ ${trip.returnDate}\n출장지: ${site}\n${purpose ? '\n목적: ' + purpose : ''}`,
     attachmentName: `MAK-PMS-출장신청서-${engineerName || '담당미정'}-${new Date().toISOString().slice(0, 10)}.html`
   };
 }
@@ -92,14 +91,17 @@ export function buildTripRequestEmail({ project, trip, author, additionalComment
 export function buildTripReportEmail({ project, trip, author, achievements, issues, nextSteps, additionalComment }) {
   const engineerName = trip.engineerName || author || '';
   const projectName = project?.name || '';
+  const projectId = project?.id || '';
+  const projectCustomer = project?.customer || project?.endUser || '';
   const compText = companionsText(trip.companions);
   const subject = `[MAK-PMS] 출장 보고서 — ${engineerName}${compText ? ` 외 ${trip.companions.length}명` : ''} (${projectName} / ${trip.departureDate}~${trip.returnDate})`;
 
   const content = `
     <table style="${S.table}">
+      ${projectId ? row('프로젝트 코드', `<span style="font-family:monospace;font-weight:bold;">${escapeHtml(projectId)}</span>`) : ''}
+      ${row('프로젝트', `${escapeHtml(projectName)}${projectCustomer ? ` <span style="color:#64748b">(${escapeHtml(projectCustomer)})</span>` : ''}`)}
       ${row('보고자', escapeHtml(engineerName))}
       ${compText ? row('동행자', `<strong>${escapeHtml(compText)}</strong> <span style="color:#64748b">(${trip.companions.length}명)</span>`) : ''}
-      ${row('프로젝트', escapeHtml(projectName))}
       ${row('출장지', escapeHtml(trip.site || project?.site || '-'))}
       ${row('기간', `<strong>${escapeHtml(trip.departureDate || '?')} ~ ${escapeHtml(trip.returnDate || '?')}</strong>`)}
       ${row('보고 일시', escapeHtml(new Date().toLocaleString('ko-KR')))}
@@ -113,7 +115,7 @@ export function buildTripReportEmail({ project, trip, author, achievements, issu
   return {
     subject,
     htmlBody: wrapHtml('출장 보고서', '[출장 보고]', content),
-    plainFallback: `${subject}\n\n보고자: ${engineerName}${compText ? '\n동행자: ' + compText : ''}\n프로젝트: ${projectName}\n기간: ${trip.departureDate} ~ ${trip.returnDate}\n${achievements ? '\n[성과]\n' + achievements : ''}${issues ? '\n[이슈]\n' + issues : ''}${nextSteps ? '\n[후속]\n' + nextSteps : ''}`,
+    plainFallback: `${subject}\n\n${projectId ? '프로젝트 코드: ' + projectId + '\n' : ''}프로젝트: ${projectName}\n보고자: ${engineerName}${compText ? '\n동행자: ' + compText : ''}\n기간: ${trip.departureDate} ~ ${trip.returnDate}\n${achievements ? '\n[성과]\n' + achievements : ''}${issues ? '\n[이슈]\n' + issues : ''}${nextSteps ? '\n[후속]\n' + nextSteps : ''}`,
     attachmentName: `MAK-PMS-출장보고서-${engineerName || '담당미정'}-${new Date().toISOString().slice(0, 10)}.html`
   };
 }
@@ -121,6 +123,7 @@ export function buildTripReportEmail({ project, trip, author, achievements, issu
 // === 3. AS 보고서 ===
 export function buildASReportEmail({ project, as, author, additionalComment }) {
   const projectName = project?.name || '';
+  const projectId = project?.id || '';
   const customer = project?.customer || project?.endUser || '';
   const asType = as.type || '';
   const asCategory = as.category || 'HW';
@@ -128,6 +131,8 @@ export function buildASReportEmail({ project, as, author, additionalComment }) {
 
   const description = as.description || '';
   const resolution = as.resolution || '';
+  const asTypeVal = as.asType || '';
+  const billingVal = as.billing || '';
   const comments = Array.isArray(as.comments) ? as.comments : [];
 
   // 구분 셀(SW=보라, HW=앰버) — 인라인 스타일
@@ -147,12 +152,15 @@ export function buildASReportEmail({ project, as, author, additionalComment }) {
 
   const content = `
     <table style="${S.table}">
-      ${row('구분', catCell)}
+      ${projectId ? row('프로젝트 코드', `<span style="font-family:monospace;font-weight:bold;">${escapeHtml(projectId)}</span>`) : ''}
       ${row('프로젝트', `${escapeHtml(projectName)}${customer ? ` <span style="color:#64748b">(${escapeHtml(customer)})</span>` : ''}`)}
+      ${row('구분', catCell)}
       ${row('담당 엔지니어', escapeHtml(as.engineer || author || '-'))}
       ${coEngText ? row('공동 처리자', `<strong>${escapeHtml(coEngText)}</strong> <span style="color:#64748b">(${as.coEngineers.length}명)</span>`) : ''}
       ${row('접수일', escapeHtml(as.date || as.reqDate || '-'))}
       ${row('상태', `<strong>${escapeHtml(as.status || '-')}</strong>`)}
+      ${asTypeVal ? row('처리 유형', escapeHtml(asTypeVal)) : ''}
+      ${billingVal ? row('비용 청구', `<strong style="color:${/유상/.test(billingVal) ? '#b91c1c' : '#15803d'}">${escapeHtml(billingVal)}</strong>`) : ''}
       ${as.priority ? row('중요도', escapeHtml(as.priority)) : ''}
       ${as.serial ? row('시리얼', escapeHtml(as.serial)) : ''}
       ${row('발송 일시', escapeHtml(new Date().toLocaleString('ko-KR')))}
@@ -167,7 +175,7 @@ export function buildASReportEmail({ project, as, author, additionalComment }) {
   return {
     subject,
     htmlBody: wrapHtml('AS 처리 보고서', `[AS 보고 / ${asCategory}]`, content),
-    plainFallback: `${subject}\n\n프로젝트: ${projectName}\n유형: ${asCategory}/${asType}\n담당: ${as.engineer || author || '-'}${coEngText ? '\n공동 처리자: ' + coEngText : ''}\n상태: ${as.status}\n${description ? '\n증상:\n' + description : ''}${resolution ? '\n조치:\n' + resolution : ''}`,
+    plainFallback: `${subject}\n\n${projectId ? '프로젝트 코드: ' + projectId + '\n' : ''}프로젝트: ${projectName}\n유형: ${asCategory}/${asType}\n담당: ${as.engineer || author || '-'}${coEngText ? '\n공동 처리자: ' + coEngText : ''}\n상태: ${as.status}${asTypeVal ? '\n처리 유형: ' + asTypeVal : ''}${billingVal ? '\n비용 청구: ' + billingVal : ''}\n${description ? '\n증상:\n' + description : ''}${resolution ? '\n조치:\n' + resolution : ''}`,
     attachmentName: `MAK-PMS-AS보고서-${asCategory}-${asEngineer}-${new Date().toISOString().slice(0, 10)}.html`
   };
 }

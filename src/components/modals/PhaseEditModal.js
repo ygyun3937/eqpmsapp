@@ -190,7 +190,7 @@ const PhaseEditModal = memo(function PhaseEditModal({ project, onClose, onSubmit
         </div>
 
         <div className="px-6 py-3 border-t border-slate-100 flex justify-between items-center shrink-0 bg-slate-50">
-          <button type="button" onClick={reset} className="text-xs font-bold text-slate-500 hover:text-slate-700 inline-flex items-center"><RotateCcw size={12} className="mr-1" />{t('표준 8단계로 초기화', 'Reset to default 8')}</button>
+          <button type="button" onClick={reset} className="text-xs font-bold text-slate-500 hover:text-slate-700 inline-flex items-center"><RotateCcw size={12} className="mr-1" />{t('표준 14단계로 초기화', 'Reset to default 14')}</button>
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg">{t('취소', 'Cancel')}</button>
             <button type="button" onClick={handleSave} className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg inline-flex items-center"><Check size={14} className="mr-1" />{t('저장', 'Save')}</button>

@@ -3,13 +3,21 @@ import { LifeBuoy, Filter, User, Calendar, CalendarDays, Building, Wrench, Alert
 import StatCard from '../common/StatCard';
 import SendReportEmailModal from '../modals/SendReportEmailModal';
 import { exportToExcel } from '../../utils/export';
-import { AS_HW_TYPES, AS_SW_TYPES, AS_HW_STATUSES, AS_SW_STATUSES, AS_DEFAULT_CATEGORY, getASStatusesByCategory, getASTypesByCategory } from '../../constants';
+import { parseASWorkbook, mapLegacyASRows, findProjectIdByCode, collectLegacyIds } from '../../utils/asImport';
+import { AS_HW_TYPES, AS_SW_TYPES, AS_HW_STATUSES, AS_SW_STATUSES, AS_DEFAULT_CATEGORY, getASStatusesByCategory, getASTypesByCategory, getASResolutionTypesByCategory, AS_BILLING_OPTIONS } from '../../constants';
 
 const AS_TYPES = ['전체', ...AS_HW_TYPES, ...AS_SW_TYPES];
 // HW/SW 통합 상태: 중복 제거 + 표시 순서 보존
 const AS_STATUS_ALL = Array.from(new Set(['전체', ...AS_HW_STATUSES, ...AS_SW_STATUSES]));
 
-const ASManagementView = memo(function ASManagementView({ projects, engineers, users, customers, onProjectClick, onUpdateAS, onAddAS, onAddASComment, onCompleteAS, onRevertCompleteAS, onUploadAttachment, driveConfigured, mailGasUrl, currentUser, t }) {
+// 완료된 건은 완료연도, 그 외 접수연도(YYYY) 기준
+const asRecordYear = (r) => {
+  const s = (r && r.report && r.report.completedAt) || (r && r.date) || '';
+  const mt = String(s).match(/(\d{4})/);
+  return mt ? mt[1] : '';
+};
+
+const ASManagementView = memo(function ASManagementView({ projects, engineers, users, customers, onProjectClick, onUpdateAS, onAddAS, onAddASComment, onCompleteAS, onRevertCompleteAS, onUploadAttachment, onArchiveASYear, onUnarchiveASYear, onImportAS, onRelinkAS, onCreateProjectFromAS, onRequestEditProject, driveConfigured, mailGasUrl, currentUser, t }) {
   const [filterType, setFilterType] = useState('전체');
   const [filterStatus, setFilterStatus] = useState('전체');
   const [filterProject, setFilterProject] = useState('all');
@@ -24,6 +32,10 @@ const ASManagementView = memo(function ASManagementView({ projects, engineers, u
   const [editingKey, setEditingKey] = useState(null); // 인라인 편집 중인 레코드 키
   const [editDraft, setEditDraft] = useState({}); // 편집 중 값 (manager/contact/serial/part/cost/priority/reqDate/visit)
   const [createModal, setCreateModal] = useState(null); // 통합 페이지 직접 접수 모달
+  const [filterYear, setFilterYear] = useState(''); // '' = 현재 진행중(미마감), 'YYYY' = 해당 연도 마감 보관분
+  const [searchAll, setSearchAll] = useState(false); // 통합검색 — 연도/마감 무시 전체 검색
+  const [importModal, setImportModal] = useState(null); // { stage, fileName, items, counts, error, busy }
+  const [relinkModal, setRelinkModal] = useState(null); // { record } — 이관 AS 프로젝트 연결
   const lastSeenIdRef = useRef(null); // 신규 접수 알림용 (이번 세션 진입 시점 기준)
 
   // 모든 프로젝트의 AS 레코드를 평탄화
@@ -53,9 +65,31 @@ const ASManagementView = memo(function ASManagementView({ projects, engineers, u
   }
   const newSinceVisit = useMemo(() => allRecords.filter(r => (Number(r.id) || 0) > lastSeenIdRef.current).length, [allRecords]);
 
+  // 마감된 연도 목록 (내림차순)
+  const archivedYears = useMemo(() => {
+    const ys = new Set();
+    allRecords.forEach(r => { if (r.archivedYear) ys.add(String(r.archivedYear)); });
+    return Array.from(ys).sort((a, b) => Number(b) - Number(a));
+  }, [allRecords]);
+
+  // 마감 가능한 연도 후보 (완료 + 미마감 레코드의 연도)
+  const closableYears = useMemo(() => {
+    const ys = new Set();
+    allRecords.forEach(r => { if (r.status === '완료' && !r.archivedYear) { const y = asRecordYear(r); if (y) ys.add(y); } });
+    return Array.from(ys).sort((a, b) => Number(b) - Number(a));
+  }, [allRecords]);
+
+  // 마감 모드 안내: 보관 연도 조회 중인지
+  const isArchiveView = filterYear !== '' && !searchAll;
+
   const filtered = useMemo(() => {
     const kw = search.trim().toLowerCase();
     return allRecords.filter(r => {
+      // 연도/마감 스코프: 통합검색이면 무시, 아니면 (기본=미마감만 / 연도선택=해당 마감분만)
+      if (!searchAll) {
+        if (filterYear === '') { if (r.archivedYear) return false; }
+        else if (String(r.archivedYear || '') !== filterYear) return false;
+      }
       const cat = r.category || AS_DEFAULT_CATEGORY;
       if (filterCategory !== '전체' && cat !== filterCategory) return false;
       if (filterType !== '전체' && r.type !== filterType) return false;
@@ -65,21 +99,36 @@ const ASManagementView = memo(function ASManagementView({ projects, engineers, u
       if (filterPhase === 'done' && r.status !== '완료') return false;
       if (filterPhase === 'urgent' && !(r.priority === '긴급' && r.status !== '완료')) return false;
       if (kw) {
-        const fields = [r.projectName, r.customer, r.engineer, r.description, r.resolution, r.manager, r.contact, r.serial, r.part, r.visit];
+        const fields = [r.projectName, r.customer, r.engineer, r.description, r.resolution, r.manager, r.contact, r.serial, r.part, r.visit, r.legacyCode];
         if (!fields.some(v => v && String(v).toLowerCase().includes(kw))) return false;
       }
       return true;
     });
-  }, [allRecords, filterType, filterStatus, filterProject, filterCategory, filterPhase, search]);
+  }, [allRecords, filterType, filterStatus, filterProject, filterCategory, filterPhase, search, filterYear, searchAll]);
+
+  // 통계/스코프 기준 레코드 — 연도/마감 스코프만 반영 (유형·상태·검색 필터는 제외)
+  const scopedRecords = useMemo(() => {
+    if (searchAll) return allRecords;
+    if (filterYear === '') return allRecords.filter(r => !r.archivedYear);
+    return allRecords.filter(r => String(r.archivedYear || '') === filterYear);
+  }, [allRecords, filterYear, searchAll]);
 
   const stats = useMemo(() => ({
-    total: allRecords.length,
-    hw: allRecords.filter(r => (r.category || AS_DEFAULT_CATEGORY) === 'HW').length,
-    sw: allRecords.filter(r => r.category === 'SW').length,
-    open: allRecords.filter(r => r.status !== '완료').length,
-    completed: allRecords.filter(r => r.status === '완료').length,
-    urgent: allRecords.filter(r => r.priority === '긴급' && r.status !== '완료').length,
-  }), [allRecords]);
+    total: scopedRecords.length,
+    hw: scopedRecords.filter(r => (r.category || AS_DEFAULT_CATEGORY) === 'HW').length,
+    sw: scopedRecords.filter(r => r.category === 'SW').length,
+    open: scopedRecords.filter(r => r.status !== '완료').length,
+    completed: scopedRecords.filter(r => r.status === '완료').length,
+    urgent: scopedRecords.filter(r => r.priority === '긴급' && r.status !== '완료').length,
+  }), [scopedRecords]);
+
+  // 유무상 / 처리유형 분포 (완료 건 기준, 스코프 내) — 차트 없이 표로
+  const billingStats = useMemo(() => {
+    const done = scopedRecords.filter(r => r.status === '완료');
+    const paid = done.filter(r => /유상/.test(r.billing || '')).length;
+    const free = done.filter(r => /무상/.test(r.billing || '')).length;
+    return { paid, free, unset: done.length - paid - free };
+  }, [scopedRecords]);
 
   // 프로젝트 목록 (AS 레코드가 있는 프로젝트만)
   const projectOptions = useMemo(() => {
@@ -91,24 +140,26 @@ const ASManagementView = memo(function ASManagementView({ projects, engineers, u
     exportToExcel('AS_통합내역', [{
       name: 'AS 내역',
       rows: filtered.map(r => ({
-        date: r.date, projectName: r.projectName, customer: r.customer, site: r.site,
+        date: r.date, legacyCode: r.legacyCode || '', projectName: r.projectName, customer: r.customer, site: r.site,
         category: r.category || AS_DEFAULT_CATEGORY,
         type: r.type, status: r.status, priority: r.priority || '보통',
         engineer: r.engineer, manager: r.manager || '', contact: r.contact || '', serial: r.serial || '',
         reqDate: r.reqDate || '', visit: r.visit || '',
         part: r.part || '', cost: r.cost || '',
+        asType: r.asType || '', billing: r.billing || '',
         description: r.description, resolution: r.resolution || '-',
         comments: Array.isArray(r.comments) ? r.comments.length : 0,
         completedAt: r.status === '완료' && r.report ? r.report.completedAt || '' : '',
         reportFile: r.status === '완료' && r.report ? (r.report.naReason ? 'N/A' : r.report.fileName || '-') : '-'
       })),
       columns: [
-        { header: '일자', key: 'date' }, { header: '프로젝트', key: 'projectName' }, { header: '고객사', key: 'customer' },
+        { header: '일자', key: 'date' }, { header: '원본코드', key: 'legacyCode' }, { header: '프로젝트', key: 'projectName' }, { header: '고객사', key: 'customer' },
         { header: '사이트', key: 'site' }, { header: '분류', key: 'category' }, { header: 'AS 유형', key: 'type' },
         { header: '상태', key: 'status' }, { header: '중요도', key: 'priority' }, { header: '담당 엔지니어', key: 'engineer' },
         { header: '고객사 담당자', key: 'manager' }, { header: '연락처', key: 'contact' }, { header: '시리얼', key: 'serial' },
         { header: '희망일', key: 'reqDate' }, { header: '방문필요사항', key: 'visit' },
         { header: '사용 부품', key: 'part' }, { header: '금액', key: 'cost' },
+        { header: '처리유형', key: 'asType' }, { header: '비용청구', key: 'billing' },
         { header: '증상/요청', key: 'description' }, { header: '조치 내용', key: 'resolution' },
         { header: '코멘트 수', key: 'comments' }, { header: '완료일', key: 'completedAt' }, { header: '보고서', key: 'reportFile' }
       ]
@@ -146,6 +197,43 @@ const ASManagementView = memo(function ASManagementView({ projects, engineers, u
     setReplyText({ ...replyText, [key]: '' });
   };
 
+  // 기존 AS 통합관리 엑셀/CSV 파싱 → 미리보기
+  const handleImportFile = async (file) => {
+    if (!file) return;
+    setImportModal({ stage: 'pick', fileName: file.name, busy: true, error: '' });
+    try {
+      const buf = await file.arrayBuffer();
+      const { rows, sheetName } = parseASWorkbook(buf);
+      const { items, skipped } = mapLegacyASRows(rows);
+      const existing = collectLegacyIds(projects);
+      let matched = 0, dup = 0, noCode = 0;
+      const newCodes = new Set();
+      items.forEach(it => {
+        if (it.legacyId && existing.has(String(it.legacyId))) { dup += 1; return; }
+        if (findProjectIdByCode(it.code, projects)) { matched += 1; return; }
+        if (it.code) newCodes.add(it.code); else noCode += 1;
+      });
+      if (items.length === 0) {
+        setImportModal({ stage: 'error', fileName: file.name, busy: false, error: t('유효한 AS 행을 찾지 못했습니다. (AS_Data 시트/컬럼 확인)', 'No valid AS rows found.') });
+        return;
+      }
+      const net = items.length - dup;
+      setImportModal({
+        stage: 'preview', fileName: file.name, sheetName, items, busy: false, error: '',
+        counts: { total: items.length, matched, newProjects: newCodes.size + (noCode > 0 ? 1 : 0), codes: Array.from(newCodes).sort(), noCode, dup, skipped, net }
+      });
+    } catch (e) {
+      setImportModal({ stage: 'error', fileName: file.name, busy: false, error: (e && e.message) || t('파일 파싱 실패', 'Parse failed') });
+    }
+  };
+
+  const confirmImport = () => {
+    const m = importModal;
+    if (!m || !m.items || !onImportAS) return;
+    setImportModal({ ...m, busy: true });
+    try { onImportAS(m.items); } finally { setImportModal(null); }
+  };
+
   return (
     <div className="space-y-6 animate-[fadeIn_0.3s_ease-in-out]">
       <div className="flex justify-between items-end">
@@ -162,9 +250,36 @@ const ASManagementView = memo(function ASManagementView({ projects, engineers, u
           <p className="text-slate-500 mt-1 text-sm">{t('전체 프로젝트의 AS(애프터서비스) 내역을 한 곳에서 관리합니다.', 'Manage after-sales service records across all projects.')}</p>
         </div>
         <div className="flex items-center gap-2">
+          {/* 연도 조회 — '' 현재 진행중(미마감) / 마감 연도 보관분 */}
+          <select
+            value={searchAll ? '' : filterYear}
+            disabled={searchAll}
+            onChange={e => setFilterYear(e.target.value)}
+            className="text-sm font-bold bg-white border border-violet-300 text-violet-700 rounded-lg px-2 py-2 outline-none disabled:opacity-50"
+            title={t('연도별 마감 보관분 조회', 'View archived year')}
+          >
+            <option value="">{t('현재 진행중 (미마감)', 'Active (current)')}</option>
+            {archivedYears.map(y => <option key={y} value={y}>{t(`${y}년 마감 보관`, `${y} archived`)}</option>)}
+          </select>
+          {currentUser.role === 'ADMIN' && !searchAll && (
+            isArchiveView ? (
+              <button onClick={() => { if (window.confirm(t(`${filterYear}년 마감을 취소하시겠습니까?\n해당 연도 AS가 다시 현재 목록으로 돌아옵니다.`, `Unarchive ${filterYear}?`))) { onUnarchiveASYear && onUnarchiveASYear(filterYear); setFilterYear(''); } }} className="flex items-center bg-amber-50 text-amber-700 border border-amber-300 px-3 py-2 rounded-lg text-sm font-bold hover:bg-amber-100 transition-colors shadow-sm">
+                {t('마감 취소', 'Unarchive')}
+              </button>
+            ) : (
+              <button onClick={() => { const y = window.prompt(t('연간 마감할 연도를 입력하세요 (YYYY).\n해당 연도 완료 AS가 보관 처리됩니다.', 'Year to archive (YYYY):'), String(new Date().getFullYear())); if (y && /^\d{4}$/.test(y.trim()) && window.confirm(t(`${y.trim()}년 완료 AS를 연간 마감하시겠습니까?\n(되돌릴 수 있습니다)`, `Archive completed AS for ${y.trim()}?`))) onArchiveASYear && onArchiveASYear(y.trim()); }} className="flex items-center bg-violet-50 text-violet-700 border border-violet-300 px-3 py-2 rounded-lg text-sm font-bold hover:bg-violet-100 transition-colors shadow-sm" title={closableYears.length ? t(`마감 가능: ${closableYears.join(', ')}`, '') : t('마감 가능한 완료 AS 없음', '')}>
+                {t('연간 마감', 'Archive Year')}
+              </button>
+            )
+          )}
           {currentUser.role !== 'CUSTOMER' && onAddAS && (
             <button onClick={() => setCreateModal({ projectId: '', category: 'HW', type: AS_HW_TYPES[0], engineer: currentUser.name || '', coEngineerIds: [], description: '', resolution: '', priority: '보통', manager: '', contact: '', serial: '', part: '', cost: '', reqDate: '', visit: '', files: [], uploading: false, error: '' })} className="flex items-center bg-purple-600 text-white border border-purple-600 px-4 py-2 rounded-lg text-sm font-bold hover:bg-purple-700 transition-colors shadow-sm">
               <Plus size={16} className="mr-1.5" /> {t('새 AS 접수', 'New AS')}
+            </button>
+          )}
+          {(currentUser.role === 'ADMIN' || currentUser.role === 'PM') && onImportAS && (
+            <button onClick={() => setImportModal({ stage: 'pick', error: '', busy: false })} className="flex items-center bg-blue-50 text-blue-700 border border-blue-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-100 transition-colors shadow-sm" title={t('기존 AS 통합관리(V4.1) 엑셀/CSV 데이터 이관', 'Import legacy AS data')}>
+              <Upload size={16} className="mr-2" /> {t('AS 데이터 가져오기', 'Import AS')}
             </button>
           )}
           <button onClick={handleExport} className="flex items-center bg-emerald-50 text-emerald-600 border border-emerald-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-emerald-100 transition-colors shadow-sm">
@@ -172,6 +287,14 @@ const ASManagementView = memo(function ASManagementView({ projects, engineers, u
           </button>
         </div>
       </div>
+
+      {(isArchiveView || searchAll) && (
+        <div className={`px-4 py-2 rounded-lg text-xs font-bold border ${searchAll ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-amber-50 text-amber-800 border-amber-200'}`}>
+          {searchAll
+            ? t('🔍 통합검색 모드 — 모든 연도·마감 데이터를 검색 중입니다.', 'Global search — all years.')
+            : t(`🔒 ${filterYear}년 마감 보관 데이터 (열람 전용 — 수정·완료는 현재 진행중에서)`, `Archived ${filterYear} (read-only)`)}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
         <StatCard title={t('전체 AS', 'Total')} value={stats.total} icon={<LifeBuoy size={22} className="text-purple-500" />} />
@@ -182,6 +305,15 @@ const ASManagementView = memo(function ASManagementView({ projects, engineers, u
         <StatCard title={t('미완료 긴급', 'Urgent Open')} value={stats.urgent} icon={<AlertTriangle size={22} className="text-red-500" />} color={stats.urgent > 0 ? 'border-red-200 bg-red-50' : ''} />
       </div>
 
+      {stats.completed > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-bold text-slate-500">{t('완료 건 비용 청구:', 'Billing of completed:')}</span>
+          <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold">{t('무상', 'Free')} {billingStats.free}</span>
+          <span className="px-2.5 py-1 rounded-full bg-red-100 text-red-700 border border-red-200 font-bold">{t('유상', 'Paid')} {billingStats.paid}</span>
+          {billingStats.unset > 0 && <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 border border-slate-200 font-bold">{t('분류전', 'Unset')} {billingStats.unset}</span>}
+        </div>
+      )}
+
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
         <div className="p-4 border-b border-slate-200 space-y-3">
           {/* 1행: 검색 + 분류 토글 + 프로젝트/유형/상세상태 */}
@@ -190,6 +322,14 @@ const ASManagementView = memo(function ASManagementView({ projects, engineers, u
               <Search size={16} className="text-slate-400 mr-2" />
               <input className="bg-transparent outline-none text-sm w-full" placeholder={t('프로젝트/고객사/엔지니어/증상/시리얼/담당자/부품 검색', 'Search projects, customers, engineers, symptoms, serial, manager, parts')} value={search} onChange={e => setSearch(e.target.value)} />
             </div>
+            <button
+              type="button"
+              onClick={() => setSearchAll(v => !v)}
+              className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${searchAll ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50'}`}
+              title={t('연도·마감 무시하고 전체 데이터에서 검색', 'Search across all years/archives')}
+            >
+              {searchAll ? t('통합검색 ON', 'Global ON') : t('통합검색', 'Global')}
+            </button>
             {/* 분류 토글 — HW/SW/전체 */}
             <div className="flex bg-white border border-slate-200 rounded-lg overflow-hidden">
               {['전체', 'HW', 'SW'].map(c => {
@@ -258,6 +398,11 @@ const ASManagementView = memo(function ASManagementView({ projects, engineers, u
                       </span>
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${typeColor(r.type, cat)}`}>{r.type}</span>
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${statusColor(r.status)}`}>{r.status}</span>
+                      {r.legacyCode && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 border border-blue-200 inline-flex items-center" title={t('기존 AS 통합관리에서 이관된 건 — 원본 프로젝트 코드', 'Imported — original project code')}>
+                          <Upload size={9} className="mr-0.5" />{r.legacyCode}
+                        </span>
+                      )}
                       {r.priority === '긴급' && (
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200 inline-flex items-center"><AlertTriangle size={9} className="mr-0.5" />{t('긴급', 'Urgent')}</span>
                       )}
@@ -490,6 +635,14 @@ const ASManagementView = memo(function ASManagementView({ projects, engineers, u
                       </div>
                     )}
 
+                    {/* 처리유형 / 비용청구 (완료 시 분류) */}
+                    {r.status === '완료' && (r.asType || r.billing) && (
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] font-bold">
+                        {r.asType && <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200">{r.asType}</span>}
+                        {r.billing && <span className={`px-2 py-0.5 rounded-full border ${/유상/.test(r.billing) ? 'bg-red-100 text-red-700 border-red-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>{r.billing}</span>}
+                      </div>
+                    )}
+
                     {/* 완료 보고서 */}
                     {r.status === '완료' && r.report && (
                       <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2 text-[11px]">
@@ -519,6 +672,16 @@ const ASManagementView = memo(function ASManagementView({ projects, engineers, u
                         >
                           <Mail size={11} className="mr-1.5" />{t('AS 보고서 메일 발송', 'Send AS Report Email')}
                         </button>
+                        {r._imported && (currentUser.role === 'ADMIN' || currentUser.role === 'PM') && onRelinkAS && (
+                          <button
+                            type="button"
+                            onClick={() => setRelinkModal({ record: r })}
+                            className="ml-2 text-[11px] font-bold px-2.5 py-1.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 inline-flex items-center shadow-sm transition-colors"
+                            title={t('이관된 AS를 올바른 프로젝트로 연결하거나 신규 프로젝트 생성', 'Relink imported AS to a project')}
+                          >
+                            <ExternalLink size={11} className="mr-1.5" />{t('프로젝트 연결', 'Relink Project')}
+                          </button>
+                        )}
                       </div>
                     )}
 
@@ -542,7 +705,7 @@ const ASManagementView = memo(function ASManagementView({ projects, engineers, u
                             ))}
                           </div>
                         )}
-                        {currentUser.role !== 'CUSTOMER' && r.status !== '완료' && onAddASComment && (
+                        {currentUser.role !== 'CUSTOMER' && r.status !== '완료' && !isArchiveView && onAddASComment && (
                           <div className="flex items-center gap-1.5">
                             <input
                               type="text"
@@ -567,13 +730,14 @@ const ASManagementView = memo(function ASManagementView({ projects, engineers, u
 
                   </div>
 
-                  {/* 우측 상태 컨트롤 (원복) */}
-                  {currentUser.role !== 'CUSTOMER' && (
+                  {/* 우측 상태 컨트롤 (원복) — 마감 보관 조회 시 읽기전용 */}
+                  {currentUser.role !== 'CUSTOMER' && !isArchiveView && (
                     <div className="flex flex-col gap-1 shrink-0">
                       {statuses.map(s => (
                         <button key={s} onClick={() => {
                           if (s === '완료' && r.status !== '완료' && onCompleteAS) {
-                            setCompleteModal({ projectId: r.projectId, asId: r.id, file: null, isNA: false, uploading: false });
+                            const cat = r.category || AS_DEFAULT_CATEGORY;
+                            setCompleteModal({ projectId: r.projectId, asId: r.id, category: cat, file: null, isNA: false, uploading: false, asType: getASResolutionTypesByCategory(cat)[0], billing: AS_BILLING_OPTIONS[0] });
                             return;
                           }
                           onUpdateAS(r.projectId, r.id, { status: s });
@@ -602,7 +766,7 @@ const ASManagementView = memo(function ASManagementView({ projects, engineers, u
           if (!m.isNA && !m.file) return;
           setCompleteModal({ ...m, uploading: true });
           try {
-            await onCompleteAS(m.projectId, m.asId, { isNA: m.isNA, file: m.file, onProgress: () => {} });
+            await onCompleteAS(m.projectId, m.asId, { isNA: m.isNA, file: m.file, asType: m.asType, billing: m.billing, onProgress: () => {} });
             setCompleteModal(null);
           } catch (e) {
             setCompleteModal({ ...m, uploading: false });
@@ -616,6 +780,20 @@ const ASManagementView = memo(function ASManagementView({ projects, engineers, u
                 <button onClick={close} disabled={m.uploading} className="text-slate-400 hover:text-slate-700 disabled:opacity-50"><X size={18} /></button>
               </div>
               <div className="p-4 space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">{t('처리 유형', 'Resolution Type')}</label>
+                    <select value={m.asType} disabled={m.uploading} onChange={(e) => setCompleteModal({ ...m, asType: e.target.value })} className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white disabled:opacity-50">
+                      {getASResolutionTypesByCategory(m.category).map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">{t('비용 청구', 'Billing')}</label>
+                    <select value={m.billing} disabled={m.uploading} onChange={(e) => setCompleteModal({ ...m, billing: e.target.value })} className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white disabled:opacity-50">
+                      {AS_BILLING_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </div>
+                </div>
                 <div className="text-xs text-slate-600 leading-relaxed">{t('완료 처리 시 보고서(작업 결과서 / 점검 보고서 / 패치 노트 등)를 첨부하거나 N/A를 명시해야 합니다.', 'Attach a report or mark N/A.')}</div>
                 <input
                   type="file"
@@ -637,6 +815,133 @@ const ASManagementView = memo(function ASManagementView({ projects, engineers, u
               <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2">
                 <button type="button" onClick={close} disabled={m.uploading} className="px-3 py-1.5 text-xs font-bold rounded border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50">{t('취소', 'Cancel')}</button>
                 <button type="button" onClick={submit} disabled={m.uploading || (!m.isNA && !m.file)} className="px-3 py-1.5 text-xs font-bold rounded bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center disabled:bg-slate-300"><CheckCircle size={12} className="mr-1" />{t('완료 확정', 'Confirm')}</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* AS 데이터 가져오기(이관) 모달 */}
+      {importModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40" onClick={() => !importModal.busy && setImportModal(null)}>
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-[520px] max-w-[calc(100vw-2rem)]" onClick={(e) => e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="text-sm font-black text-blue-700 flex items-center"><Upload size={16} className="mr-2" />{t('AS 데이터 가져오기 (이관)', 'Import Legacy AS')}</h3>
+              <button onClick={() => !importModal.busy && setImportModal(null)} disabled={importModal.busy} className="text-slate-400 hover:text-slate-700 disabled:opacity-50"><X size={18} /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              {(importModal.stage === 'pick' || importModal.stage === 'error') && (
+                <>
+                  <div className="text-xs text-slate-600 leading-relaxed">{t('기존 AS 통합관리(V4.1)에서 내보낸 엑셀(.xlsx) 또는 CSV 파일을 선택하세요. 적용 전 미리보기로 건수를 확인합니다.', 'Pick the exported .xlsx/.csv. Preview before applying.')}</div>
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    disabled={importModal.busy}
+                    onChange={(e) => handleImportFile(e.target.files && e.target.files[0])}
+                    className="block w-full text-xs p-2 border border-dashed border-slate-300 rounded-lg bg-slate-50 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-blue-600 file:text-white file:font-bold file:text-[11px] disabled:opacity-50"
+                  />
+                  {importModal.busy && <div className="text-xs font-bold text-blue-700 flex items-center"><Loader size={12} className="animate-spin mr-1.5" />{t('분석 중...', 'Parsing...')}</div>}
+                  {importModal.stage === 'error' && importModal.error && (
+                    <div className="text-xs font-bold text-red-700 bg-red-50 border border-red-200 rounded p-2">{importModal.error}</div>
+                  )}
+                </>
+              )}
+              {importModal.stage === 'preview' && importModal.counts && (
+                <>
+                  <div className="text-[11px] text-slate-500">{t('파일', 'File')}: <span className="font-bold text-slate-700">{importModal.fileName}</span>{importModal.sheetName ? ` · ${importModal.sheetName}` : ''}</div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200"><div className="text-[10px] font-bold text-blue-600">{t('이관 대상', 'To import')}</div><div className="text-xl font-black text-blue-700">{importModal.counts.net}</div></div>
+                    <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200"><div className="text-[10px] font-bold text-slate-500">{t('기존 프로젝트 매칭', 'Matched')}</div><div className="text-xl font-black text-slate-700">{importModal.counts.matched}</div></div>
+                    <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200"><div className="text-[10px] font-bold text-emerald-600">{t('신규 프로젝트 생성', 'New projects')}</div><div className="text-xl font-black text-emerald-700">{importModal.counts.newProjects}</div></div>
+                    <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200"><div className="text-[10px] font-bold text-slate-500">{t('중복 스킵 / 삭제행', 'Dup / deleted')}</div><div className="text-sm font-black text-slate-600 pt-1.5">{importModal.counts.dup} / {importModal.counts.skipped}</div></div>
+                  </div>
+                  {importModal.counts.codes && importModal.counts.codes.length > 0 && (
+                    <div className="text-[11px] leading-relaxed bg-emerald-50 border border-emerald-200 rounded p-2 max-h-24 overflow-y-auto">
+                      <span className="font-bold text-emerald-700">{t('생성될 프로젝트(코드):', 'New projects (codes):')}</span> <span className="font-mono text-emerald-800">{importModal.counts.codes.join(', ')}</span>{importModal.counts.noCode > 0 && <span className="text-amber-700"> {t(`+ 코드없음 ${importModal.counts.noCode}건(1개)`, '')}</span>}
+                    </div>
+                  )}
+                  <div className="text-[11px] text-slate-500 leading-relaxed bg-slate-50 border border-slate-200 rounded p-2">{t("기존 장비 코드와 일치하면 그 프로젝트에, 아니면 코드별로 프로젝트를 새로 생성해 해당 코드 AS를 넣습니다(코드=장비 코드로 등록 → 재이관 자동 매칭). 동일 원본은 다시 가져와도 중복되지 않습니다.", "Matched by equipment code, else one new project per code. Idempotent re-import.")}</div>
+                  {importModal.busy && <div className="text-xs font-bold text-blue-700 flex items-center"><Loader size={12} className="animate-spin mr-1.5" />{t('이관 중...', 'Importing...')}</div>}
+                </>
+              )}
+            </div>
+            <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2">
+              <button type="button" onClick={() => setImportModal(null)} disabled={importModal.busy} className="px-3 py-1.5 text-xs font-bold rounded border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50">{t('취소', 'Cancel')}</button>
+              {importModal.stage === 'preview' && (
+                <button type="button" onClick={confirmImport} disabled={importModal.busy || !(importModal.counts && importModal.counts.net > 0)} className="px-3 py-1.5 text-xs font-bold rounded bg-blue-600 hover:bg-blue-700 text-white inline-flex items-center disabled:bg-slate-300"><Upload size={12} className="mr-1" />{t(`${importModal.counts ? importModal.counts.net : 0}건 이관 적용`, 'Apply')}</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 이관 AS 프로젝트 연결/해소 모달 */}
+      {relinkModal && (() => {
+        const rec = relinkModal.record;
+        const code = String(rec.legacyCode || '').trim();
+        const group = code
+          ? allRecords.filter(x => x.projectId === rec.projectId && String(x.legacyCode || '').trim() === code)
+          : [rec];
+        const groupIds = group.map(x => x.id);
+        const suggestedId = findProjectIdByCode(code, projects);
+        const candidates = (projects || []).filter(p => p.id !== rec.projectId);
+        const targetId = relinkModal.targetId
+          || (suggestedId && suggestedId !== rec.projectId ? suggestedId : (candidates[0] ? candidates[0].id : ''));
+        const close = () => setRelinkModal(null);
+        const upd = (patch) => setRelinkModal({ ...relinkModal, ...patch });
+        return (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40" onClick={close}>
+            <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-[520px] max-w-[calc(100vw-2rem)]" onClick={(e) => e.stopPropagation()}>
+              <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                <h3 className="text-sm font-black text-blue-700 flex items-center"><ExternalLink size={16} className="mr-2" />{t('이관 AS 프로젝트 연결', 'Relink Imported AS')}</h3>
+                <button onClick={close} className="text-slate-400 hover:text-slate-700"><X size={18} /></button>
+              </div>
+              <div className="p-4 space-y-4">
+                <div className="text-xs bg-slate-50 border border-slate-200 rounded p-2.5 leading-relaxed">
+                  {t('원본 코드', 'Code')}: <span className="font-mono font-bold text-blue-700">{code || t('(없음)', '(none)')}</span>
+                  {' · '}{t('대상', 'Records')}: <strong>{groupIds.length}{t('건', '')}</strong>
+                  {' · '}{t('현재', 'In')}: <strong>{rec.projectName}</strong>
+                  {code && suggestedId && suggestedId !== rec.projectId && (
+                    <div className="mt-1 text-emerald-700 font-bold">{t('장비 코드 일치 프로젝트 자동 추천됨', 'Matched by equipment code')}</div>
+                  )}
+                </div>
+
+                {/* ① 기존 프로젝트 연결 */}
+                <div className="border border-slate-200 rounded-lg p-3">
+                  <div className="text-xs font-black text-slate-700 mb-2">① {t('기존 프로젝트에 연결', 'Link to existing project')}</div>
+                  <div className="flex gap-2">
+                    <select value={targetId} onChange={(e) => upd({ targetId: e.target.value })} className="flex-1 text-xs p-2 border border-slate-300 rounded-lg bg-white">
+                      {candidates.length === 0 && <option value="">{t('연결 가능한 프로젝트 없음', 'No projects')}</option>}
+                      {candidates.map(p => <option key={p.id} value={p.id}>{p.name}{p.id === suggestedId ? ' ★' : ''}</option>)}
+                    </select>
+                    <button type="button" disabled={!targetId} onClick={() => { onRelinkAS && onRelinkAS(rec.projectId, groupIds, targetId); close(); }} className="px-3 py-1.5 text-xs font-bold rounded bg-blue-600 hover:bg-blue-700 text-white disabled:bg-slate-300">{t('연결', 'Link')}</button>
+                  </div>
+                </div>
+
+                {/* ② 이 코드로 새 프로젝트 생성 */}
+                {onCreateProjectFromAS && (
+                  <div className="border border-slate-200 rounded-lg p-3">
+                    <div className="text-xs font-black text-slate-700 mb-2">② {t('이 코드로 새 프로젝트 생성', 'Create new project')}</div>
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                      <input value={relinkModal.newName != null ? relinkModal.newName : ''} onChange={(e) => upd({ newName: e.target.value })} placeholder={t(`프로젝트명 (기본: ${rec.customer || code})`, 'Project name')} className="text-xs p-2 border border-slate-300 rounded-lg" />
+                      <input value={relinkModal.newCustomer != null ? relinkModal.newCustomer : (rec.customer || '')} onChange={(e) => upd({ newCustomer: e.target.value })} placeholder={t('고객사', 'Customer')} className="text-xs p-2 border border-slate-300 rounded-lg" />
+                    </div>
+                    <div className="text-[11px] text-slate-500 mb-2">{t('장비 코드에 원본 코드가 등록되어 향후 이관이 자동 매칭됩니다.', 'Code is registered as equipment code for future auto-match.')}</div>
+                    <button type="button" onClick={() => { onCreateProjectFromAS({ fromProjectId: rec.projectId, legacyCode: code, name: relinkModal.newName, customer: relinkModal.newCustomer != null ? relinkModal.newCustomer : rec.customer }); close(); }} className="px-3 py-1.5 text-xs font-bold rounded bg-emerald-600 hover:bg-emerald-700 text-white">{t(`새 프로젝트 생성 + ${groupIds.length}건 이동`, 'Create + move')}</button>
+                  </div>
+                )}
+
+                {/* ③ 현재(버킷) 프로젝트 정보 수정 */}
+                {onRequestEditProject && (
+                  <div className="border border-slate-200 rounded-lg p-3">
+                    <div className="text-xs font-black text-slate-700 mb-2">③ {t("현재 프로젝트('AS 이관') 이름/정보 수정", 'Edit current project info')}</div>
+                    <div className="text-[11px] text-slate-500 mb-2">{t('새 프로젝트를 만들지 않고 이 프로젝트 자체를 실제 프로젝트로 바꿉니다(이름·고객사·장비 코드 등).', 'Repurpose this project instead of creating a new one.')}</div>
+                    <button type="button" onClick={() => { onRequestEditProject(rec.projectId); close(); }} className="px-3 py-1.5 text-xs font-bold rounded bg-slate-700 hover:bg-slate-800 text-white">{t('프로젝트 정보 수정 열기', 'Open project edit')}</button>
+                  </div>
+                )}
+              </div>
+              <div className="px-4 py-3 border-t border-slate-200 flex justify-end">
+                <button type="button" onClick={close} className="px-3 py-1.5 text-xs font-bold rounded border border-slate-300 text-slate-700 hover:bg-slate-50">{t('닫기', 'Close')}</button>
               </div>
             </div>
           </div>

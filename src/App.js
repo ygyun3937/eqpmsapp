@@ -25,6 +25,7 @@ import { loadFromGoogleDB, saveToGoogleDB, saveProjectDelta, notifyWebhook, call
 import { saveSnapshot, loadSnapshot, saveLastKnownGood, compareWithRemote, saveDeletedItemSnapshot, subscribeStorageWarning } from './utils/localBackup';
 import { hashPassword } from './utils/auth';
 import { nowStored } from './utils/dateUtils';
+import { findProjectIdByCode, collectLegacyIds } from './utils/asImport';
 
 // Common Components
 import NavItem from './components/common/NavItem';
@@ -838,15 +839,24 @@ export default function App() {
   };
 
   const handleUpdatePhase = (projectId, newPhaseIndex) => {
+    const target = projects.find(p => p.id === projectId);
+    if (!target) return;
+    const phases = (target.phases && target.phases.length > 0) ? target.phases : PROJECT_PHASES.map((name, idx) => ({ id: `p${idx}`, name }));
+    const targetIdx = Math.max(0, Math.min(newPhaseIndex, phases.length - 1));
+    const fromIdx = typeof target.phaseIndex === 'number' ? target.phaseIndex : 0;
+    if (targetIdx === fromIdx) return;
+    const fromName = (phases[fromIdx] || phases[0]).name;
+    const toName = phases[targetIdx].name;
+    if (!window.confirm(`'${fromName}'에서 '${toName}' 단계로 변경합니까?\n변경 이력은 자동으로 기록됩니다.`)) return;
     syncProject(projectId, p => {
-      const phases = (p.phases && p.phases.length > 0) ? p.phases : PROJECT_PHASES.map((name, idx) => ({ id: `p${idx}`, name }));
-      const targetIdx = Math.max(0, Math.min(newPhaseIndex, phases.length - 1));
-      const fromIdx = typeof p.phaseIndex === 'number' ? p.phaseIndex : 0;
-      const fromName = (phases[fromIdx] || phases[0]).name;
-      const toName = phases[targetIdx].name;
-      const isLast = targetIdx === phases.length - 1;
+      const ph = (p.phases && p.phases.length > 0) ? p.phases : PROJECT_PHASES.map((name, idx) => ({ id: `p${idx}`, name }));
+      const tIdx = Math.max(0, Math.min(newPhaseIndex, ph.length - 1));
+      const fIdx = typeof p.phaseIndex === 'number' ? p.phaseIndex : 0;
+      const fName = (ph[fIdx] || ph[0]).name;
+      const tName = ph[tIdx].name;
+      const isLast = tIdx === ph.length - 1;
       const newStatus = isLast ? '완료' : '진행중';
-      return addLog({ ...p, phases, phaseIndex: targetIdx, currentPhaseId: phases[targetIdx].id, status: newStatus }, 'PHASE_CHANGE', `${fromName} → ${toName}`);
+      return addLog({ ...p, phases: ph, phaseIndex: tIdx, currentPhaseId: ph[tIdx].id, status: newStatus }, 'PHASE_CHANGE', `${fName} → ${tName}`);
     });
   };
 
@@ -1646,10 +1656,13 @@ export default function App() {
       if (!reportMeta) return;
       reportMeta = { fileId: reportMeta.fileId, fileName: reportMeta.fileName, mimeType: reportMeta.mimeType, size: reportMeta.size, viewUrl: reportMeta.viewUrl, downloadUrl: reportMeta.downloadUrl };
     }
+    const asType = (opts && opts.asType) || '';
+    const billing = (opts && opts.billing) || '';
     syncProject(projectId, p => {
       const asRec = (p.asRecords || []).find(a => a.id === asId);
-      const updated = { ...p, asRecords: (p.asRecords || []).map(a => a.id === asId ? { ...a, status: '완료', report: isNA ? { naReason: (opts && opts.naReason) || 'N/A', completedAt: nowStored() } : { ...reportMeta, completedAt: nowStored() } } : a) };
-      return addLog(updated, 'AS_UPDATE', `AS 완료: ${asRec?.type || ''}${isNA ? ' (보고서 N/A)' : reportMeta ? ` (보고서: ${reportMeta.fileName})` : ''}`);
+      const updated = { ...p, asRecords: (p.asRecords || []).map(a => a.id === asId ? { ...a, status: '완료', asType, billing, report: isNA ? { naReason: (opts && opts.naReason) || 'N/A', completedAt: nowStored() } : { ...reportMeta, completedAt: nowStored() } } : a) };
+      const cls = (asType || billing) ? ` [${asType || '분류전'} / ${billing || '분류전'}]` : '';
+      return addLog(updated, 'AS_UPDATE', `AS 완료: ${asRec?.type || ''}${cls}${isNA ? ' (보고서 N/A)' : reportMeta ? ` (보고서: ${reportMeta.fileName})` : ''}`);
     });
   };
 
@@ -1680,6 +1693,241 @@ export default function App() {
 
   const handleDeleteAS = (projectId, asId) => {
     syncProject(projectId, p => ({ ...p, asRecords: (p.asRecords || []).filter(a => a.id !== asId) }));
+  };
+
+  // 완료/접수 일시에서 연도(YYYY) 추출 — 완료된 건은 완료연도, 그 외 접수연도 기준
+  const asRecordYear = (r) => {
+    const s = (r && r.report && r.report.completedAt) || (r && r.date) || '';
+    const mt = String(s).match(/(\d{4})/);
+    return mt ? mt[1] : '';
+  };
+
+  // 연간 마감 — 해당 연도 '완료' AS를 보관(archivedYear) 처리. 플래그 기반(시트 분리 X) → 되돌리기 가능. ADMIN 전용.
+  const handleArchiveASYear = (year) => {
+    if (currentUser.role !== 'ADMIN') { showToast(t('연간 마감은 관리자만 가능합니다.', 'Admin only.')); return; }
+    const y = String(year || '').trim();
+    if (!/^\d{4}$/.test(y)) { showToast(t('연도를 YYYY 형식으로 입력하세요.', 'Enter year as YYYY.')); return; }
+    let count = 0, affected = 0;
+    const next = projects.map(p => {
+      const recs = p.asRecords || [];
+      let changed = false;
+      const newRecs = recs.map(a => {
+        if (a.status === '완료' && !a.archivedYear && asRecordYear(a) === y) { changed = true; count++; return { ...a, archivedYear: y }; }
+        return a;
+      });
+      if (!changed) return p;
+      affected++;
+      return addLog({ ...p, asRecords: newRecs }, 'AS_UPDATE', `${y}년 AS 연간 마감 — ${newRecs.filter(a => a.archivedYear === y).length}건 보관 처리`);
+    });
+    if (count === 0) { showToast(t(`${y}년 마감할 완료 AS가 없습니다.`, `No completed AS for ${y}.`)); return; }
+    syncProjects(next);
+    showToast(t(`${y}년 AS ${count}건을 마감했습니다. (${affected}개 프로젝트)`, `Archived ${count} AS for ${y}.`));
+  };
+
+  // 연간 마감 취소 — 해당 연도 보관 플래그 해제 (ADMIN 전용)
+  const handleUnarchiveASYear = (year) => {
+    if (currentUser.role !== 'ADMIN') { showToast(t('마감 취소는 관리자만 가능합니다.', 'Admin only.')); return; }
+    const y = String(year || '').trim();
+    let count = 0;
+    const next = projects.map(p => {
+      const recs = p.asRecords || [];
+      let changed = false;
+      const newRecs = recs.map(a => {
+        if (a.archivedYear === y) { changed = true; count++; const rest = { ...a }; delete rest.archivedYear; return rest; }
+        return a;
+      });
+      if (!changed) return p;
+      return addLog({ ...p, asRecords: newRecs }, 'AS_UPDATE', `${y}년 AS 연간 마감 취소`);
+    });
+    if (count === 0) { showToast(t(`${y}년 마감 데이터가 없습니다.`, `No archived AS for ${y}.`)); return; }
+    syncProjects(next);
+    showToast(t(`${y}년 마감을 취소했습니다. (${count}건)`, `Unarchived ${count} AS for ${y}.`));
+  };
+
+  // 기존 AS 통합관리(V4.1) 데이터 이관 — items: [{ code, legacyId, record }]
+  // 기존 장비 코드(equipments[].code) 또는 p.id 와 일치하는 프로젝트에 수집, 없으면 'AS 이관' 버킷 프로젝트로.
+  // legacyId 중복은 스킵(재import 멱등). ADMIN/PM만.
+  const handleImportAS = (items) => {
+    if (!(currentUser.role === 'ADMIN' || currentUser.role === 'PM')) {
+      showToast(t('AS 데이터 이관은 관리자/PM만 가능합니다.', 'Admin/PM only.'));
+      return { imported: 0 };
+    }
+    const list = Array.isArray(items) ? items : [];
+    if (list.length === 0) { showToast(t('가져올 데이터가 없습니다.', 'Nothing to import.')); return { imported: 0 }; }
+
+    const existingIds = collectLegacyIds(projects);
+
+    let imported = 0, matched = 0, duplicates = 0;
+    const addByProjectId = {};   // 기존 프로젝트 id → [record...]
+    const byCode = {};           // 미매칭 코드 → { customer, records[] }
+    const noCodeRecords = [];     // 코드 없는 미매칭 레코드 (예외)
+
+    list.forEach(it => {
+      if (!it || !it.record) return;
+      if (it.legacyId && existingIds.has(String(it.legacyId))) { duplicates += 1; return; }
+      const pid = findProjectIdByCode(it.code, projects);
+      if (pid) {
+        (addByProjectId[pid] = addByProjectId[pid] || []).push(it.record);
+        matched += 1;
+      } else if (it.code) {
+        const g = byCode[it.code] || (byCode[it.code] = { customer: '', records: [] });
+        if (!g.customer && it.customer) g.customer = it.customer;
+        g.records.push(it.record);
+      } else {
+        noCodeRecords.push(it.record);
+      }
+      if (it.legacyId) existingIds.add(String(it.legacyId));
+      imported += 1;
+    });
+
+    if (imported === 0) {
+      showToast(t(`이관할 신규 건이 없습니다. (중복 ${duplicates}건)`, `Nothing new. (${duplicates} dup)`));
+      return { imported: 0, duplicates };
+    }
+
+    // 빈 프로젝트 골격 (handleAddProject와 동일 형태)
+    const makeProject = (overrides) => {
+      const domainTasks = getTasksForDomain('반도체');
+      const domainChecklist = getChecklistForDomain('반도체');
+      const tasks = JSON.parse(JSON.stringify(domainTasks.length ? domainTasks : []));
+      const checklist = (domainChecklist || []).map((item, idx) => ({ ...item, id: Date.now() + idx }));
+      return {
+        id: generateUniqueId('PRJ'),
+        customer: '-', site: '-',
+        domain: '반도체', subDomain: '',
+        manager: currentUser.name || '-',
+        startDate: '', dueDate: '',
+        status: '진행중',
+        phaseIndex: 0,
+        notionLink: '',
+        hwVersion: '', swVersion: '', fwVersion: '',
+        versions: [],
+        tasks, checklist, signOff: null,
+        activityLog: [], managerHistory: [],
+        trips: [], extraTasks: [], asRecords: [], customerRequests: [], notes: [], attachments: [], equipments: [],
+        ...overrides
+      };
+    };
+
+    // 1) 기존 매칭 프로젝트 — delta 저장 (전체배열 X → 64KB 회피)
+    Object.entries(addByProjectId).forEach(([pid, recs]) => {
+      if (!recs || recs.length === 0) return;
+      syncProject(pid, p => addLog(
+        { ...p, asRecords: [...(p.asRecords || []), ...recs] },
+        'AS_ADD', `AS 데이터 이관 — ${recs.length}건 수집`
+      ));
+    });
+
+    // 2) 미매칭 — 코드별로 프로젝트 1개씩 생성 (코드를 장비 코드로 등록 → 향후 자동 매칭)
+    const createdProjects = [];
+    Object.entries(byCode).forEach(([code, g]) => {
+      const proj = addLog(makeProject({
+        name: g.customer || code,
+        customer: g.customer || '-',
+        isASMigrationImported: true,
+        equipments: [{ id: Date.now() + Math.floor(Math.random() * 1000), code, name: '', note: '이관 코드' }],
+        asRecords: g.records
+      }), 'PROJECT_CREATE', `이관 프로젝트 생성 (코드 ${code} / 고객사 ${g.customer || '-'} / AS ${g.records.length}건)`);
+      createdProjects.push(proj);
+    });
+    // 코드 없는 예외분만 단일 버킷
+    if (noCodeRecords.length > 0) {
+      const existingNoCode = projects.find(p => p.isASMigrationBucket);
+      if (existingNoCode) {
+        syncProject(existingNoCode.id, p => addLog(
+          { ...p, asRecords: [...(p.asRecords || []), ...noCodeRecords] },
+          'AS_ADD', `AS 데이터 이관 — 코드없음 ${noCodeRecords.length}건`
+        ));
+      } else {
+        createdProjects.push(addLog(makeProject({
+          name: 'AS 이관 (코드없음)',
+          isASMigrationBucket: true,
+          asRecords: noCodeRecords
+        }), 'AS_ADD', `AS 데이터 이관 — 코드없음 ${noCodeRecords.length}건`));
+      }
+    }
+
+    if (createdProjects.length > 0) {
+      setProjects(prev => {
+        const next = [...createdProjects, ...prev];
+        saveSnapshot('projects', next);
+        return next;
+      });
+      // 신규 각 프로젝트는 개별 delta append (UPDATE_PROJECT_BY_ID는 id 없으면 append)
+      createdProjects.forEach(p => saveProjectDelta(p.id, p));
+    }
+
+    const projCreated = createdProjects.length;
+    showToast(t(
+      `AS ${imported}건 이관 — 기존매칭 ${matched} / 신규 프로젝트 ${projCreated}개 생성${duplicates ? ` / 중복스킵 ${duplicates}` : ''}`,
+      `Imported ${imported} (matched ${matched}, ${projCreated} new projects, dup ${duplicates}).`
+    ));
+    return { imported, matched, projCreated, duplicates };
+  };
+
+  // 이관 AS 재연결 — fromProjectId의 asIds 레코드를 toProjectId로 이동 (delta 양쪽 저장)
+  const handleRelinkAS = (fromProjectId, asIds, toProjectId) => {
+    if (!(currentUser.role === 'ADMIN' || currentUser.role === 'PM')) { showToast(t('AS 재연결은 관리자/PM만 가능합니다.', 'Admin/PM only.')); return; }
+    if (!fromProjectId || !toProjectId || fromProjectId === toProjectId) return;
+    const ids = new Set((Array.isArray(asIds) ? asIds : []).map(String));
+    if (ids.size === 0) return;
+    const src = projects.find(p => p.id === fromProjectId);
+    const dst = projects.find(p => p.id === toProjectId);
+    if (!src || !dst) return;
+    const moved = (src.asRecords || []).filter(a => ids.has(String(a.id)));
+    if (moved.length === 0) return;
+    syncProject(fromProjectId, p => addLog(
+      { ...p, asRecords: (p.asRecords || []).filter(a => !ids.has(String(a.id))) },
+      'AS_UPDATE', `AS ${moved.length}건 → '${dst.name}' 프로젝트로 이동`
+    ));
+    syncProject(toProjectId, p => addLog(
+      { ...p, asRecords: [...(p.asRecords || []), ...moved] },
+      'AS_ADD', `AS ${moved.length}건 이관 연결 (from '${src.name}')`
+    ));
+    showToast(t(`AS ${moved.length}건을 '${dst.name}'(으)로 연결했습니다.`, `Relinked ${moved.length} AS.`));
+  };
+
+  // 이관 코드로 신규 프로젝트 생성 + 해당 코드 AS를 옮김. 장비 코드(equipments)에 코드 등록 → 향후 이관 자동 매칭.
+  const handleCreateProjectFromAS = ({ fromProjectId, legacyCode, name, customer }) => {
+    if (!(currentUser.role === 'ADMIN' || currentUser.role === 'PM')) { showToast(t('관리자/PM만 가능합니다.', 'Admin/PM only.')); return; }
+    const code = String(legacyCode || '').trim();
+    const src = projects.find(p => p.id === fromProjectId);
+    if (!src) return;
+    const moved = (src.asRecords || []).filter(a => String(a.legacyCode || '').trim() === code && code !== '');
+    const domainTasks = getTasksForDomain('반도체');
+    const domainChecklist = getChecklistForDomain('반도체');
+    const tasks = JSON.parse(JSON.stringify(domainTasks.length ? domainTasks : []));
+    const checklist = (domainChecklist || []).map((item, idx) => ({ ...item, id: Date.now() + idx }));
+    const newProj = addLog({
+      id: generateUniqueId('PRJ'),
+      name: (name && name.trim()) || customer || code || '신규 프로젝트',
+      customer: customer || '-', site: '-',
+      domain: '반도체', subDomain: '',
+      manager: currentUser.name || '-',
+      startDate: '', dueDate: '',
+      status: '진행중',
+      phaseIndex: 0,
+      notionLink: '',
+      hwVersion: '', swVersion: '', fwVersion: '',
+      versions: [],
+      tasks, checklist, signOff: null,
+      activityLog: [], managerHistory: [],
+      trips: [], extraTasks: [],
+      asRecords: moved,
+      customerRequests: [], notes: [], attachments: [],
+      equipments: code ? [{ id: Date.now(), code, name: '', note: '이관 코드' }] : []
+    }, 'PROJECT_CREATE', `프로젝트 생성 (이관 코드 ${code || '-'} / AS ${moved.length}건)`);
+    setProjects(prev => {
+      const next = prev.map(p => p.id === fromProjectId
+        ? addLog({ ...p, asRecords: (p.asRecords || []).filter(a => !(String(a.legacyCode || '').trim() === code && code !== '')) }, 'AS_UPDATE', `AS ${moved.length}건 → '${newProj.name}' 신규 프로젝트로 이동`)
+        : p);
+      const withNew = [newProj, ...next];
+      saveSnapshot('projects', withNew);
+      return withNew;
+    });
+    saveProjectDelta(newProj.id, newProj);
+    if (src) saveProjectDelta(fromProjectId, { ...src, asRecords: (src.asRecords || []).filter(a => !(String(a.legacyCode || '').trim() === code && code !== '')) });
+    showToast(t(`'${newProj.name}' 생성 — AS ${moved.length}건 연결`, `Created project, ${moved.length} AS moved.`));
   };
 
   const handleEditProject = (projectId, data) => {
@@ -2359,7 +2607,7 @@ export default function App() {
               )}
               {activeTab === 'resources' && <ResourceListView engineers={engineers} projects={projects} issues={issues} getStatusColor={getStatusColor} TODAY={TODAY} onAddClick={() => { setSelectedEngineer(null); setIsEngineerModalOpen(true); }} onEditClick={(eng) => { setSelectedEngineer(eng); setIsEngineerModalOpen(true); }} onManageCertificates={(eng) => { setCertEngineerId(eng.id); setIsCertModalOpen(true); }} onShowActivity={(eng) => { setActivityEngineerId(eng.id); setIsActivityModalOpen(true); }} onDeleteClick={(eng) => setEngineerToDelete(eng)} currentUser={currentUser} t={t} />}
               {activeTab === 'as' && currentUser.role !== 'CUSTOMER' && (
-                <ASManagementView projects={projects} engineers={engineers} users={users} customers={customers} onProjectClick={openProjectDetail} onUpdateAS={handleUpdateAS} onAddAS={handleAddAS} onAddASComment={handleAddASComment} onCompleteAS={handleCompleteAS} onRevertCompleteAS={handleRevertCompleteAS} onUploadAttachment={handleUploadAttachment} driveConfigured={!!settings.driveRootFolderId} mailGasUrl={settings.mailGasUrl} currentUser={currentUser} t={t} />
+                <ASManagementView projects={projects} engineers={engineers} users={users} customers={customers} onProjectClick={openProjectDetail} onUpdateAS={handleUpdateAS} onAddAS={handleAddAS} onAddASComment={handleAddASComment} onCompleteAS={handleCompleteAS} onRevertCompleteAS={handleRevertCompleteAS} onUploadAttachment={handleUploadAttachment} onArchiveASYear={handleArchiveASYear} onUnarchiveASYear={handleUnarchiveASYear} onImportAS={handleImportAS} onRelinkAS={handleRelinkAS} onCreateProjectFromAS={handleCreateProjectFromAS} onRequestEditProject={(pid) => { const pr = projects.find(p => p.id === pid); if (pr) { setProjectEditTarget(pr); setIsProjectEditOpen(true); } }} driveConfigured={!!settings.driveRootFolderId} mailGasUrl={settings.mailGasUrl} currentUser={currentUser} t={t} />
               )}
               {activeTab === 'weekly' && currentUser.role !== 'CUSTOMER' && (
                 (settings.weeklyReportEnabled && (currentUser.role === 'ADMIN' || currentUser.weeklyReportEnabled)) ? (

@@ -1,7 +1,7 @@
-export const PROJECT_PHASES = ['영업/수주', '설계', '구매/자재', '제조/조립', '출하', '현장 셋업', '워런티', '완료'];
-// 기존 7단계 (완료=6) → 신 8단계 (완료=7) 호환을 위한 마이그레이션 인덱스
-export const PHASE_COMPLETED_INDEX = 7;
-export const PHASE_WARRANTY_INDEX = 6;
+export const PROJECT_PHASES = ['부품선정', '회로설계', '기구설계', '전장설계', '구매입고', '채널조립', '렉조립', '채널테스트', '렉테스트', '검교정', '인증', '출하', '워런티', '완료'];
+// 기존 7단계(완료=6) → 8단계(완료=7) → 14단계(완료=13) 호환을 위한 마이그레이션 인덱스
+export const PHASE_COMPLETED_INDEX = 13;
+export const PHASE_WARRANTY_INDEX = 12;
 export const ISSUE_PHASES = ['이슈 확인', '조치 진행 중', '조치 완료'];
 export const PART_PHASES = ['청구', '발주', '입고', '교체완료'];
 
@@ -15,6 +15,11 @@ export const AS_SW_STATUSES = ['접수', '분석', '개발', '적용', '검증',
 export const AS_DEFAULT_CATEGORY = 'HW';
 export const getASTypesByCategory = (cat) => cat === 'SW' ? AS_SW_TYPES : AS_HW_TYPES;
 export const getASStatusesByCategory = (cat) => cat === 'SW' ? AS_SW_STATUSES : AS_HW_STATUSES;
+// AS 완료 시 수집 — 처리유형(분류) / 비용청구. 기존 완료 레코드는 값 없음('분류전'으로 표시)
+export const AS_HW_RESOLUTION_TYPES = ['단순점검', '부품교체', '장비교체', '기타'];
+export const AS_SW_RESOLUTION_TYPES = ['원격지원', '패치적용', '설정변경', '기타'];
+export const getASResolutionTypesByCategory = (cat) => cat === 'SW' ? AS_SW_RESOLUTION_TYPES : AS_HW_RESOLUTION_TYPES;
+export const AS_BILLING_OPTIONS = ['무상 (보증기간 내)', '유상 (청구 대상)'];
 // === 도메인 계층화 (대분류 / 중분류) ===
 // 대분류 — 시스템 차원 고정 목록 (ADMIN만 수정 가능, 향후 settings로 이전 가능)
 export const PARENT_DOMAINS = ['2차전지', '반도체', '디스플레이'];
