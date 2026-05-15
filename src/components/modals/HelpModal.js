@@ -1,5 +1,5 @@
 import React, { useState, memo } from 'react';
-import { HelpCircle, Kanban, Users, AlertTriangle, LifeBuoy, GitCommit, ShieldCheck, Sparkles, Plane, FileText, X, ChevronRight, Info, Bell, ClipboardList, Building2, Mail } from 'lucide-react';
+import { HelpCircle, Kanban, Users, AlertTriangle, LifeBuoy, GitCommit, ShieldCheck, Sparkles, Plane, FileText, X, ChevronRight, Info, Bell, ClipboardList, Building2, Mail, Package } from 'lucide-react';
 
 const Section = ({ title, children }) => (
   <div className="mb-5 last:mb-0">
@@ -31,6 +31,7 @@ const TABS = [
   { key: 'extras', label: '추가 대응', icon: Sparkles },
   { key: 'resource', label: '인력/리소스', icon: Users },
   { key: 'issue', label: '이슈/AS', icon: AlertTriangle },
+  { key: 'parts', label: '자재 파이프라인', icon: Package },
   { key: 'version', label: '버전 관리', icon: GitCommit },
   { key: 'weekly', label: '주간 업무 보고', icon: ClipboardList },
   { key: 'email', label: '메일 송부', icon: Mail },
@@ -583,6 +584,58 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                 <Section title="고객 요청">
                   <p>프로젝트 상세 → 고객요청 탭. 고객사 계정도 직접 요청을 등록할 수 있고 응답 댓글이 누적됩니다.</p>
                   <p>"반영 완료/반려" 시 처리 결과(메일 회신, 차기 패치 반영 등)를 명시 입력해야 합니다.</p>
+                </Section>
+              </>
+            )}
+
+            {tab === 'parts' && (
+              <>
+                <h2 className="text-base font-bold text-slate-800 mb-3">{t('자재 파이프라인', 'Parts Pipeline')}</h2>
+
+                <Section title={t('개요', 'Overview')}>
+                  <p>프로젝트별 구매 자재를 <strong>설계 → 구매 → QC → 제조 → 납품</strong> 5단계 파이프라인으로 추적합니다.</p>
+                  <p>· 각 자재마다 단계별 체크리스트가 있어 QC 게이트를 통과해야 다음 단계로 진행할 수 있습니다.</p>
+                  <p>· QR/바코드 라벨을 출력해 현장에서 스캔하면 자재 정보와 현재 단계를 즉시 확인할 수 있습니다.</p>
+                </Section>
+
+                <Section title={t('자재 등록', 'Part Registration')}>
+                  <Step n={1}>프로젝트 관리 → <strong>자재 파이프라인</strong> 탭 클릭</Step>
+                  <Step n={2}><strong>"+ 자재 등록"</strong> 버튼 → 자재명, P/N, 수량, 긴급도, 타입 입력</Step>
+                  <Step n={3}>등록 후 자동으로 <strong>설계</strong> 단계로 시작합니다</Step>
+                  <Note>{t('긴급도 High는 빨간 뱃지로 강조 표시됩니다.', 'High urgency parts are highlighted in red.')}</Note>
+                </Section>
+
+                <Section title={t('단계 진행 및 QC 게이트', 'Stage Progression & QC Gate')}>
+                  <p>각 단계에는 담당자가 완료해야 할 <strong>체크리스트 항목</strong>이 있습니다.</p>
+                  <Step n={1}>자재 행의 <strong>"단계 진행"</strong> 버튼 클릭</Step>
+                  <Step n={2}>현재 단계 체크리스트 항목을 모두 체크</Step>
+                  <Step n={3}>모든 항목 완료 시 다음 단계로 자동 이동</Step>
+                  <p>· <strong>QC 단계</strong>는 체크리스트 미완료 시 진행 불가 (게이트 잠금)</p>
+                  <p>· 단계 이동 시 타임스탬프와 담당자가 자동 기록됩니다</p>
+                </Section>
+
+                <Section title={t('QR / 바코드 라벨', 'QR / Barcode Labels')}>
+                  <p>자재 행의 <strong>QR 아이콘 버튼</strong>을 클릭하면 라벨 미리보기가 열립니다.</p>
+                  <p>· <strong>QR 코드</strong> — 모바일 카메라로 스캔 시 자재 정보 페이지로 바로 이동</p>
+                  <p>· <strong>바코드 (Code128)</strong> — 산업용 바코드 스캐너 호환, 자재 ID 인코딩</p>
+                  <p>· <strong>텍스트만</strong> — 인쇄 시 자재 ID와 기본 정보만 텍스트로 출력</p>
+                  <Step n={1}>라벨 유형 버튼(QR 코드 / 바코드 / 텍스트만) 중 선택</Step>
+                  <Step n={2}>미리보기 확인 후 <strong>"인쇄"</strong> 버튼 클릭</Step>
+                  <Step n={3}>브라우저 인쇄 대화상자에서 출력 설정 후 인쇄</Step>
+                  <Note>{t('QR 라벨에는 현재 단계, QC 체크리스트, P/N, 수량, 긴급도가 함께 인쇄됩니다.', 'QR labels include current stage, QC checklist, P/N, quantity, and urgency.')}</Note>
+                </Section>
+
+                <Section title={t('예비 부품 탭', 'Spare Parts Tab')}>
+                  <p>파이프라인 옆 <strong>예비 부품</strong> 탭에서는 재고 수량 중심의 부품 목록을 관리합니다.</p>
+                  <p>· 부품명, P/N, 재고 수량, 위치, 최소 재고량 설정 가능</p>
+                  <p>· 재고가 최소 재고량 이하로 내려가면 경고 표시됩니다</p>
+                </Section>
+
+                <Section title={t('모바일 현장 활용', 'Mobile Field Use')}>
+                  <p>현장 엔지니어는 모바일로 QR을 스캔하여 자재 단계를 바로 업데이트할 수 있습니다.</p>
+                  <p>· 스마트폰 카메라 앱으로 QR 스캔 → 브라우저에서 자재 정보 확인</p>
+                  <p>· 로그인 후 해당 자재의 체크리스트 완료 및 단계 진행 처리</p>
+                  <p>· PC 없이도 현장에서 실시간으로 진행 상태 반영 가능</p>
                 </Section>
               </>
             )}
@@ -1192,6 +1245,14 @@ const HelpModal = memo(function HelpModal({ onClose, t }) {
                   <p>· <strong>수정/삭제 버튼 칩 통일</strong> — 모든 페이지에서 색상 칩 + 라벨로 표시되어 hover 없이도 명확</p>
                   <p>· <strong>버전 카테고리 인덱스 통일</strong> — 도메인 표준 순서로 정렬</p>
                   <p>· <strong>알림 센터 / 공유 노트 가시성 / Drive 첨부</strong> — 이전 라운드의 주요 추가</p>
+                </Section>
+
+                <Section title={t('2026-05-15 업데이트', '2026-05-15 Update')}>
+                  <p>· <strong>자재 파이프라인</strong> — 구매 자재를 설계→구매→QC→제조→납품 5단계로 추적. 단계별 체크리스트, QC 게이트, 파이프라인 설정(파이프라인 타입/체크리스트) 지원</p>
+                  <p>· <strong>QR/바코드/텍스트 라벨 선택</strong> — 자재 라벨 출력 시 QR 코드 / 바코드(Code128) / 텍스트만 중 선택 가능</p>
+                  <p>· <strong>날짜 표시 수정</strong> — GAS에서 받은 ISO 날짜 문자열을 한국 시간대 기준으로 올바르게 표시 (예: 2026-05-14)</p>
+                  <p>· <strong>AS 담당 엔지니어 콤보박스</strong> — AS 통합 관리 및 프로젝트 AS 탭의 담당 엔지니어 입력을 인력/리소스 목록 기반 드롭다운으로 변경</p>
+                  <p>· <strong>고객사 모달 미저장 경고</strong> — 고객사 수정 중 저장 없이 닫으려 할 때 "저장하지 않은 변경사항" 확인 배너 표시</p>
                 </Section>
 
                 <Note>{t('각 기능의 자세한 사용법은 좌측의 해당 탭(프로젝트/팀/검수표 등)에서 확인하세요.', 'See the corresponding tab on the left for detailed usage.')}</Note>
