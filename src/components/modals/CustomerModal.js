@@ -1,4 +1,4 @@
-import React, { useState, useMemo, memo } from 'react';
+import React, { useState, useMemo, useRef, memo } from 'react';
 import {
   Building2, X, Plus, Trash, Edit, Check, Mail, Phone, Smartphone,
   MapPin, StickyNote, IdCard, Briefcase, Users, Link2
@@ -287,6 +287,18 @@ const CustomerModal = memo(function CustomerModal({ customer, sites, projects, o
   const [showVendorPicker, setShowVendorPicker] = useState(false);
   const [sitePickerSearch, setSitePickerSearch] = useState('');
   const [projectPickerSearch, setProjectPickerSearch] = useState('');
+  const [confirmClose, setConfirmClose] = useState(false);
+
+  const initialDataRef = useRef(data);
+  const isDirty = JSON.stringify(data) !== JSON.stringify(initialDataRef.current) || showNewForm;
+
+  const handleClose = () => {
+    if (isDirty) {
+      setConfirmClose(true);
+    } else {
+      onClose();
+    }
+  };
 
   // 사이트는 같은 고객사명에 매칭되거나 customerId가 지정된 것만 보여줌 — 단, 신규 모드에선 전체 후보 제공
   // matchType 부여: 'id' (명시 연결) | 'name' (텍스트 일치)
@@ -425,7 +437,7 @@ const CustomerModal = memo(function CustomerModal({ customer, sites, projects, o
               </span>
             )}
           </h2>
-          <button type="button" onClick={onClose} className="text-indigo-700 opacity-70 hover:opacity-100"><X size={22} /></button>
+          <button type="button" onClick={handleClose} className="text-indigo-700 opacity-70 hover:opacity-100"><X size={22} /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
@@ -678,9 +690,21 @@ const CustomerModal = memo(function CustomerModal({ customer, sites, projects, o
             </div>
           )}
 
-          <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-2 shrink-0">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-bold text-slate-600 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg">{t('취소', 'Cancel')}</button>
-            <button type="submit" disabled={!data.name.trim()} className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed rounded-lg shadow-sm">{customer ? t('저장', 'Save') : t('등록하기', 'Create')}</button>
+          <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2 shrink-0">
+            {confirmClose ? (
+              <>
+                <span className="text-sm text-amber-700 font-bold flex items-center mr-auto">
+                  ⚠️ {t('저장하지 않은 변경사항이 있습니다.', 'You have unsaved changes.')}
+                </span>
+                <button type="button" onClick={() => setConfirmClose(false)} className="px-4 py-2 text-sm font-bold text-slate-600 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg">{t('계속 편집', 'Keep Editing')}</button>
+                <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm">{t('저장 없이 닫기', 'Close Without Saving')}</button>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={handleClose} className="px-4 py-2 text-sm font-bold text-slate-600 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg">{t('취소', 'Cancel')}</button>
+                <button type="submit" disabled={!data.name.trim()} className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed rounded-lg shadow-sm">{customer ? t('저장', 'Save') : t('등록하기', 'Create')}</button>
+              </>
+            )}
           </div>
         </form>
       </div>
