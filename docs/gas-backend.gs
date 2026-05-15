@@ -400,7 +400,7 @@ function verifyDriveFolder(payload) {
 
 // 카테고리 정규화 — 알 수 없는 값은 '기타' 폴더로
 // '노트'와 'AS'는 회의록과 별개 폴더로 분리 (운영 흐름이 다름)
-var ALLOWED_CATEGORIES = ['명세서', '도면', '회의록', '노트', 'AS', '기타'];
+var ALLOWED_CATEGORIES = ['명세서', '도면', '회의록', '노트', 'AS', '자재', '기타'];
 function normalizeCategory(cat) {
   if (!cat) return '기타';
   var s = String(cat).trim();

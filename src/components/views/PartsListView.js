@@ -1,5 +1,5 @@
 import React, { useState, useMemo, memo } from 'react';
-import { Plus, Filter, Trash, Download, QrCode, ChevronRight, Lock, Package, AlertTriangle } from 'lucide-react';
+import { Plus, Filter, Trash, Download, QrCode, ChevronRight, Lock, Package, AlertTriangle, Paperclip, ExternalLink } from 'lucide-react';
 import { PART_PHASES, PART_PIPELINE_PHASES } from '../../constants';
 import { exportToExcel } from '../../utils/export';
 import { getNextStage, getStageCompletion, isPipelineComplete } from '../../utils/partPipeline';
@@ -17,6 +17,18 @@ const PipelineTab = memo(function PipelineTab({
   onAddPipelinePart, onOpenStageModal, onOpenQRLabel, onDeletePipelinePart, currentUser, t,
 }) {
   const [filterStage, setFilterStage] = useState('all');
+  const [attachmentsOpen, setAttachmentsOpen] = useState(null);
+
+  const attachmentMap = useMemo(() => {
+    const map = {};
+    for (const evt of partEvents) {
+      if (Array.isArray(evt.attachments) && evt.attachments.length > 0) {
+        if (!map[evt.partId]) map[evt.partId] = [];
+        map[evt.partId].push(...evt.attachments.map(a => ({ ...a, stage: evt.stage })));
+      }
+    }
+    return map;
+  }, [partEvents]);
 
   const filtered = useMemo(() =>
     filterStage === 'all' ? pipelineParts : pipelineParts.filter(p => p.currentStage === filterStage),
@@ -141,6 +153,35 @@ const PipelineTab = memo(function PipelineTab({
                   </td>
                   <td className="px-5 py-4 text-right">
                     <div className="flex items-center justify-end gap-1.5">
+                      {attachmentMap[part.id]?.length > 0 && (
+                        <div className="relative">
+                          <button
+                            onClick={() => setAttachmentsOpen(attachmentsOpen === part.id ? null : part.id)}
+                            className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 transition-colors flex items-center gap-0.5"
+                            title={t('첨부 파일', 'Attachments')}
+                          >
+                            <Paperclip size={13} />
+                            <span className="text-[10px] font-bold">{attachmentMap[part.id].length}</span>
+                          </button>
+                          {attachmentsOpen === part.id && (
+                            <div className="absolute right-0 top-8 z-20 bg-white border border-slate-200 rounded-xl shadow-xl w-64 p-2 space-y-1">
+                              <p className="text-[10px] font-bold text-slate-400 px-2 pb-1">{t('첨부 파일', 'Attachments')}</p>
+                              {attachmentMap[part.id].map((att, i) => (
+                                <a key={i} href={att.viewUrl} target="_blank" rel="noreferrer"
+                                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 group"
+                                >
+                                  <Paperclip size={12} className="text-slate-400 shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs text-slate-700 truncate font-medium">{att.fileName}</p>
+                                    <p className="text-[10px] text-slate-400">{att.stage}</p>
+                                  </div>
+                                  <ExternalLink size={11} className="text-slate-300 group-hover:text-indigo-500 shrink-0" />
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <button onClick={() => onOpenQRLabel(part)} className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 transition-colors" title={t('QR 라벨', 'QR Label')}>
                         <QrCode size={14} />
                       </button>

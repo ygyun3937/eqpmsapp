@@ -1,27 +1,49 @@
-import React, { useState, memo } from 'react';
-import { CheckSquare, AlertTriangle } from 'lucide-react';
+import React, { useState, useRef, memo } from 'react';
+import { CheckSquare, AlertTriangle, Paperclip, X, File } from 'lucide-react';
 import ModalWrapper from '../common/ModalWrapper';
 
-const PartStageModal = memo(function PartStageModal({ part, nextStage, onClose, onAdvance, onReject, t }) {
+const fmtSize = (bytes) => bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(0)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
+const PartStageModal = memo(function PartStageModal({ part, nextStage, onClose, onAdvance, onReject, onUploadFile, t }) {
   const currentStage = part.currentStage;
   const isQC = currentStage === 'QC';
   const checklists = part.pipelineConfig?.checklists?.[currentStage] || [];
   const [checked, setChecked] = useState({});
   const [notes, setNotes] = useState('');
+  const [pendingFiles, setPendingFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef(null);
 
   const allChecked = checklists.length === 0 || checklists.every(item => checked[item]);
   const completedCount = Object.values(checked).filter(Boolean).length;
 
   const toggleItem = (item) => setChecked(c => ({ ...c, [item]: !c[item] }));
 
-  const handleAdvance = (e) => {
+  const handleFileChange = (e) => {
+    const files = Array.from(e.target.files || []);
+    setPendingFiles(prev => [...prev, ...files]);
+    e.target.value = '';
+  };
+
+  const removeFile = (idx) => setPendingFiles(prev => prev.filter((_, i) => i !== idx));
+
+  const handleAdvance = async (e) => {
     e.preventDefault();
-    const stageData = {
+    let attachments = [];
+    if (onUploadFile && pendingFiles.length > 0) {
+      setUploading(true);
+      for (const file of pendingFiles) {
+        const att = await onUploadFile(file);
+        if (att) attachments.push(att);
+      }
+      setUploading(false);
+    }
+    onAdvance(part.id, nextStage, {
       checklistResults: checked,
       notes,
       status: isQC ? '합격' : '완료',
-    };
-    onAdvance(part.id, nextStage, stageData);
+      attachments,
+    });
   };
 
   const handleReject = () => {
@@ -36,8 +58,8 @@ const PartStageModal = memo(function PartStageModal({ part, nextStage, onClose, 
       color={isQC ? 'amber' : 'indigo'}
       onClose={onClose}
       onSubmit={handleAdvance}
-      submitText={t(`${nextStage} 단계로 이동`, `Move to ${nextStage}`)}
-      submitDisabled={isQC && !allChecked}
+      submitText={uploading ? t('업로드 중...', 'Uploading...') : t(`${nextStage} 단계로 이동`, `Move to ${nextStage}`)}
+      submitDisabled={uploading || (isQC && !allChecked)}
       t={t}
     >
       {/* 파트 요약 */}
@@ -73,6 +95,34 @@ const PartStageModal = memo(function PartStageModal({ part, nextStage, onClose, 
           )}
         </div>
       )}
+
+      {/* 첨부 파일 */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-sm font-bold text-slate-700">{t('첨부 파일 (선택)', 'Attachments (optional)')}</label>
+          <button type="button" onClick={() => fileRef.current?.click()} className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-bold">
+            <Paperclip size={13} /> {t('파일 추가', 'Add File')}
+          </button>
+        </div>
+        <input ref={fileRef} type="file" multiple className="hidden" onChange={handleFileChange}
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.zip,.hwp" />
+        {pendingFiles.length > 0 ? (
+          <div className="space-y-1.5">
+            {pendingFiles.map((file, idx) => (
+              <div key={idx} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                <File size={14} className="text-indigo-500 shrink-0" />
+                <span className="text-xs text-slate-700 flex-1 truncate">{file.name}</span>
+                <span className="text-[10px] text-slate-400 shrink-0">{fmtSize(file.size)}</span>
+                <button type="button" onClick={() => removeFile(idx)} className="text-slate-400 hover:text-red-500 shrink-0"><X size={13} /></button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="border border-dashed border-slate-300 rounded-lg px-4 py-3 text-center text-xs text-slate-400 cursor-pointer hover:bg-slate-50" onClick={() => fileRef.current?.click()}>
+            {t('발주서, 검사 성적서, 납품확인서 등 관련 서류 첨부', 'Attach PO, inspection reports, delivery notes, etc.')}
+          </div>
+        )}
+      </div>
 
       {/* 메모 */}
       <div>

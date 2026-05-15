@@ -1182,8 +1182,45 @@ export default function App() {
     showToast(t('파트가 등록되었습니다.', 'Part registered.'));
   };
 
+  const handlePartFileUpload = async (part, file) => {
+    const project = projects.find(p => p.id === part.projectId);
+    if (!project) return null;
+    try {
+      const base64 = await fileToBase64(file);
+      const result = await callGoogleAction('UPLOAD_FILE', {
+        projectId: part.projectId,
+        customer: project.customer,
+        projectName: project.name,
+        fileName: `[${part.id}][${part.currentStage}] ${file.name}`,
+        mimeType: file.type || 'application/octet-stream',
+        base64,
+        category: '자재',
+      });
+      if (!result || result.status !== 'success' || !result.file) {
+        showToast(t('업로드 실패: ', 'Upload failed: ') + file.name);
+        return null;
+      }
+      const f = result.file;
+      return {
+        id: Date.now() + Math.random(),
+        fileId: f.fileId,
+        fileName: file.name,
+        mimeType: f.mimeType,
+        size: f.size,
+        viewUrl: f.viewUrl,
+        downloadUrl: f.downloadUrl,
+        uploadedBy: currentUser?.name || '—',
+        uploadedAt: nowStored(),
+        stage: part.currentStage,
+      };
+    } catch (_) {
+      showToast(t('업로드 실패: ', 'Upload failed: ') + file.name);
+      return null;
+    }
+  };
+
   const handleAdvancePipelineStage = (partId, nextStage, stageData) => {
-    const { checklistResults = {}, notes = '', photoUrls = '', status = '완료' } = stageData;
+    const { checklistResults = {}, notes = '', photoUrls = '', status = '완료', attachments = [] } = stageData;
     const part = pipelineParts.find(p => p.id === partId);
     if (!part) return;
     if (!canAdvanceStage(part.currentStage, nextStage, partEvents, partId)) {
@@ -1191,7 +1228,7 @@ export default function App() {
       return;
     }
     const fromStage = part.currentStage;
-    const event = createStageRecord(partId, fromStage, currentUser?.name || currentUser?.id || 'system', checklistResults, status, notes, photoUrls);
+    const event = createStageRecord(partId, fromStage, currentUser?.name || currentUser?.id || 'system', checklistResults, status, notes, photoUrls, attachments);
     syncPartEvents(prev => [event, ...prev]);
     syncPipelineParts(pipelineParts.map(p => p.id === partId ? { ...p, currentStage: nextStage } : p));
     setIsPartStageModalOpen(false);
@@ -2203,6 +2240,7 @@ export default function App() {
               onClose={() => { setIsPartStageModalOpen(false); setPartStageTarget(null); }}
               onAdvance={handleAdvancePipelineStage}
               onReject={handleRejectPipelineStage}
+              onUploadFile={(file) => handlePartFileUpload(partStageTarget.part, file)}
               t={t}
             />
           )}
@@ -2395,6 +2433,7 @@ export default function App() {
                     onClose={() => { setIsPartStageModalOpen(false); setPartStageTarget(null); }}
                     onAdvance={handleAdvancePipelineStage}
                     onReject={handleRejectPipelineStage}
+                    onUploadFile={(file) => handlePartFileUpload(partStageTarget.part, file)}
                     t={t}
                   />
                 : <PartStageModal
@@ -2404,6 +2443,7 @@ export default function App() {
                     onClose={() => { setIsPartStageModalOpen(false); setPartStageTarget(null); }}
                     onAdvance={handleAdvancePipelineStage}
                     onReject={handleRejectPipelineStage}
+                    onUploadFile={(file) => handlePartFileUpload(partStageTarget.part, file)}
                     t={t}
                   />
             )}

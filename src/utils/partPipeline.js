@@ -18,7 +18,7 @@ export const canAdvanceStage = (fromStage, toStage, partEvents, partId) => {
   return true;
 };
 
-export const createStageRecord = (partId, stage, actor, checklistResults = {}, status = '완료', notes = '', photoUrls = '') => ({
+export const createStageRecord = (partId, stage, actor, checklistResults = {}, status = '완료', notes = '', photoUrls = '', attachments = []) => ({
   id: `EVT-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
   partId,
   stage,
@@ -28,6 +28,7 @@ export const createStageRecord = (partId, stage, actor, checklistResults = {}, s
   checklistResults,
   notes,
   photoUrls,
+  attachments,
   aiDocUrl: '',
 });
 
