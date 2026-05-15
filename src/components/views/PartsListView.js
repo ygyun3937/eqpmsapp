@@ -4,6 +4,13 @@ import { PART_PHASES, PART_PIPELINE_PHASES } from '../../constants';
 import { exportToExcel } from '../../utils/export';
 import { getNextStage, getStageCompletion, isPipelineComplete } from '../../utils/partPipeline';
 
+const fmtDate = (d) => {
+  if (!d) return '';
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return String(d).slice(0, 10);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+};
+
 // ===== 파이프라인 탭 =====
 const PipelineTab = memo(function PipelineTab({
   pipelineParts, partEvents, getStatusColor,
@@ -105,7 +112,7 @@ const PipelineTab = memo(function PipelineTab({
                   </td>
                   <td className="px-5 py-4">
                     <p className="text-sm text-slate-700">{part.projectName}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">{part.author} · {part.date}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{part.author} · {fmtDate(part.date)}</p>
                   </td>
                   <td className="px-5 py-4">
                     <p className="text-sm font-bold text-blue-600">{part.quantity} EA</p>
@@ -222,7 +229,7 @@ const SparePartsTab = memo(function SparePartsTab({ parts, getStatusColor, onUpd
                   </td>
                   <td className="px-6 py-4">
                     <div className="text-sm font-medium text-slate-800">{part.projectName}</div>
-                    <div className="text-xs text-slate-500">{part.author} ({part.date})</div>
+                    <div className="text-xs text-slate-500">{part.author} ({fmtDate(part.date)})</div>
                   </td>
                   <td className="px-6 py-4">
                     <span className="text-sm font-bold text-blue-600">{part.quantity} EA</span>
