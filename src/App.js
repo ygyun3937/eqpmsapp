@@ -2229,7 +2229,7 @@ export default function App() {
             <NavItem icon={<AlertTriangle size={20} />} label={t('이슈/펀치 관리', 'Issues')} active={activeTab === 'issues'} onClick={() => setActiveTab('issues')} collapsed={sidebarCollapsed} />
             {currentUser.role !== 'CUSTOMER' && (
               <>
-                <NavItem icon={<Wrench size={20} />} label={t('자재/스페어 파트', 'Parts')} active={activeTab === 'parts'} onClick={() => setActiveTab('parts')} collapsed={sidebarCollapsed} />
+                <NavItem icon={<Wrench size={20} />} label={t('자재/스페어 파트', 'Parts')} active={activeTab === 'parts'} onClick={() => setActiveTab('parts')} collapsed={sidebarCollapsed} badge="BETA" />
                 {/* 고객사·사이트 — 고객사 + 사이트/유틸 통합 (탭) */}
                 <NavItem icon={<Building2 size={20} />} label={t('고객사·사이트', 'Customers·Sites')} active={activeTab === 'master_data'} onClick={() => setActiveTab('master_data')} collapsed={sidebarCollapsed} />
                 <NavItem icon={<Users size={20} />} label={t('인력/리소스 관리', 'Resources')} active={activeTab === 'resources'} onClick={() => setActiveTab('resources')} collapsed={sidebarCollapsed} />
