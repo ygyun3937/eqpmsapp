@@ -4,12 +4,13 @@ import {
   GitCommit, Search, Globe, Smartphone, Monitor, LogOut,
   Building, Building2, Camera, CheckSquare, Package, LayoutDashboard as Home,
   KeyRound, UserCog, LifeBuoy, HelpCircle, ChevronsLeft, ChevronsRight,
-  Settings as SettingsIcon, ClipboardList, Mail as MailIcon, Activity as ActivityIcon
+  Settings as SettingsIcon, ClipboardList, Mail as MailIcon, Activity as ActivityIcon,
+  ChevronRight, Plus
 } from 'lucide-react';
 
 // Constants & Initial Data
 import {
-  TODAY, DOMAIN_TASKS, DOMAIN_CHECKLIST, PROJECT_PHASES,
+  TODAY, DOMAIN_TASKS, DOMAIN_CHECKLIST, PROJECT_PHASES, PART_PIPELINE_PHASES,
   PHASE_COMPLETED_INDEX, PHASE_WARRANTY_INDEX,
   SEED_ADMIN, SEED_TEST_USERS, TEST_MODE, GAS_URL,
   getTasksForDomain, getChecklistForDomain, migrateLegacyDomain
@@ -106,7 +107,7 @@ export default function App() {
   }, []);
 
   // 모바일 모드는 dashboard/projects/issues/sites 만 지원 — 다른 탭이면 dashboard로 자동 폴백
-  const MOBILE_TABS = ['dashboard', 'projects', 'issues', 'sites'];
+  const MOBILE_TABS = ['dashboard', 'projects', 'issues', 'sites', 'parts'];
   useEffect(() => {
     if (isMobileMode && !MOBILE_TABS.includes(activeTab)) {
       setActiveTab('dashboard');
@@ -2057,6 +2058,7 @@ export default function App() {
                   <button onClick={() => setIsDailyReportOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white rounded-2xl p-4 flex flex-col items-center justify-center shadow-md active:scale-95"><CheckSquare size={24} className="mb-2" /><span className="font-bold text-sm">{t('일일 보고', 'Daily Report')}</span></button>
                   <button onClick={() => setIsPartModalOpen(true)} className="bg-amber-500 hover:bg-amber-600 text-white rounded-2xl p-4 flex flex-col items-center justify-center shadow-md active:scale-95"><Package size={24} className="mb-2" /><span className="font-bold text-sm">{t('자재 청구', 'Part Request')}</span></button>
                   <button onClick={() => setActiveTab('sites')} className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl p-4 flex flex-col items-center justify-center shadow-md active:scale-95"><Database size={24} className="mb-2" /><span className="font-bold text-sm">{t('환경 정보', 'Site Info')}</span></button>
+                  <button onClick={() => setActiveTab('parts')} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl p-4 flex flex-col items-center justify-center shadow-md active:scale-95 col-span-2"><Wrench size={24} className="mb-2" /><span className="font-bold text-sm">{t('자재 파이프라인', 'Parts Pipeline')}</span></button>
                 </div>
                 <div>
                   <h2 className="text-sm font-bold text-slate-500 mb-3 ml-1">{t('나의 배정 현장 요약', 'My Assigned Projects')}</h2>
@@ -2101,6 +2103,64 @@ export default function App() {
             {activeTab === 'projects' && <ProjectListView projects={projects} issues={issues} engineers={engineers} customers={customers} sites={sites} getStatusColor={getStatusColor} onAddClick={() => setIsProjectModalOpen(true)} onManageTasks={(id) => { setSelectedProjectId(id); setIsTaskModalOpen(true); }} onEditVersion={(prj) => { setVersionEditProject(prj); setIsVersionModalOpen(true); }} onChangeManager={(prj) => { setTeamEditProjectId(prj.id); setIsTeamModalOpen(true); }} onManageTeam={(prj) => { setTeamEditProjectId(prj.id); setIsTeamModalOpen(true); }} onViewPhaseGantt={(prj) => { setPhaseGanttProject(prj); setIsPhaseGanttOpen(true); }} onEditProject={(prj) => { setProjectEditTarget(prj); setIsProjectEditOpen(true); }} onDeleteProject={(prj) => setProjectToDelete(prj)} onUpdatePhase={handleUpdatePhase} onEditPhases={(prjId) => { setPhaseEditProjectId(prjId); setIsPhaseEditOpen(true); }} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} onOpenCustomer={(c) => { setCustomerEditTarget(c); setIsCustomerModalOpen(true); }} onShowEngineer={(eid) => { setActivityEngineerId(eid); setIsActivityModalOpen(true); }} onJumpTo={(tab) => setActiveTab(tab)} calcExp={calcExp} calcAct={calcAct} currentUser={currentUser} t={t} />}
             {activeTab === 'issues' && <IssueListView issues={issues} getStatusColor={getStatusColor} onAddClick={() => setIsIssueModalOpen(true)} onIssueClick={(issue) => { setSelectedIssue(issue); setIsIssueDetailModalOpen(true); }} onDeleteIssue={(issue) => setIssueToDelete(issue)} currentUser={currentUser} t={t} />}
             {activeTab === 'sites' && <SiteListView sites={sites} onAddClick={() => { setSelectedSite(null); setIsSiteModalOpen(true); }} onEditClick={(site) => { setSelectedSite(site); setIsSiteModalOpen(true); }} onDeleteClick={(site) => setSiteToDelete(site)} currentUser={currentUser} t={t} />}
+            {activeTab === 'parts' && (
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <h2 className="text-sm font-bold text-slate-500">{t('자재 파이프라인', 'Parts Pipeline')}</h2>
+                  {currentUser.role !== 'CUSTOMER' && (
+                    <button onClick={() => setIsPipelinePartModalOpen(true)} className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
+                      <Plus size={13} /> {t('등록', 'Add')}
+                    </button>
+                  )}
+                </div>
+                {pipelineParts.length === 0 ? (
+                  <div className="bg-white rounded-xl border border-dashed border-slate-300 p-8 text-center">
+                    <Package size={28} className="mx-auto mb-2 text-slate-300" />
+                    <p className="text-sm font-bold text-slate-500">{t('등록된 파트가 없습니다.', 'No parts registered.')}</p>
+                  </div>
+                ) : pipelineParts.map(part => {
+                  const nextStage = getNextStage(part.currentStage);
+                  return (
+                    <div key={part.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                      <div className="px-4 pt-4 pb-2 flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-slate-900 truncate">{part.partName}</p>
+                          <p className="text-xs font-mono text-slate-400 mt-0.5">{part.partNumber || '—'}</p>
+                          <p className="text-xs text-slate-400">{part.projectName} · {part.quantity} EA</p>
+                        </div>
+                        <span className={`ml-2 shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${getStatusColor(part.urgency)}`}>{part.urgency}</span>
+                      </div>
+                      <div className="px-4 py-2">
+                        <div className="flex items-center gap-1 overflow-x-auto pb-1">
+                          {PART_PIPELINE_PHASES.map((s, i) => (
+                            <React.Fragment key={s}>
+                              <span className={`text-[10px] px-2 py-1 rounded whitespace-nowrap font-bold border flex-shrink-0 ${
+                                s === part.currentStage
+                                  ? 'bg-indigo-100 text-indigo-800 border-indigo-400'
+                                  : PART_PIPELINE_PHASES.indexOf(s) < PART_PIPELINE_PHASES.indexOf(part.currentStage)
+                                    ? 'bg-indigo-500 text-white border-indigo-600'
+                                    : 'bg-slate-100 text-slate-400 border-slate-200'
+                              }`}>{s}</span>
+                              {i < PART_PIPELINE_PHASES.length - 1 && <ChevronRight size={10} className="text-slate-300 flex-shrink-0" />}
+                            </React.Fragment>
+                          ))}
+                        </div>
+                      </div>
+                      {nextStage && currentUser.role !== 'CUSTOMER' && (
+                        <div className="px-4 pb-4">
+                          <button
+                            onClick={() => { setPartStageTarget({ part, nextStage }); setIsPartStageModalOpen(true); }}
+                            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-colors active:scale-[0.98]"
+                          >
+                            {part.currentStage} → {nextStage} {t('단계 진행', 'Advance')}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </Suspense>
         </div>
 
@@ -2108,6 +2168,7 @@ export default function App() {
           <button onClick={() => setActiveTab('dashboard')} className={`flex flex-col items-center flex-1 py-1 transition-colors ${activeTab === 'dashboard' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}><LayoutDashboard size={20} className="mb-1" /><span className="text-[9px] font-bold">{t('홈', 'Home')}</span></button>
           <button onClick={() => setActiveTab('projects')} className={`flex flex-col items-center flex-1 py-1 transition-colors ${activeTab === 'projects' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}><Kanban size={20} className="mb-1" /><span className="text-[9px] font-bold">{t('프로젝트', 'Projects')}</span></button>
           <button onClick={() => setActiveTab('issues')} className={`flex flex-col items-center flex-1 py-1 transition-colors ${activeTab === 'issues' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}><AlertTriangle size={20} className="mb-1" /><span className="text-[9px] font-bold">{t('이슈', 'Issues')}</span></button>
+          <button onClick={() => setActiveTab('parts')} className={`flex flex-col items-center flex-1 py-1 transition-colors ${activeTab === 'parts' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}><Package size={20} className="mb-1" /><span className="text-[9px] font-bold">{t('자재', 'Parts')}</span></button>
           {currentUser.role !== 'CUSTOMER' && (
             <button onClick={() => setActiveTab('sites')} className={`flex flex-col items-center flex-1 py-1 transition-colors ${activeTab === 'sites' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}><Database size={20} className="mb-1" /><span className="text-[9px] font-bold">{t('인프라', 'Sites')}</span></button>
           )}
@@ -2126,6 +2187,25 @@ export default function App() {
             <PasswordChangeModal user={currentUser} forced={forcePasswordChange} onClose={() => { if (!forcePasswordChange) setIsPasswordModalOpen(false); }} onSubmit={handleChangeMyPassword} t={t} />
           )}
           {isHelpOpen && <HelpModal onClose={() => setIsHelpOpen(false)} t={t} />}
+          {isPipelinePartModalOpen && (
+            <PartPipelineModal
+              projects={projects}
+              onClose={() => setIsPipelinePartModalOpen(false)}
+              onSubmit={handleAddPipelinePart}
+              t={t}
+            />
+          )}
+          {isPartStageModalOpen && partStageTarget && (
+            <MobilePartPipelineModal
+              part={partStageTarget.part}
+              nextStage={partStageTarget.nextStage}
+              partEvents={partEvents}
+              onClose={() => { setIsPartStageModalOpen(false); setPartStageTarget(null); }}
+              onAdvance={handleAdvancePipelineStage}
+              onReject={handleRejectPipelineStage}
+              t={t}
+            />
+          )}
         </Suspense>
       </div>
     );
